@@ -14,6 +14,7 @@ dependencies = [
   "numpy",
   "pillow",
   "matplotlib",
+  "scikit-image",
 ]
 
 [tool.setuptools.packages.find]

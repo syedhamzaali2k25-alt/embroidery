@@ -4,6 +4,13 @@ Drawing coordinates here describe test pictures, not stitch settings.
   circle.png    solid circle, plus a few specks and a pinhole that cleaning must remove
   letter_a.png  a block letter A with a triangular hole
   two_shape.png a five-point star and a separate bar (non-convex + gap between shapes)
+  bold_r.png    a bold letter R (strokes, a bowl with a hole, two junctions)
+  thin_ring.png a thin ring (closed satin loop)
+  mixed.png     a wide disc (fill), a thin swoosh arc (satin), a sharp chevron (satin, tight
+                corner) and a lollipop: a disc joined to a thin stick (one shape, wide + narrow)
+
+WIDTHS_MM is the design width each sample is digitized at in the sample run and tests.
+Like the drawings, these are test fixtures, not product settings.
 """
 
 from __future__ import annotations
@@ -55,8 +62,43 @@ def two_shape() -> np.ndarray:
     return img
 
 
+def bold_r() -> np.ndarray:
+    img = blank()
+    font, scale, thickness = cv2.FONT_HERSHEY_SIMPLEX, 16, 60
+    (w, h), _ = cv2.getTextSize("R", font, scale, thickness)
+    cv2.putText(img, "R", ((SIZE - w) // 2, (SIZE + h) // 2), font, scale, INK, thickness, cv2.LINE_AA)
+    return img
+
+
+def thin_ring() -> np.ndarray:
+    img = blank()
+    cv2.circle(img, (300, 300), 240, INK, 36, lineType=cv2.LINE_AA)
+    return img
+
+
+def mixed() -> np.ndarray:
+    img = blank()
+    cv2.circle(img, (190, 330), 120, INK, -1, lineType=cv2.LINE_AA)
+    cv2.ellipse(img, (190, 330), (175, 165), 0, 200, 340, INK, 30, lineType=cv2.LINE_AA)
+    cv2.polylines(img, [np.array([[400, 120], [470, 300], [540, 120]], np.int32)], False, INK, 30, cv2.LINE_AA)
+    cv2.circle(img, (470, 430), 45, INK, -1, lineType=cv2.LINE_AA)
+    cv2.line(img, (470, 470), (470, 570), INK, 18, cv2.LINE_AA)
+    return img
+
+
+SAMPLES = {
+    "circle": circle,
+    "letter_a": letter_a,
+    "two_shape": two_shape,
+    "bold_r": bold_r,
+    "thin_ring": thin_ring,
+    "mixed": mixed,
+}
+WIDTHS_MM = {"circle": 60, "letter_a": 60, "two_shape": 60, "bold_r": 18, "thin_ring": 40, "mixed": 50}
+
+
 def main() -> None:
-    for name, draw in {"circle": circle, "letter_a": letter_a, "two_shape": two_shape}.items():
+    for name, draw in SAMPLES.items():
         cv2.imwrite(str(HERE / f"{name}.png"), draw())
         print(f"wrote {HERE / name}.png")
 

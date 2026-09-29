@@ -18,12 +18,16 @@ from digitizer.readback import UNITS_PER_MM, segments
 
 SAMPLES = Path(__file__).resolve().parents[1] / "samples"
 CONFIG = load_test_run_config()
+WIDTHS_MM = {"circle": 60, "letter_a": 60, "two_shape": 60, "bold_r": 18, "thin_ring": 40, "mixed": 50}
+ALL = list(WIDTHS_MM)
 
 
-def run(name: str, tmp_path: Path):
-    stats = digitize(SAMPLES / f"{name}.png", tmp_path, CONFIG)
+def run(name: str, tmp_path: Path, width_mm: float | None = None):
+    width_mm = width_mm or WIDTHS_MM[name]
+    stats = digitize(SAMPLES / f"{name}.png", tmp_path, CONFIG, width_mm).stats
     mask = load_mask(SAMPLES / f"{name}.png", CONFIG.get("image.min_speck_area_px"))
-    polygons, mm_per_px = scale_to_width(mask_to_polygons(mask), CONFIG.get("design.width_mm"))
+    polygons, tf = scale_to_width(mask_to_polygons(mask), width_mm)
+    mm_per_px = tf.mm_per_px
     pattern = pyembroidery.read_dst(str(tmp_path / "out.dst"))
     stitches = [
         LineString([(x0 / UNITS_PER_MM, y0 / UNITS_PER_MM), (x1 / UNITS_PER_MM, y1 / UNITS_PER_MM)])
@@ -33,7 +37,7 @@ def run(name: str, tmp_path: Path):
     return stats, polygons, mm_per_px, stitches
 
 
-@pytest.mark.parametrize("name", ["circle", "letter_a", "two_shape"])
+@pytest.mark.parametrize("name", ALL)
 def test_writes_files_within_limits(name, tmp_path):
     stats, _, _, _ = run(name, tmp_path)
     assert (tmp_path / "out.dst").stat().st_size > 0
@@ -41,13 +45,17 @@ def test_writes_files_within_limits(name, tmp_path):
     assert stats.stitch_count > 0
     assert stats.longest_stitch_mm <= CONFIG.get("stitch.max_stitch_length_mm")
     # Rows stop half a row from the outline, so allow two row spacings of shortfall.
-    assert abs(stats.width_mm - CONFIG.get("design.width_mm")) <= 2 * CONFIG.get("stitch.fill_row_spacing_mm")
+    # Satin columns are widened by pull compensation on both sides.
+    slack = 2 * CONFIG.get("stitch.fill_row_spacing_mm") + CONFIG.get("stitch.pull_compensation_mm")
+    assert abs(stats.width_mm - WIDTHS_MM[name]) <= slack
 
 
-@pytest.mark.parametrize("name", ["circle", "letter_a", "two_shape"])
+@pytest.mark.parametrize("name", ALL)
 def test_no_stitch_leaves_the_shape(name, tmp_path):
     _, polygons, mm_per_px, stitches = run(name, tmp_path)
-    allowed = unary_union(polygons).buffer(2 * mm_per_px + 1 / UNITS_PER_MM)
+    allowed = unary_union(polygons).buffer(
+        2 * mm_per_px + 1 / UNITS_PER_MM + CONFIG.get("stitch.pull_compensation_mm") / 2
+    )
     outside = [s for s in stitches if not allowed.contains(s)]
     assert not outside, f"{len(outside)} stitches cross outside the logo"
 

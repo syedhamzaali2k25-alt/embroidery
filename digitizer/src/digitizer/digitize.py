@@ -1,23 +1,25 @@
-"""Single-colour logo image -> fill-stitched DST + preview PNG.
+"""Single-colour logo image -> fill + satin DST and a preview PNG.
 
 Pipeline:
   1. load, threshold to black/white (Otsu, or the alpha channel if present), remove specks
   2. trace contours with OpenCV -> shapely polygons with holes
-  3. scale to the configured design width (so all stitch spacing is in real millimetres)
-  4. parallel scanline fill at the configured angle and row spacing
-  5. order rows in a zigzag (nearest endpoint, sewn connections only inside the shape)
-  6. split stitches longer than the max length, write DST with pyembroidery
-  7. read the DST back and render the preview from what is actually in the file
+  3. scale to the design width (so all stitch spacing is in real millimetres)
+  4. classify each polygon by its widest point: wider than satin.max_width_mm -> fill, else satin
+  5. fill: parallel scanlines at the configured angle and row spacing, zigzag row order
+     satin: skeleton centerline -> rungs perpendicular to it -> underlay (edge walk, zigzag)
+     then satin from edge to edge, widened by pull compensation
+  6. order all pieces greedily to avoid jumps (short in-shape moves are sewn, others jump)
+  7. split stitches longer than the max length, write DST with pyembroidery
+  8. read the DST back, check it matches what was written, render the preview from it
 
-All numbers come from digitizer.config. Only fill stitches: no satin, underlay,
-pull compensation, lock stitches or colours yet.
+All numbers come from digitizer.config. No lock stitches, fill underlay or colours yet.
 """
 
 from __future__ import annotations
 
 import argparse
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import cv2
@@ -27,8 +29,9 @@ from shapely import affinity
 from shapely.geometry import LineString, MultiPolygon, Polygon
 from shapely.ops import unary_union
 
+from digitizer import satin
 from digitizer.config import Config, load_config, load_test_run_config
-from digitizer.readback import DstStats, dst_stats, render_preview
+from digitizer.readback import DstStats, dst_stats, render_preview, stitch_points
 
 UNITS_PER_MM = 10  # pyembroidery / DST coordinates are in 0.1 mm; a unit conversion, not a setting.
 
@@ -97,29 +100,36 @@ def _polygons(geometry) -> list[Polygon]:
 
 # ---------- 3. scale to millimetres ----------
 
-def scale_to_width(polygons: list[Polygon], width_mm: float) -> tuple[list[Polygon], float]:
-    """Scale so the combined bounding box is width_mm wide, centred on (0, 0). Returns mm per pixel."""
+@dataclass(frozen=True)
+class PxToMm:
+    """Pixel -> mm mapping: centre the logo on (0, 0) and scale to the design width."""
+    cx: float
+    cy: float
+    mm_per_px: float
+
+    def geom(self, g):
+        return affinity.scale(affinity.translate(g, -self.cx, -self.cy), self.mm_per_px, self.mm_per_px, origin=(0, 0))
+
+    def to_px(self, p):
+        return p[0] / self.mm_per_px + self.cx, p[1] / self.mm_per_px + self.cy
+
+
+def scale_to_width(polygons: list[Polygon], width_mm: float) -> tuple[list[Polygon], PxToMm]:
     min_x, min_y, max_x, max_y = unary_union(polygons).bounds
-    mm_per_px = width_mm / (max_x - min_x)
-    cx, cy = (min_x + max_x) / 2, (min_y + max_y) / 2
-    scaled = [
-        affinity.scale(affinity.translate(p, -cx, -cy), mm_per_px, mm_per_px, origin=(0, 0))
-        for p in polygons
-    ]
-    return scaled, mm_per_px
+    tf = PxToMm((min_x + max_x) / 2, (min_y + max_y) / 2, width_mm / (max_x - min_x))
+    return [tf.geom(p) for p in polygons], tf
 
 
-# ---------- 4. scanline fill ----------
+# ---------- 5a. fill rows ----------
 
 @dataclass
 class Row:
-    shape: int
     index: int
     start: tuple[float, float]
     end: tuple[float, float]
 
 
-def fill_rows(polygon: Polygon, shape: int, angle_deg: float, spacing_mm: float, min_len_mm: float) -> list[Row]:
+def fill_rows(polygon: Polygon, angle_deg: float, spacing_mm: float, min_len_mm: float) -> list[Row]:
     """Parallel rows across the polygon at angle_deg, spacing_mm apart (holes stay empty)."""
     rotated = affinity.rotate(polygon, -angle_deg, origin=(0, 0))
     min_x, min_y, max_x, max_y = rotated.bounds
@@ -129,69 +139,51 @@ def fill_rows(polygon: Polygon, shape: int, angle_deg: float, spacing_mm: float,
     while y < max_y:
         scan = LineString([(min_x - 1, y), (max_x + 1, y)])
         hit = rotated.intersection(scan)
-        pieces = getattr(hit, "geoms", [hit])
-        for piece in pieces:
+        for piece in getattr(hit, "geoms", [hit]):
             if not isinstance(piece, LineString) or piece.length < min_len_mm:
                 continue
             back = affinity.rotate(piece, angle_deg, origin=(0, 0))
-            (x0, y0), (x1, y1) = back.coords[0], back.coords[-1]
-            rows.append(Row(shape, index, (x0, y0), (x1, y1)))
+            rows.append(Row(index, back.coords[0], back.coords[-1]))
         y += spacing_mm
         index += 1
     return rows
 
 
-# ---------- 5. zigzag ordering ----------
-
 @dataclass
 class Move:
     kind: str  # "stitch" or "jump"
     to: tuple[float, float]
+    role: str = ""  # fill, travel, underlay, satin
+    piece: int = 0  # satin column number (1-based, sewing order); 0 for fill/travel
 
 
-def order_rows(rows: list[Row], polygons: list[Polygon], jump_threshold_mm: float, tolerance_mm: float) -> list[Move]:
-    """Walk rows boustrophedon-style: from the current needle position take the nearest row end
-    in the same shape on an adjacent scanline if it can be reached by a short in-shape stitch;
-    otherwise jump to the nearest unsewn row end anywhere."""
-    if not rows:
-        return []
-    inside = [p.buffer(tolerance_mm) for p in polygons]
-    by_key: dict[tuple[int, int], list[int]] = {}
+def order_rows(rows: list[Row], area: Polygon, jump_threshold_mm: float, start_pos=None) -> list[Move]:
+    """Boustrophedon walk over one fill area. The first move goes to the first row start; the
+    caller decides whether that approach is sewn or jumped."""
+    by_index: dict[int, list[int]] = {}
     for i, row in enumerate(rows):
-        by_key.setdefault((row.shape, row.index), []).append(i)
-
+        by_index.setdefault(row.index, []).append(i)
     remaining = set(range(len(rows)))
+    if start_pos is None:
+        current = min(remaining, key=lambda i: (rows[i].index, rows[i].start))
+    else:
+        current = min(remaining, key=lambda i: _dist(start_pos, _nearest_end(rows[i], start_pos)))
+    pos = start_pos
     moves: list[Move] = []
-    current_row = min(remaining, key=lambda i: (rows[i].shape, rows[i].index, rows[i].start))
-    pos = None
-
     while True:
-        row = rows[current_row]
-        remaining.discard(current_row)
+        row = rows[current]
+        remaining.discard(current)
         start, end = _orient(row, pos)
-        if pos is None:
-            moves.append(Move("jump", start))
-        elif not _sewable(pos, start, inside[row.shape], jump_threshold_mm):
-            moves.append(Move("jump", start))
-        else:
-            moves.append(Move("stitch", start))
-        moves.append(Move("stitch", end))
+        sewn = bool(moves) and _sewable(pos, start, area, jump_threshold_mm)
+        moves.append(Move("stitch" if sewn else "jump", start, "fill"))
+        moves.append(Move("stitch", end, "fill"))
         pos = end
         if not remaining:
             return moves
-
-        neighbours = [
-            i
-            for step in (1, -1)
-            for i in by_key.get((row.shape, row.index + step), [])
-            if i in remaining
-        ]
-        reachable = [
-            i for i in neighbours
-            if _sewable(pos, _nearest_end(rows[i], pos), inside[row.shape], jump_threshold_mm)
-        ]
+        neighbours = [i for step in (1, -1) for i in by_index.get(row.index + step, []) if i in remaining]
+        reachable = [i for i in neighbours if _sewable(pos, _nearest_end(rows[i], pos), area, jump_threshold_mm)]
         pool = reachable or list(remaining)
-        current_row = min(pool, key=lambda i: _dist(pos, _nearest_end(rows[i], pos)))
+        current = min(pool, key=lambda i: _dist(pos, _nearest_end(rows[i], pos)))
 
 
 def _orient(row: Row, pos):
@@ -212,26 +204,164 @@ def _dist(a, b) -> float:
     return math.hypot(a[0] - b[0], a[1] - b[1])
 
 
-# ---------- 6. split long stitches and build the pattern ----------
+# ---------- 4-5. classify polygons and build pieces ----------
 
-def build_pattern(moves: list[Move], max_stitch_mm: float, trim_threshold_mm: float) -> pyembroidery.EmbPattern:
+@dataclass
+class Piece:
+    kind: str  # "fill" or "satin"
+    area: Polygon  # the shape it belongs to, slightly grown, for in-shape checks
+    rows: list[Row] = field(default_factory=list)
+    column: satin.Column | None = None
+
+
+def build_pieces(mask: np.ndarray, polygons_px: list[Polygon], polygons: list[Polygon], tf: PxToMm,
+                 config: Config) -> list[Piece]:
+    max_width = config.get("satin.max_width_mm")
+    min_len = config.get("stitch.min_stitch_length_mm")
+    tolerance = tf.mm_per_px  # traced outlines are pixel staircases: allow one source pixel
+    pieces: list[Piece] = []
+    for poly_px, poly in zip(polygons_px, polygons):
+        shape_mask = satin.polygon_mask(poly_px, mask.shape)
+        dist = satin.distance_map(shape_mask)
+        area = poly.buffer(tolerance)
+        if satin.max_width_px(dist) * tf.mm_per_px > max_width:
+            pieces.append(Piece("fill", area, rows=_rows(poly, config)))
+            continue
+
+        def radius_mm(p, dist=dist):
+            x, y = tf.to_px(p)
+            yi = min(max(int(round(y)), 0), dist.shape[0] - 1)
+            xi = min(max(int(round(x)), 0), dist.shape[1] - 1)
+            return max(float(dist[yi, xi]), 1.0) * tf.mm_per_px
+
+        lines_px = satin.prune_spurs(satin.skeleton_lines(shape_mask), dist, config.get("satin.spur_prune_factor"))
+        degree = satin.end_degrees(lines_px)
+        columns = []
+        for line_px in lines_px:
+            if line_px.length == 0:
+                continue
+            line = tf.geom(line_px)
+            if not line.is_closed:
+                line = satin.extend_free_ends(
+                    line, degree[line_px.coords[0]] == 1, degree[line_px.coords[-1]] == 1, poly, max_width, radius_mm
+                )
+            column = satin.build_column(
+                line, poly, config.get("stitch.satin_spacing_mm"), max_width,
+                config.get("stitch.pull_compensation_mm"), min_len, radius_mm,
+            )
+            if column.rungs:
+                columns.append(Piece("satin", area, column=column))
+        # A shape too small to yield any rung (a dot) still gets sewn, as fill.
+        pieces.extend(columns or [Piece("fill", area, rows=_rows(poly, config))])
+    return pieces
+
+
+def _rows(poly: Polygon, config: Config) -> list[Row]:
+    return fill_rows(poly, config.get("stitch.fill_angle_deg"), config.get("stitch.fill_row_spacing_mm"),
+                     config.get("stitch.min_stitch_length_mm"))
+
+
+def satin_settings(config: Config) -> satin.SatinSettings:
+    return satin.SatinSettings(
+        spacing=config.get("stitch.satin_spacing_mm"),
+        underlay_spacing=config.get("stitch.underlay_spacing_mm"),
+        edge_walk=bool(config.get("satin.underlay_edge_walk")),
+        edge_inset=config.get("satin.underlay_edge_inset_mm"),
+        edge_stitch_length=config.get("satin.underlay_edge_stitch_length_mm"),
+        zigzag=bool(config.get("satin.underlay_zigzag")),
+        zigzag_inset=config.get("satin.underlay_zigzag_inset_mm"),
+    )
+
+
+# ---------- 6. order all pieces ----------
+
+@dataclass
+class Plan:
+    moves: list[Move]
+    satin_labels: dict[int, tuple[float, float]]  # column number -> label position (mm)
+
+
+def plan_pieces(pieces: list[Piece], logo: Polygon, settings: satin.SatinSettings, jump_threshold_mm: float) -> Plan:
+    """Greedy: from the needle position take the piece whose entry point is nearest, preferring
+    entries reachable by a short stitch that stays inside the logo; otherwise jump."""
+    remaining = list(range(len(pieces)))
+    moves: list[Move] = []
+    labels: dict[int, tuple[float, float]] = {}
+    pos = None
+    while remaining:
+        options = []  # (piece index, entry point, builder)
+        for i in remaining:
+            piece = pieces[i]
+            if piece.kind == "fill":
+                entry = (min((r.start for r in piece.rows), key=lambda p: (p[1], p[0])) if pos is None
+                         else min((_nearest_end(r, pos) for r in piece.rows), key=lambda p: _dist(pos, p)))
+                options.append((i, entry, None))
+            else:
+                for start, forward in satin.entry_options(piece.column, pos):
+                    seq = satin.column_sequence(piece.column, start, forward, settings)
+                    options.append((i, seq[0][0], seq))
+        if pos is None:
+            choice = min(options, key=lambda o: (o[1][1], o[1][0]))
+            sewn = False
+        else:
+            reachable = [o for o in options if _sewable(pos, o[1], logo, jump_threshold_mm)]
+            choice = min(reachable or options, key=lambda o: _dist(pos, o[1]))
+            sewn = bool(reachable)
+        i, entry, seq = choice
+        remaining.remove(i)
+        piece = pieces[i]
+        if piece.kind == "fill":
+            piece_moves = order_rows(piece.rows, piece.area, jump_threshold_mm, pos)
+            piece_moves[0] = Move("stitch" if sewn else "jump", piece_moves[0].to, "travel" if sewn else "")
+        else:
+            number = len(labels) + 1
+            labels[number] = satin.label_point(piece.column).coords[0]
+            piece_moves = [Move("stitch", p, role, number) for p, role in seq]
+            piece_moves[0] = Move("stitch" if sewn else "jump", entry, "travel" if sewn else "", number)
+        moves.extend(piece_moves)
+        pos = moves[-1].to
+    return Plan(moves, labels)
+
+
+# ---------- 7. split long stitches and build the pattern ----------
+
+@dataclass
+class Built:
+    pattern: pyembroidery.EmbPattern
+    stitches: list[tuple[int, int]]  # every STITCH record, in file units
+    labels: list[tuple[str, int]]  # (role, column number) per STITCH record
+    jumps: int  # needle-up moves after the first positioning move
+    trims: int
+
+
+def build_pattern(moves: list[Move], max_stitch_mm: float, trim_threshold_mm: float) -> Built:
     # The file stores whole 0.1 mm units; rounding both ends can lengthen a stitch by up to
     # one unit diagonal, so split against the limit minus that amount.
     split_at = max_stitch_mm - math.sqrt(2) / UNITS_PER_MM
-    pattern = pyembroidery.EmbPattern()
-    pos = None
+    built = Built(pyembroidery.EmbPattern(), [], [], 0, 0)
+    pos, last = None, None
     for move in moves:
         if move.kind == "jump":
-            if pos is not None and _dist(pos, move.to) > trim_threshold_mm:
-                pattern.add_command(pyembroidery.TRIM)
-            _add(pattern, pyembroidery.JUMP, move.to)
+            if pos is not None:
+                built.jumps += 1
+                if _dist(pos, move.to) > trim_threshold_mm:
+                    built.pattern.add_command(pyembroidery.TRIM)
+                    built.trims += 1
+            last = _units(move.to)
+            built.pattern.add_stitch_absolute(pyembroidery.JUMP, *last)
             pos = move.to
             continue
         for point in _split(pos, move.to, split_at):
-            _add(pattern, pyembroidery.STITCH, point)
+            q = _units(point)
+            if q == last:
+                continue
+            built.pattern.add_stitch_absolute(pyembroidery.STITCH, *q)
+            built.stitches.append(q)
+            built.labels.append((move.role, move.piece))
+            last = q
         pos = move.to
-    pattern.add_command(pyembroidery.END)
-    return pattern
+    built.pattern.add_command(pyembroidery.END)
+    return built
 
 
 def _split(a, b, max_len: float):
@@ -242,42 +372,58 @@ def _split(a, b, max_len: float):
     return [(a[0] + (b[0] - a[0]) * k / pieces, a[1] + (b[1] - a[1]) * k / pieces) for k in range(1, pieces + 1)]
 
 
-def _add(pattern, command, point_mm):
-    pattern.add_stitch_absolute(command, point_mm[0] * UNITS_PER_MM, point_mm[1] * UNITS_PER_MM)
+def _units(point_mm) -> tuple[int, int]:
+    return round(point_mm[0] * UNITS_PER_MM), round(point_mm[1] * UNITS_PER_MM)
 
 
 # ---------- entry point ----------
 
-def digitize(image_path: str | Path, out_dir: str | Path, config: Config | None = None) -> DstStats:
-    """Write out.dst and preview.png into out_dir and return stats read back from the DST."""
+@dataclass(frozen=True)
+class Result:
+    stats: DstStats  # read back from the DST
+    jumps: int  # needle-up moves between pieces or rows (not counting the first move to the start)
+    trims: int
+    fill_areas: int
+    satin_columns: int
+    skipped_rungs: int  # satin stations with no sensible edge-to-edge line (mostly junctions)
+
+    def summary(self) -> str:
+        return (f"{self.stats.summary()}\n  pieces: {self.fill_areas} fill, {self.satin_columns} satin columns; "
+                f"jumps={self.jumps} trims={self.trims}; skipped satin rungs={self.skipped_rungs}")
+
+
+def digitize(image_path: str | Path, out_dir: str | Path, config: Config | None = None,
+             width_mm: float | None = None) -> Result:
+    """Write out.dst and preview.png into out_dir. width_mm overrides design.width_mm for this job."""
     config = config or load_config()
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
     mask = load_mask(image_path, config.get("image.min_speck_area_px"))
     polygons_px = mask_to_polygons(mask)
-    polygons, mm_per_px = scale_to_width(polygons_px, config.get("design.width_mm"))
+    polygons, tf = scale_to_width(polygons_px, width_mm or config.get("design.width_mm"))
+    pieces = build_pieces(mask, polygons_px, polygons, tf, config)
 
-    angle = config.get("stitch.fill_angle_deg")
-    spacing = config.get("stitch.fill_row_spacing_mm")
-    min_len = config.get("stitch.min_stitch_length_mm")
-    rows = [r for i, p in enumerate(polygons) for r in fill_rows(p, i, angle, spacing, min_len)]
-
-    # Traced outlines are pixel staircases; allow one source pixel when testing "inside the shape".
-    moves = order_rows(rows, polygons, config.get("stitch.jump_threshold_mm"), mm_per_px)
-    pattern = build_pattern(moves, config.get("stitch.max_stitch_length_mm"), config.get("stitch.trim_threshold_mm"))
+    logo = unary_union(polygons).buffer(tf.mm_per_px)
+    plan = plan_pieces(pieces, logo, satin_settings(config), config.get("stitch.jump_threshold_mm"))
+    built = build_pattern(plan.moves, config.get("stitch.max_stitch_length_mm"), config.get("stitch.trim_threshold_mm"))
 
     dst_path = out_dir / "out.dst"
-    pyembroidery.write_dst(pattern, str(dst_path))
-    stats = dst_stats(dst_path)
-    render_preview(dst_path, out_dir / "preview.png", config)
-    return stats
+    pyembroidery.write_dst(built.pattern, str(dst_path))
+    if stitch_points(dst_path) != built.stitches:
+        raise RuntimeError("DST read back from disk does not match the stitches that were written")
+    render_preview(dst_path, out_dir / "preview.png", config, built.labels,
+                   {n: _units(p) for n, p in plan.satin_labels.items()})
+    columns = [p.column for p in pieces if p.kind == "satin"]
+    return Result(dst_stats(dst_path), built.jumps, built.trims, sum(p.kind == "fill" for p in pieces),
+                  len(columns), sum(c.skipped_rungs for c in columns))
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Digitize a single-colour logo into out.dst + preview.png")
     parser.add_argument("image", help="PNG or JPG logo, dark on light or transparent background")
     parser.add_argument("--out", default=".", help="output folder (default: current folder)")
+    parser.add_argument("--width-mm", type=float, help="design width for this job (default: design.width_mm)")
     parser.add_argument(
         "--test-run-values",
         action="store_true",
@@ -285,7 +431,7 @@ def main() -> None:
     )
     args = parser.parse_args()
     config = load_test_run_config() if args.test_run_values else load_config()
-    print(digitize(args.image, args.out, config).summary())
+    print(digitize(args.image, args.out, config, args.width_mm).summary())
 
 
 if __name__ == "__main__":

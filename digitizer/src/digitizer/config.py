@@ -34,7 +34,8 @@ PRODUCT: dict[str, dict[str, Any]] = {
         "fill_angle_deg": PLACEHOLDER,
         # Spacing between parallel rows in a fill (tatami) area. Smaller = denser.
         "fill_row_spacing_mm": PLACEHOLDER,
-        # Spacing between the zig-zag passes of a satin column. Smaller = denser. (Not used yet.)
+        # Satin density: distance along the column's centerline from one needle point to the next
+        # (points alternate between the two edges). Smaller = denser.
         "satin_spacing_mm": PLACEHOLDER,
         # Length of each stitch along a running-stitch outline. (Not used yet.)
         "running_stitch_length_mm": PLACEHOLDER,
@@ -43,15 +44,36 @@ PRODUCT: dict[str, dict[str, Any]] = {
         "max_stitch_length_mm": PLACEHOLDER,
         # Fill rows shorter than this are dropped (avoids tiny stitches that bunch or break thread).
         "min_stitch_length_mm": PLACEHOLDER,
-        # Row spacing of the underlay laid down before fill and satin top stitching. (Not used yet.)
+        # Zigzag underlay under satin: distance along the centerline between its needle points.
+        # (Fill underlay is not built yet.)
         "underlay_spacing_mm": PLACEHOLDER,
-        # Amount shapes are widened across the stitch direction to offset fabric pull-in. (Not used yet.)
+        # Pull compensation for satin: each column is made this much wider in total
+        # (half added on each edge) to offset fabric pull-in. (Not applied to fill yet.)
         "pull_compensation_mm": PLACEHOLDER,
         # Moves between rows up to this length, that stay inside the shape, are sewn as stitches;
         # anything longer or crossing outside the shape becomes a jump.
         "jump_threshold_mm": PLACEHOLDER,
         # Jumps longer than this also get a trim command before them.
         "trim_threshold_mm": PLACEHOLDER,
+    },
+    "satin": {
+        # SATIN_MAX_WIDTH_MM. A shape whose widest point (largest circle that fits inside it)
+        # is at most this wide becomes satin; wider shapes stay fill.
+        "max_width_mm": PLACEHOLDER,
+        # Skeleton clean-up: a centerline branch with a free end that is shorter than this many
+        # times the local half-width is treated as a corner artefact and removed.
+        "spur_prune_factor": PLACEHOLDER,
+        # Edge-walk underlay: run stitches along both edges before the satin (true/false).
+        "underlay_edge_walk": PLACEHOLDER,
+        # How far inside each edge the edge walk runs.
+        "underlay_edge_inset_mm": PLACEHOLDER,
+        # Stitch length of the edge walk.
+        "underlay_edge_stitch_length_mm": PLACEHOLDER,
+        # Zigzag underlay: a sparse zigzag across the column before the satin (true/false).
+        # Its density is stitch.underlay_spacing_mm.
+        "underlay_zigzag": PLACEHOLDER,
+        # How far inside each edge the zigzag underlay turns.
+        "underlay_zigzag_inset_mm": PLACEHOLDER,
     },
     "input": {
         # Accepted upload types (from the product spec). digitize.py reads PNG/JPG only so far.
@@ -84,6 +106,12 @@ PRODUCT: dict[str, dict[str, Any]] = {
         "jump_color": "#8A8A8A",
         # Blank margin around the design, as a fraction of its larger side.
         "margin_fraction": 0.05,
+        # Satin columns are drawn in these colours in turn, and numbered in sewing order.
+        "satin_colors": ["#1B864C", "#7B4FD6", "#D9467F", "#1F77B4", "#C2410C", "#0F766E"],
+        # Underlay is drawn in its column's colour at this opacity (0-1).
+        "underlay_alpha": 0.35,
+        # Font size of the column numbers, in points.
+        "label_font_size_pt": 7,
     },
     "jobs": {
         # Hard limit on one digitizing job in the worker before it is killed.
@@ -107,6 +135,16 @@ PRODUCT: dict[str, dict[str, Any]] = {
 TEST_RUN_OVERRIDES: dict[str, Any] = {
     "image.min_speck_area_px": 20,
     "design.width_mm": 60,
+    "stitch.satin_spacing_mm": 0.4,
+    "stitch.underlay_spacing_mm": 2.0,
+    "stitch.pull_compensation_mm": 0.3,
+    "satin.max_width_mm": 6,
+    "satin.spur_prune_factor": 2,
+    "satin.underlay_edge_walk": True,
+    "satin.underlay_edge_inset_mm": 0.4,
+    "satin.underlay_edge_stitch_length_mm": 2.0,
+    "satin.underlay_zigzag": True,
+    "satin.underlay_zigzag_inset_mm": 0.4,
     "stitch.fill_angle_deg": 45,
     "stitch.fill_row_spacing_mm": 0.4,
     "stitch.max_stitch_length_mm": 7,

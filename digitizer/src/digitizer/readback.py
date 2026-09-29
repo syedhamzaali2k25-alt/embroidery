@@ -68,24 +68,62 @@ def dst_stats(path: str | Path) -> DstStats:
     )
 
 
-def render_preview(dst_path: str | Path, png_path: str | Path, config: Config) -> None:
-    """Draw every stitch (solid) and jump (dashed) exactly as stored in the DST."""
+def stitch_points(path: str | Path) -> list[tuple[int, int]]:
+    """Every STITCH record in the file, in file units."""
+    pattern = pyembroidery.read_dst(str(path))
+    return [(x, y) for x, y, c in pattern.stitches if c & pyembroidery.COMMAND_MASK == pyembroidery.STITCH]
+
+
+def render_preview(dst_path: str | Path, png_path: str | Path, config: Config,
+                   labels: list[tuple[str, int]] | None = None,
+                   column_labels: dict[int, tuple[int, int]] | None = None) -> None:
+    """Draw every stitch and jump exactly as stored in the DST.
+
+    labels gives (role, satin column number) for each STITCH record in file order; satin
+    columns get their own colour (underlay faded) and a number at their midpoint. Fill and
+    travel stitches are ink, jumps dashed.
+    """
     pattern = pyembroidery.read_dst(str(dst_path))
     min_x, min_y, max_x, max_y = pattern.bounds()
     w, h = max(max_x - min_x, 1), max(max_y - min_y, 1)
     margin = config.get("preview.margin_fraction") * max(w, h)
     width_in = config.get("preview.width_in")
+    colors = config.get("preview.satin_colors")
+    ink = config.get("preview.stitch_color")
+    stitch_lw = config.get("preview.stitch_line_width_pt")
 
     fig = plt.figure(figsize=(width_in, width_in * (h + 2 * margin) / (w + 2 * margin)))
     ax = fig.add_axes([0, 0, 1, 1])
-    lines = {pyembroidery.STITCH: [], pyembroidery.JUMP: []}
-    for cmd, x0, y0, x1, y1 in segments(pattern):
-        lines[cmd].append([(x0, y0), (x1, y1)])
+    groups: dict[tuple[str, float], list] = {}
+    jumps = []
+    index, prev = -1, None
+    for x1, y1, cmd in pattern.stitches:
+        cmd &= pyembroidery.COMMAND_MASK
+        if cmd not in (pyembroidery.STITCH, pyembroidery.JUMP):
+            continue
+        start, prev = prev, (x1, y1)
+        if cmd == pyembroidery.STITCH:
+            index += 1  # labels are indexed by STITCH record
+        if start is None:
+            continue
+        (x0, y0) = start
+        if cmd == pyembroidery.JUMP:
+            jumps.append([(x0, y0), (x1, y1)])
+            continue
+        role, number = labels[index] if labels else ("fill", 0)
+        if role in ("satin", "underlay") and number:
+            key = (colors[(number - 1) % len(colors)], config.get("preview.underlay_alpha") if role == "underlay" else 1.0)
+        else:
+            key = (ink, 1.0)
+        groups.setdefault(key, []).append([(x0, y0), (x1, y1)])
     dash = tuple(config.get("preview.jump_dash_pt"))
-    ax.add_collection(LineCollection(lines[pyembroidery.JUMP], colors=config.get("preview.jump_color"),
+    ax.add_collection(LineCollection(jumps, colors=config.get("preview.jump_color"),
                                      linewidths=config.get("preview.jump_line_width_pt"), linestyles=[(0, dash)]))
-    ax.add_collection(LineCollection(lines[pyembroidery.STITCH], colors=config.get("preview.stitch_color"),
-                                     linewidths=config.get("preview.stitch_line_width_pt"), capstyle="round"))
+    for (color, alpha), lines in sorted(groups.items(), key=lambda kv: kv[0][1]):
+        ax.add_collection(LineCollection(lines, colors=color, alpha=alpha, linewidths=stitch_lw, capstyle="round"))
+    for number, (x, y) in (column_labels or {}).items():
+        ax.text(x, y, str(number), ha="center", va="center", fontsize=config.get("preview.label_font_size_pt"),
+                color=ink, bbox=dict(boxstyle="round", facecolor="white", edgecolor=colors[(number - 1) % len(colors)]))
     ax.set_xlim(min_x - margin, max_x + margin)
     ax.set_ylim(max_y + margin, min_y - margin)  # file y grows downward, like the source image
     ax.set_aspect("equal")
