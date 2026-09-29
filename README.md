@@ -1,8 +1,8 @@
 # Stitchbook
 
-Browser-based embroidery digitizer: upload a PNG/JPG/SVG logo and get machine-ready embroidery files (DST first, then PES) plus a preview image. Stitchbook is a working name, set in `config/stitchbook.toml`.
+Browser-based embroidery digitizer: upload a PNG/JPG/SVG logo and get machine-ready embroidery files (DST first, then PES) plus a preview image. Stitchbook is a working name, set in `digitizer/src/digitizer/config.py`.
 
-Status: scaffolding only. The web screens are static mock-ups; the digitizer has no stitch logic yet.
+Status: the digitizer turns a single-colour PNG/JPG logo into a fill-stitched DST and a preview (fill stitches only: no satin, underlay, pull compensation, lock stitches or colours). The web screens are static mock-ups; the API and worker do not call the digitizer yet.
 
 ## Layout
 
@@ -12,7 +12,7 @@ Status: scaffolding only. The web screens are static mock-ups; the digitizer has
 | `api/` | FastAPI service (`stitchbook_api`), imports `digitizer`. |
 | `worker/` | RQ job runner (`stitchbook_worker`), imports `digitizer`. |
 | `web/` | Static front end (landing, home, editor) and its screenshot/contrast audit. |
-| `config/stitchbook.toml` | The single file for every stitch number, limit, timeout and rate limit. |
+| `digitizer/src/digitizer/config.py` | The single file for every stitch number, limit, timeout and rate limit. |
 | `docs/` | Project documentation. |
 
 ## Requirements
@@ -24,10 +24,19 @@ Python 3.11+, Node 18+, Redis (for the worker), GNU Make.
 ```sh
 cp .env.example .env     # then fill in values
 make setup               # .venv with digitizer/api/worker (editable) + web npm install
-make test                # pytest (empty suite passes) + web colour-token lint
+make test                # pytest + web colour-token lint
 make api                 # FastAPI on http://localhost:$API_PORT  (GET /health)
 make worker              # RQ worker on $RQ_QUEUE, needs Redis at $REDIS_URL
 make web                 # static front end on http://localhost:$WEB_PORT
+```
+
+Digitizer (inside the venv):
+
+```sh
+.venv/bin/python -m digitizer.digitize logo.png --out outdir   # needs every stitch value chosen in config.py
+.venv/bin/python -m digitizer.digitize logo.png --out outdir --test-run-values   # stand-in values, not for sewing
+.venv/bin/python -m digitizer.readback outdir/out.dst          # stitch count, size in mm, longest stitch
+.venv/bin/python digitizer/samples/make_samples.py             # regenerate the three sample logos
 ```
 
 From `web/` the original commands still work:
@@ -41,7 +50,7 @@ npm run check:ui         # screenshots + contrast/clipping audit → web/screens
 
 ## Config and environment
 
-- `config/stitchbook.toml` holds product numbers. Values not yet chosen are `"__CHOOSE__"`, and `digitizer.config` raises `PlaceholderValueError` if code asks for one.
+- `digitizer/src/digitizer/config.py` holds product numbers. Values not yet chosen are `"__CHOOSE__"`, and `Config.get()` raises `PlaceholderValueError` if code asks for one. `TEST_RUN_OVERRIDES` in the same file are stand-in values for the sample run and tests only.
 - `.env` holds only connection strings and secrets. See `.env.example`, which lists every variable with a comment.
 
 Project and design rules for contributors (and Claude) are in `CLAUDE.md`.

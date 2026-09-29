@@ -1,7 +1,7 @@
 """Environment settings for the API (connection strings and secrets only).
 
 Product numbers (limits, timeouts, rate limits) are not here: they live in
-config/stitchbook.toml and are read through digitizer.config.
+digitizer/src/digitizer/config.py and are read through digitizer.config.
 """
 
 from __future__ import annotations
