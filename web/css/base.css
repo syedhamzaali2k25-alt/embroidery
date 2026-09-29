@@ -53,18 +53,12 @@ button { font: inherit; color: inherit; }
   letter-spacing: 0;
 }
 
-/* ---------- Sheet: the white page on the gradient ---------- */
+/* ---------- Page container: content centred at a fixed max width ---------- */
 .sheet {
-  width: min(var(--sheet-max), calc(100% - 2 * var(--gutter)));
-  margin: var(--gutter) auto;
+  width: min(var(--sheet-max), 100%);
+  margin: 0 auto;
   background: var(--surface);
-  border-radius: var(--radius-sheet);
-  box-shadow: var(--shadow-sheet);
   overflow: hidden;
-}
-
-@media (min-width: 900px) {
-  .sheet { margin: 32px auto; }
 }
 
 /* ---------- Brand ---------- */

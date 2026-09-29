@@ -3,10 +3,10 @@
 .app {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  min-height: calc(100vh - 2 * var(--gutter));
+  min-height: 100vh;
 }
 @media (min-width: 960px) {
-  .app { grid-template-columns: 248px minmax(0, 1fr); min-height: calc(100vh - 64px); }
+  .app { grid-template-columns: 248px minmax(0, 1fr); }
 }
 
 /* ---------- Sidebar ---------- */

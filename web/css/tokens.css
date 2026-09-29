@@ -13,11 +13,8 @@
   --line: #EDEDED;
   --white: #FFFFFF;
 
-  /* Page background gradient stops (pink is shared with the palette) */
-  --bg-lavender: #CDB8F5;
-  --bg-butter: #F5E8A8;
-  --bg-lime: #D9F5A5;
-  --page-bg: linear-gradient(160deg, var(--bg-lavender), var(--pink), var(--bg-butter), var(--bg-lime));
+  /* Page background */
+  --page-bg: var(--white);
 
   /* Semantic roles */
   --text: var(--ink);
@@ -35,8 +32,6 @@
   --thumb-4: var(--pink);
 
   /* Elevation (derived from ink, no extra literals) */
-  --shadow-sheet: 0 1px 2px color-mix(in srgb, var(--ink) 5%, transparent),
-                  0 24px 60px color-mix(in srgb, var(--ink) 10%, transparent);
   --shadow-float: 0 8px 24px color-mix(in srgb, var(--ink) 10%, transparent);
 
   /* Type */
@@ -48,7 +43,6 @@
   --radius-card-sm: 22px;
   --radius-card: 24px;
   --radius-card-lg: 26px;
-  --radius-sheet: 26px;
   --radius-control: 12px;
 
   /* Layout */

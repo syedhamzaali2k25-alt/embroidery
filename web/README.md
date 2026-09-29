@@ -4,7 +4,7 @@ Static front end for an embroidery design tool, built to the final design system
 
 | Screen  | File         | Notes |
 |---------|--------------|-------|
-| Landing | `index.html` | White sheet on the gradient page background; pastel fills allowed |
+| Landing | `index.html` | Plain white page, content centred at max width; pastel fills allowed |
 | Home    | `home.html`  | Designs dashboard; pastel quick-start cards and thumbnails |
 | Editor  | `editor.html`| Full-bleed white and neutral; ink and green are the only accents |
 
@@ -26,7 +26,7 @@ npm run check        # token lint + screenshots and UI audit
 
 `npm run check:ui` renders every screen at 1440×900 and 390×844 into `web/screenshots/`. It also writes `report.json` and flags these problems:
 
-- text below WCAG contrast against its real background (every stop, for the gradient)
+- text below WCAG contrast against its real background
 - white text on anything other than ink
 - clipped or off-screen text, and horizontal page scroll
 - fonts that did not load

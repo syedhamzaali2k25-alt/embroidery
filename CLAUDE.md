@@ -8,8 +8,8 @@ Rules: build only the current step. Do not invent stitch parameters: put every n
 
 ## Design system
 
-Light UI: a white sheet on a soft gradient page background.
-Colours: green #2ED47A, lavender #C8B8F4, lime #DCFAB2, pink #F9B8E6, ink #1F1F1F, muted #8A8A8A, line #EDEDED, white #FFFFFF. Page background: linear-gradient(160deg, #CDB8F5, #F9B8E6, #F5E8A8, #D9F5A5). Green is for fills only; for green text on white define a separate darker token and choose its value so the audit shows at least 3:1 for large text and 4.5:1 for small text.
+Light UI: a plain white page with the content centred at a fixed max width; no gradient background and no floating card around the page.
+Colours: green #2ED47A, lavender #C8B8F4, lime #DCFAB2, pink #F9B8E6, ink #1F1F1F, muted #8A8A8A, line #EDEDED, white #FFFFFF. Page background: white. Green is for fills only; for green text on white define a separate darker token and choose its value so the audit shows at least 3:1 for large text and 4.5:1 for small text.
 Text on green, lavender, lime and pink is always ink, never white. White text only on ink buttons.
 Fonts: DM Sans 400/500/700 for UI and headings; DM Serif Display 400 only for one accent word per heading. Both self-hosted.
 Shape: buttons are pills; cards use a 22-26px radius; thumbnails cycle green, lavender, lime, pink.
