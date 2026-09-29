@@ -1,36 +1,47 @@
 # Stitchbook
 
-Static front end for an embroidery design tool, built to the final design system.
+Browser-based embroidery digitizer: upload a PNG/JPG/SVG logo and get machine-ready embroidery files (DST first, then PES) plus a preview image. Stitchbook is a working name, set in `config/stitchbook.toml`.
 
-| Screen  | File         | Notes |
-|---------|--------------|-------|
-| Landing | `index.html` | White sheet on the gradient page background; pastel fills allowed |
-| Home    | `home.html`  | Designs dashboard; pastel quick-start cards and thumbnails |
-| Editor  | `editor.html`| Full-bleed white and neutral; ink and green are the only accents |
+Status: scaffolding only. The web screens are static mock-ups; the digitizer has no stitch logic yet.
 
-## Design system
+## Layout
 
-- **Tokens**: every colour is defined once in `css/tokens.css` and used through `var(--…)`. `npm run check:tokens` fails on any colour literal anywhere else.
-- **Text on fills**: text on green, lavender, lime and pink is always `--ink` (`--on-fill`). White text (`--on-ink`) is used only on ink buttons and ink-selected controls.
-- **Type**: DM Sans 400/500/700 for UI and headings; DM Serif Display 400 only on the single `.accent` word in a heading, in green. Both are self-hosted in `assets/fonts` (SIL OFL 1.1).
-- **Shape**: buttons are pills (`--radius-pill`); cards use 22/24/26px radii. `.thumbs > :nth-child(4n+…)` cycles design thumbnails through green, lavender, lime and pink.
-- **Artwork**: the star, sparkle, blob, stitch motifs and icons in `assets/sprite.svg` are original and take their colour from `currentColor`.
+| Folder | What it is |
+|---|---|
+| `digitizer/` | Importable Python stitch library (`import digitizer`). No web code. |
+| `api/` | FastAPI service (`stitchbook_api`), imports `digitizer`. |
+| `worker/` | RQ job runner (`stitchbook_worker`), imports `digitizer`. |
+| `web/` | Static front end (landing, home, editor) and its screenshot/contrast audit. |
+| `config/stitchbook.toml` | The single file for every stitch number, limit, timeout and rate limit. |
+| `docs/` | Project documentation. |
 
-## Run and check
+## Requirements
+
+Python 3.11+, Node 18+, Redis (for the worker), GNU Make.
+
+## Commands
 
 ```sh
-npm install
-npm start            # http://localhost:8080
-npm run check        # token lint + screenshots and UI audit
+cp .env.example .env     # then fill in values
+make setup               # .venv with digitizer/api/worker (editable) + web npm install
+make test                # pytest (empty suite passes) + web colour-token lint
+make api                 # FastAPI on http://localhost:$API_PORT  (GET /health)
+make worker              # RQ worker on $RQ_QUEUE, needs Redis at $REDIS_URL
+make web                 # static front end on http://localhost:$WEB_PORT
 ```
 
-`npm run check:ui` renders every screen at 1440×900 and 390×844 into `docs/screenshots/`. It also writes `report.json` and flags these problems:
+From `web/` the original commands still work:
 
-- text below WCAG contrast against its real background (every stop, for the gradient)
-- white text on anything other than ink
-- clipped or off-screen text, and horizontal page scroll
-- fonts that did not load
+```sh
+cd web
+npm start                # http://localhost:8080
+npm run check:tokens     # no colour literals outside css/tokens.css
+npm run check:ui         # screenshots + contrast/clipping audit → web/screenshots/
+```
 
-### Known contrast exception
+## Config and environment
 
-The spec's green serif accent word (`#2ED47A`) on white measures **1.94:1**. That is below the WCAG 3:1 minimum for large text, so the audit reports it on every heading that has an accent word. Keeping it is a deliberate design-system decision. Everything else passes.
+- `config/stitchbook.toml` holds product numbers. Values not yet chosen are `"__CHOOSE__"`, and `digitizer.config` raises `PlaceholderValueError` if code asks for one.
+- `.env` holds only connection strings and secrets. See `.env.example`, which lists every variable with a comment.
+
+Project and design rules for contributors (and Claude) are in `CLAUDE.md`.

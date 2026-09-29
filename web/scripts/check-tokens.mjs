@@ -4,7 +4,7 @@ import { join, relative, resolve } from 'node:path';
 
 const root = resolve(new URL('..', import.meta.url).pathname);
 const allowed = new Set(['css/tokens.css']);
-const skip = new Set(['node_modules', '.git', 'docs', 'scripts']);
+const skip = new Set(['node_modules', '.git', 'screenshots', 'scripts']);
 const pattern = /#[0-9a-f]{3,8}\b(?![-\w])|\brgba?\(|\bhsla?\(/gi;
 
 async function* files(dir) {

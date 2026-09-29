@@ -9,7 +9,7 @@ import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import { extname, join, resolve } from 'node:path';
 
 const root = resolve(new URL('..', import.meta.url).pathname);
-const outDir = join(root, 'docs', 'screenshots');
+const outDir = join(root, 'screenshots');
 const pages = ['index', 'home', 'editor'];
 const viewports = [
   { name: 'desktop', width: 1440, height: 900 },
@@ -140,5 +140,5 @@ for (const r of report) {
     console.log(`  ${i.kind.padEnd(18)} ${i.label}${i.ratio ? `  ${i.ratio}:1 (needs ${i.need}:1, ${i.fontSize}px)` : ''}${i.by ? `  by ${i.by}` : ''}`);
   }
 }
-console.log(`\n${failures} issue(s). Screenshots in docs/screenshots/`);
+console.log(`\n${failures} issue(s). Screenshots in web/screenshots/`);
 process.exitCode = failures ? 1 : 0;

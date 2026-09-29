@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "stitchbook-worker"
+version = "0.0.0"
+description = "RQ job runner. Stitch logic comes from the digitizer package."
+requires-python = ">=3.11"
+dependencies = [
+  "stitchbook-digitizer",
+  "redis",
+  "rq",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
