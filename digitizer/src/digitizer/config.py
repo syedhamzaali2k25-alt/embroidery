@@ -108,6 +108,8 @@ PRODUCT: dict[str, dict[str, Any]] = {
         "margin_fraction": 0.05,
         # Satin columns are drawn in these colours in turn, and numbered in sewing order.
         "satin_colors": ["#1B864C", "#7B4FD6", "#D9467F", "#1F77B4", "#C2410C", "#0F766E"],
+        # Fill patches built where satin columns meet (junctions) are drawn in this colour.
+        "patch_color": "#8A8A8A",
         # Underlay is drawn in its column's colour at this opacity (0-1).
         "underlay_alpha": 0.35,
         # Font size of the column numbers, in points.

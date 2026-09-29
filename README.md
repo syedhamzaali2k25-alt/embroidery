@@ -2,7 +2,7 @@
 
 Browser-based embroidery digitizer: upload a PNG/JPG/SVG logo and get machine-ready embroidery files (DST first, then PES) plus a preview image. Stitchbook is a working name, set in `digitizer/src/digitizer/config.py`.
 
-Status: the digitizer turns a single-colour PNG/JPG logo into a DST and a preview. Wide shapes get fill; narrow shapes get satin columns with edge-walk/zigzag underlay and pull compensation. No lock stitches, fill underlay or colours yet. The web screens are static mock-ups; the API and worker do not call the digitizer yet.
+Status: the digitizer turns a single-colour PNG/JPG logo into a DST and a preview. Wide shapes get fill; narrow shapes get satin columns with edge-walk/zigzag underlay and pull compensation. Where satin strokes meet, the columns stop short and a small fill patch covers the junction. No lock stitches, fill underlay or colours yet. The web screens are static mock-ups; the API and worker do not call the digitizer yet.
 
 ## Layout
 
@@ -36,7 +36,7 @@ Digitizer (inside the venv):
 .venv/bin/python -m digitizer.digitize logo.png --out outdir   # needs every stitch value chosen in config.py
 .venv/bin/python -m digitizer.digitize logo.png --out outdir --test-run-values   # stand-in values, not for sewing
 .venv/bin/python -m digitizer.digitize logo.png --out outdir --width-mm 30        # design width for this job
-.venv/bin/python -m digitizer.readback outdir/out.dst          # stitch count, size in mm, longest stitch
+.venv/bin/python -m digitizer.readback outdir/out.dst          # stitch count, size, longest stitch (+ report.json beside it)
 .venv/bin/python digitizer/samples/make_samples.py             # regenerate the sample logos
 .venv/bin/python digitizer/samples/run_samples.py              # digitize all samples, print DST readback
 ```

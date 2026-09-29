@@ -80,8 +80,8 @@ def render_preview(dst_path: str | Path, png_path: str | Path, config: Config,
     """Draw every stitch and jump exactly as stored in the DST.
 
     labels gives (role, satin column number) for each STITCH record in file order; satin
-    columns get their own colour (underlay faded) and a number at their midpoint. Fill and
-    travel stitches are ink, jumps dashed.
+    columns get their own colour (underlay faded) and a number at their midpoint. Junction
+    patches use preview.patch_color; fill and travel stitches are ink, jumps dashed.
     """
     pattern = pyembroidery.read_dst(str(dst_path))
     min_x, min_y, max_x, max_y = pattern.bounds()
@@ -113,6 +113,8 @@ def render_preview(dst_path: str | Path, png_path: str | Path, config: Config,
         role, number = labels[index] if labels else ("fill", 0)
         if role in ("satin", "underlay") and number:
             key = (colors[(number - 1) % len(colors)], config.get("preview.underlay_alpha") if role == "underlay" else 1.0)
+        elif role == "patch":
+            key = (config.get("preview.patch_color"), 1.0)
         else:
             key = (ink, 1.0)
         groups.setdefault(key, []).append([(x0, y0), (x1, y1)])
@@ -133,10 +135,15 @@ def render_preview(dst_path: str | Path, png_path: str | Path, config: Config,
 
 
 def main() -> None:
+    """Print DST stats; add the digitizer's report.json (skipped rungs etc.) when it sits beside the file."""
+    import json
     import sys
 
     for path in sys.argv[1:]:
         print(f"{path}: {dst_stats(path).summary()}")
+        report = Path(path).with_name("report.json")
+        if report.exists():
+            print("  " + "  ".join(f"{k}={v}" for k, v in json.loads(report.read_text()).items()))
 
 
 if __name__ == "__main__":

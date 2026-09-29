@@ -27,11 +27,15 @@ def pieces_for(name: str, width_mm: float, config=CONFIG):
     mask = load_mask(SAMPLES / f"{name}.png", config.get("image.min_speck_area_px"))
     polygons_px = mask_to_polygons(mask)
     polygons, tf = scale_to_width(polygons_px, width_mm)
-    return build_pieces(mask, polygons_px, polygons, tf, config)
+    return build_pieces(mask, polygons_px, polygons, tf, config).pieces
 
 
 def kinds(pieces):
     return sorted(p.kind for p in pieces)
+
+
+def satin_kinds(pieces):
+    return sorted(p.kind for p in pieces if not p.patch)
 
 
 def test_thin_ring_is_one_closed_satin_column():
@@ -46,11 +50,11 @@ def test_thin_ring_is_one_closed_satin_column():
 
 def test_mixed_logo_splits_wide_and_narrow_shapes():
     # disc and lollipop (wide head joined to a thin stick) stay fill; swoosh and chevron are satin
-    assert kinds(pieces_for("mixed", 50)) == ["fill", "fill", "satin", "satin"]
+    assert satin_kinds(pieces_for("mixed", 50)) == ["fill", "fill", "satin", "satin"]
 
 
 def test_bold_letter_is_satin_when_small_and_fill_when_large():
-    assert set(kinds(pieces_for("bold_r", 18))) == {"satin"}
+    assert set(satin_kinds(pieces_for("bold_r", 18))) == {"satin"}
     # Junctions are wider than strokes; at 30 mm the widest point exceeds satin.max_width_mm.
     assert kinds(pieces_for("bold_r", 30)) == ["fill"]
 

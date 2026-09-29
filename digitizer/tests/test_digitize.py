@@ -18,7 +18,7 @@ from digitizer.readback import UNITS_PER_MM, segments
 
 SAMPLES = Path(__file__).resolve().parents[1] / "samples"
 CONFIG = load_test_run_config()
-WIDTHS_MM = {"circle": 60, "letter_a": 60, "two_shape": 60, "bold_r": 18, "thin_ring": 40, "mixed": 50}
+WIDTHS_MM = {"circle": 60, "letter_a": 60, "two_shape": 60, "bold_r": 18, "thin_ring": 40, "mixed": 50, "junctions": 50}
 ALL = list(WIDTHS_MM)
 
 

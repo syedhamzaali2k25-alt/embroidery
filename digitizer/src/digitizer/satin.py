@@ -12,8 +12,8 @@ from typing import Callable
 
 import cv2
 import numpy as np
-from shapely.geometry import LineString, MultiLineString, Point, Polygon
-from shapely.ops import linemerge
+from shapely.geometry import LineString, MultiLineString, MultiPoint, Point, Polygon
+from shapely.ops import linemerge, unary_union
 from skimage.morphology import skeletonize
 
 Pt = tuple[float, float]
@@ -98,10 +98,13 @@ def prune_spurs(lines: list[LineString], dist: np.ndarray, factor: float) -> lis
 
 @dataclass
 class Rung:
+    station: int  # index along the centerline; gaps in the sequence mean dropped rungs
     center: Pt
     left: Pt   # after pull compensation
     right: Pt
     width_mm: float  # before pull compensation
+    edge_left: Pt  # on the outline, before pull compensation
+    edge_right: Pt
 
 
 @dataclass
@@ -110,6 +113,8 @@ class Column:
     closed: bool
     rungs: list[Rung] = field(default_factory=list)
     skipped_rungs: int = 0  # stations dropped because no sensible edge-to-edge line exists
+    stations: int = 0  # how many stations the centerline was cut into
+    cover: Polygon | None = None  # cached coverage()
 
 
 def _unit(dx: float, dy: float) -> Pt:
@@ -154,8 +159,8 @@ def build_column(centerline: LineString, polygon: Polygon, spacing: float, max_w
     length = centerline.length
     count = max(1, int(length // spacing))
     stations = [k * length / count for k in range(count if closed else count + 1)]
-    column = Column(centerline, closed)
-    for d in stations:
+    column = Column(centerline, closed, stations=len(stations))
+    for station, d in enumerate(stations):
         p = centerline.interpolate(d)
         center = (p.x, p.y)
         h = max(radius_mm(center), spacing)
@@ -181,11 +186,72 @@ def build_column(centerline: LineString, polygon: Polygon, spacing: float, max_w
         if up + down < min_width:
             column.skipped_rungs += 1
             continue
-        up_c, down_c = up + pull_comp / 2, down + pull_comp / 2
-        left = (center[0] + normal[0] * up_c, center[1] + normal[1] * up_c)
-        right = (center[0] - normal[0] * down_c, center[1] - normal[1] * down_c)
-        column.rungs.append(Rung(center, left, right, up + down))
+        def at(dist_left: float, dist_right: float) -> tuple[Pt, Pt]:
+            return ((center[0] + normal[0] * dist_left, center[1] + normal[1] * dist_left),
+                    (center[0] - normal[0] * dist_right, center[1] - normal[1] * dist_right))
+
+        edge_left, edge_right = at(up, down)
+        left, right = at(up + pull_comp / 2, down + pull_comp / 2)
+        column.rungs.append(Rung(station, center, left, right, up + down, edge_left, edge_right))
     return column
+
+
+# ---------- junctions: trimming, splitting, coverage ----------
+
+def rung_segment(rung: Rung) -> LineString:
+    return LineString([rung.edge_left, rung.edge_right])
+
+
+def coverage(column: Column) -> Polygon:
+    """Area the column's satin covers (outline edges, before pull compensation)."""
+    if column.cover is not None:
+        return column.cover
+    rungs = column.rungs
+    pairs = list(zip(rungs, rungs[1:]))
+    if column.closed and len(rungs) > 2:
+        pairs.append((rungs[-1], rungs[0]))
+    quads = [MultiPoint([a.edge_left, a.edge_right, b.edge_left, b.edge_right]).convex_hull for a, b in pairs]
+    column.cover = unary_union(quads) if quads else Polygon()
+    return column.cover
+
+
+def trim(column: Column, blocked) -> int:
+    """Drop rungs whose edge-to-edge line touches `blocked`. Returns how many were dropped."""
+    if blocked.is_empty:
+        return 0
+    keep = [r for r in column.rungs if not rung_segment(r).intersects(blocked)]
+    dropped = len(column.rungs) - len(keep)
+    column.rungs = keep
+    column.cover = None
+    return dropped
+
+
+def split_runs(column: Column) -> tuple[list[Column], int]:
+    """Split a column wherever stations are missing, so satin never stitches across a gap.
+    Runs shorter than two rungs cannot form satin and are dropped (returned as a count)."""
+    rungs = column.rungs
+    if not rungs:
+        return [], 0
+    if column.closed and len(rungs) == column.stations:
+        return [column], 0
+    runs: list[list[Rung]] = [[rungs[0]]]
+    for prev, rung in zip(rungs, rungs[1:]):
+        if rung.station == prev.station + 1:
+            runs[-1].append(rung)
+        else:
+            runs.append([rung])
+    # On a closed loop, a run touching the seam continues into the run at the other end.
+    if column.closed and len(runs) > 1 and runs[0][0].station == 0 and runs[-1][-1].station == column.stations - 1:
+        runs[0] = runs.pop() + runs[0]
+    out, dropped = [], 0
+    for run in runs:
+        if len(run) < 2:
+            dropped += len(run)
+            continue
+        centerline = LineString([r.center for r in run])
+        out.append(Column(centerline, False, run, 0, column.stations))
+    return out, dropped
+
 
 
 def _inset(rung: Rung, side: str, inset: float) -> Pt:
@@ -197,16 +263,18 @@ def _inset(rung: Rung, side: str, inset: float) -> Pt:
     return (rung.center[0] + (edge[0] - rung.center[0]) * t, rung.center[1] + (edge[1] - rung.center[1]) * t)
 
 
-def _resample(points: list[Pt], min_step: float) -> list[Pt]:
-    """Keep points at least min_step apart (always keeps the last point)."""
+def _resample(points: list[Pt], min_step: float, inside: Polygon) -> list[Pt]:
+    """Keep points at least min_step apart, but also keep a point whenever skipping it would
+    make the next stitch leave the column (tight inner corners). Always keeps the last point."""
     if not points:
         return []
     out = [points[0]]
-    for p in points[1:]:
-        if math.hypot(p[0] - out[-1][0], p[1] - out[-1][1]) >= min_step:
+    for i in range(1, len(points)):
+        p, last = points[i], out[-1]
+        nxt = points[i + 1] if i + 1 < len(points) else None
+        if (nxt is None or math.hypot(p[0] - last[0], p[1] - last[1]) >= min_step
+                or not inside.contains(LineString([last, nxt]))):
             out.append(p)
-    if out[-1] != points[-1]:
-        out.append(points[-1])
     return out
 
 
@@ -238,15 +306,27 @@ def column_sequence(column: Column, start: int, forward: bool, s: SatinSettings)
         return seq if ahead else seq[::-1]
 
     points: list[tuple[Pt, str]] = []
+    inside = coverage(column)
     ahead = True
     if s.edge_walk:
-        left = _resample([_inset(r, "left", s.edge_inset) for r in along(rungs, ahead)], s.edge_stitch_length)
-        right = _resample([_inset(r, "right", s.edge_inset) for r in along(rungs, not ahead)], s.edge_stitch_length)
+        left = _resample([_inset(r, "left", s.edge_inset) for r in along(rungs, ahead)], s.edge_stitch_length, inside)
+        right = _resample([_inset(r, "right", s.edge_inset) for r in along(rungs, not ahead)], s.edge_stitch_length, inside)
         points += [(p, "underlay") for p in left + right]
     if s.zigzag:
         step = max(1, round(s.underlay_spacing / s.spacing))
-        seq = along(rungs, ahead)[::step]
-        points += [(_inset(r, "left" if i % 2 == 0 else "right", s.zigzag_inset), "underlay") for i, r in enumerate(seq)]
+        seq = along(rungs, ahead)
+        sides = ("left", "right")
+        i, side = 0, 0
+        zig = [_inset(seq[0], sides[side], s.zigzag_inset)]
+        while i < len(seq) - 1:
+            # Take the usual step, or a shorter one where the full step would leave the column.
+            j = min(i + step, len(seq) - 1)
+            while j > i + 1 and not inside.contains(
+                    LineString([zig[-1], _inset(seq[j], sides[1 - side], s.zigzag_inset)])):
+                j -= 1
+            i, side = j, 1 - side
+            zig.append(_inset(seq[i], sides[side], s.zigzag_inset))
+        points += [(p, "underlay") for p in zig]
         ahead = not ahead
     seq = along(rungs, ahead)
     points += [((r.left if i % 2 == 0 else r.right), "satin") for i, r in enumerate(seq)]

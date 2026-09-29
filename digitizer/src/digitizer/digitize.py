@@ -18,6 +18,7 @@ All numbers come from digitizer.config. No lock stitches, fill underlay or colou
 from __future__ import annotations
 
 import argparse
+import json
 import math
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -26,7 +27,7 @@ import cv2
 import numpy as np
 import pyembroidery
 from shapely import affinity
-from shapely.geometry import LineString, MultiPolygon, Polygon
+from shapely.geometry import LineString, MultiPolygon, Point, Polygon
 from shapely.ops import unary_union
 
 from digitizer import satin
@@ -153,8 +154,9 @@ def fill_rows(polygon: Polygon, angle_deg: float, spacing_mm: float, min_len_mm:
 class Move:
     kind: str  # "stitch" or "jump"
     to: tuple[float, float]
-    role: str = ""  # fill, travel, underlay, satin
+    role: str = ""  # fill, patch, travel, underlay, satin
     piece: int = 0  # satin column number (1-based, sewing order); 0 for fill/travel
+    source: int = -1  # index of the piece this move belongs to
 
 
 def order_rows(rows: list[Row], area: Polygon, jump_threshold_mm: float, start_pos=None) -> list[Move]:
@@ -196,6 +198,12 @@ def _nearest_end(row: Row, pos):
     return _orient(row, pos)[0]
 
 
+def travel_allowed(a, b, logo, jump_threshold_mm: float, sewn_area) -> bool:
+    """A move between pieces is sewn only if it is short, stays inside the logo and does not
+    run over stitching that is already done (it would show on top). Otherwise it jumps."""
+    return _sewable(a, b, logo, jump_threshold_mm) and not LineString([a, b]).intersects(sewn_area)
+
+
 def _sewable(a, b, area: Polygon, max_len: float) -> bool:
     return _dist(a, b) <= max_len and area.contains(LineString([a, b]))
 
@@ -210,22 +218,36 @@ def _dist(a, b) -> float:
 class Piece:
     kind: str  # "fill" or "satin"
     area: Polygon  # the shape it belongs to, slightly grown, for in-shape checks
+    cover: Polygon  # the area this piece's stitches cover
     rows: list[Row] = field(default_factory=list)
     column: satin.Column | None = None
+    patch: bool = False  # a fill patch where satin columns meet or leave a gap
+
+
+@dataclass
+class Pieces:
+    pieces: list[Piece]
+    skipped_rungs: int = 0  # stations with no sensible edge-to-edge line
+    trimmed_rungs: int = 0  # rungs removed at junctions or where columns would overlap
+
+    @property
+    def patches(self) -> int:
+        return sum(p.patch for p in self.pieces)
 
 
 def build_pieces(mask: np.ndarray, polygons_px: list[Polygon], polygons: list[Polygon], tf: PxToMm,
-                 config: Config) -> list[Piece]:
+                 config: Config) -> Pieces:
     max_width = config.get("satin.max_width_mm")
     min_len = config.get("stitch.min_stitch_length_mm")
     tolerance = tf.mm_per_px  # traced outlines are pixel staircases: allow one source pixel
-    pieces: list[Piece] = []
+    result = Pieces([])
+    pieces = result.pieces
     for poly_px, poly in zip(polygons_px, polygons):
         shape_mask = satin.polygon_mask(poly_px, mask.shape)
         dist = satin.distance_map(shape_mask)
         area = poly.buffer(tolerance)
         if satin.max_width_px(dist) * tf.mm_per_px > max_width:
-            pieces.append(Piece("fill", area, rows=_rows(poly, config)))
+            pieces.append(Piece("fill", area, poly, rows=_rows(poly, config)))
             continue
 
         def radius_mm(p, dist=dist):
@@ -249,11 +271,46 @@ def build_pieces(mask: np.ndarray, polygons_px: list[Polygon], polygons: list[Po
                 line, poly, config.get("stitch.satin_spacing_mm"), max_width,
                 config.get("stitch.pull_compensation_mm"), min_len, radius_mm,
             )
-            if column.rungs:
-                columns.append(Piece("satin", area, column=column))
-        # A shape too small to yield any rung (a dot) still gets sewn, as fill.
-        pieces.extend(columns or [Piece("fill", area, rows=_rows(poly, config))])
-    return pieces
+            result.skipped_rungs += column.skipped_rungs
+            columns.append(column)
+
+        # Junctions: where three or more centerline branches meet, no rung may enter the
+        # largest circle that fits there; that area is sewn as a fill patch instead.
+        junctions = unary_union([
+            tf.geom(Point(node)).buffer(dist[int(node[1]), int(node[0])] * tf.mm_per_px)
+            for node, d in degree.items() if d >= 3
+        ])
+        runs: list[satin.Column] = []
+        for column in columns:
+            result.trimmed_rungs += satin.trim(column, junctions)
+            split, dropped = satin.split_runs(column)
+            runs += split
+            result.trimmed_rungs += dropped
+        # Where columns would still run over each other, the longer one keeps its rungs.
+        runs.sort(key=lambda c: len(c.rungs), reverse=True)
+        covered = Polygon()
+        for run in runs:
+            result.trimmed_rungs += satin.trim(run, covered.buffer(-tolerance))
+            split, dropped = satin.split_runs(run)
+            result.trimmed_rungs += dropped
+            for column in split:
+                cover = satin.coverage(column)
+                pieces.append(Piece("satin", area, cover, column=column))
+                covered = unary_union([covered, cover])
+
+        # Whatever the columns leave uncovered (junctions, skipped stations) becomes fill,
+        # unless it is too thin to hold a stitch of the minimum length.
+        rest = poly.difference(covered) if not covered.is_empty else poly
+        for gap in satin_gaps(rest, min_len):
+            rows = _rows(gap, config)
+            if rows:
+                pieces.append(Piece("fill", gap.buffer(tolerance), gap, rows=rows, patch=not covered.is_empty))
+    return result
+
+
+def satin_gaps(rest, min_len: float) -> list[Polygon]:
+    parts = rest.geoms if hasattr(rest, "geoms") else [rest]
+    return [p for p in parts if isinstance(p, Polygon) and not p.buffer(-min_len / 2).is_empty]
 
 
 def _rows(poly: Polygon, config: Config) -> list[Row]:
@@ -281,13 +338,20 @@ class Plan:
     satin_labels: dict[int, tuple[float, float]]  # column number -> label position (mm)
 
 
-def plan_pieces(pieces: list[Piece], logo: Polygon, settings: satin.SatinSettings, jump_threshold_mm: float) -> Plan:
+def plan_pieces(pieces: list[Piece], logo: Polygon, settings: satin.SatinSettings, jump_threshold_mm: float,
+                tolerance_mm: float) -> Plan:
     """Greedy: from the needle position take the piece whose entry point is nearest, preferring
-    entries reachable by a short stitch that stays inside the logo; otherwise jump."""
+    entries reachable by a short stitch that stays inside the logo and does not run over
+    stitching that is already sewn (it would show on top); otherwise jump."""
     remaining = list(range(len(pieces)))
     moves: list[Move] = []
     labels: dict[int, tuple[float, float]] = {}
     pos = None
+    sewn_area = Polygon()  # shrunk by the tolerance so a travel may start on a sewn edge
+
+    def travel_ok(a, b) -> bool:
+        return travel_allowed(a, b, logo, jump_threshold_mm, sewn_area)
+
     while remaining:
         options = []  # (piece index, entry point, builder)
         for i in remaining:
@@ -304,22 +368,24 @@ def plan_pieces(pieces: list[Piece], logo: Polygon, settings: satin.SatinSetting
             choice = min(options, key=lambda o: (o[1][1], o[1][0]))
             sewn = False
         else:
-            reachable = [o for o in options if _sewable(pos, o[1], logo, jump_threshold_mm)]
+            reachable = [o for o in options if travel_ok(pos, o[1])]
             choice = min(reachable or options, key=lambda o: _dist(pos, o[1]))
             sewn = bool(reachable)
         i, entry, seq = choice
         remaining.remove(i)
         piece = pieces[i]
         if piece.kind == "fill":
-            piece_moves = order_rows(piece.rows, piece.area, jump_threshold_mm, pos)
-            piece_moves[0] = Move("stitch" if sewn else "jump", piece_moves[0].to, "travel" if sewn else "")
+            role = "patch" if piece.patch else "fill"
+            piece_moves = [Move(m.kind, m.to, role, 0, i) for m in order_rows(piece.rows, piece.area, jump_threshold_mm, pos)]
+            piece_moves[0] = Move("stitch" if sewn else "jump", piece_moves[0].to, "travel" if sewn else "", 0, i)
         else:
             number = len(labels) + 1
             labels[number] = satin.label_point(piece.column).coords[0]
-            piece_moves = [Move("stitch", p, role, number) for p, role in seq]
-            piece_moves[0] = Move("stitch" if sewn else "jump", entry, "travel" if sewn else "", number)
+            piece_moves = [Move("stitch", p, role, number, i) for p, role in seq]
+            piece_moves[0] = Move("stitch" if sewn else "jump", entry, "travel" if sewn else "", number, i)
         moves.extend(piece_moves)
         pos = moves[-1].to
+        sewn_area = unary_union([sewn_area, piece.cover.buffer(-tolerance_mm)])
     return Plan(moves, labels)
 
 
@@ -385,11 +451,21 @@ class Result:
     trims: int
     fill_areas: int
     satin_columns: int
-    skipped_rungs: int  # satin stations with no sensible edge-to-edge line (mostly junctions)
+    junction_patches: int  # fill patches where satin columns meet or leave a gap
+    skipped_rungs: int  # satin stations with no sensible edge-to-edge line
+    trimmed_rungs: int  # rungs removed at junctions or where columns would overlap
 
     def summary(self) -> str:
-        return (f"{self.stats.summary()}\n  pieces: {self.fill_areas} fill, {self.satin_columns} satin columns; "
-                f"jumps={self.jumps} trims={self.trims}; skipped satin rungs={self.skipped_rungs}")
+        return (f"{self.stats.summary()}\n  pieces: {self.fill_areas} fill, {self.satin_columns} satin columns, "
+                f"{self.junction_patches} junction patches; jumps={self.jumps} trims={self.trims}; "
+                f"skipped_rungs={self.skipped_rungs} trimmed_rungs={self.trimmed_rungs}")
+
+    def to_json(self) -> dict:
+        return {
+            "jumps": self.jumps, "trims": self.trims, "fill_areas": self.fill_areas,
+            "satin_columns": self.satin_columns, "junction_patches": self.junction_patches,
+            "skipped_rungs": self.skipped_rungs, "trimmed_rungs": self.trimmed_rungs,
+        }
 
 
 def digitize(image_path: str | Path, out_dir: str | Path, config: Config | None = None,
@@ -402,10 +478,11 @@ def digitize(image_path: str | Path, out_dir: str | Path, config: Config | None 
     mask = load_mask(image_path, config.get("image.min_speck_area_px"))
     polygons_px = mask_to_polygons(mask)
     polygons, tf = scale_to_width(polygons_px, width_mm or config.get("design.width_mm"))
-    pieces = build_pieces(mask, polygons_px, polygons, tf, config)
+    built_pieces = build_pieces(mask, polygons_px, polygons, tf, config)
+    pieces = built_pieces.pieces
 
     logo = unary_union(polygons).buffer(tf.mm_per_px)
-    plan = plan_pieces(pieces, logo, satin_settings(config), config.get("stitch.jump_threshold_mm"))
+    plan = plan_pieces(pieces, logo, satin_settings(config), config.get("stitch.jump_threshold_mm"), tf.mm_per_px)
     built = build_pattern(plan.moves, config.get("stitch.max_stitch_length_mm"), config.get("stitch.trim_threshold_mm"))
 
     dst_path = out_dir / "out.dst"
@@ -414,9 +491,12 @@ def digitize(image_path: str | Path, out_dir: str | Path, config: Config | None 
         raise RuntimeError("DST read back from disk does not match the stitches that were written")
     render_preview(dst_path, out_dir / "preview.png", config, built.labels,
                    {n: _units(p) for n, p in plan.satin_labels.items()})
-    columns = [p.column for p in pieces if p.kind == "satin"]
-    return Result(dst_stats(dst_path), built.jumps, built.trims, sum(p.kind == "fill" for p in pieces),
-                  len(columns), sum(c.skipped_rungs for c in columns))
+    result = Result(dst_stats(dst_path), built.jumps, built.trims,
+                    sum(p.kind == "fill" and not p.patch for p in pieces), sum(p.kind == "satin" for p in pieces),
+                    built_pieces.patches, built_pieces.skipped_rungs, built_pieces.trimmed_rungs)
+    # The DST format has no room for these; keep them next to it for the readback report.
+    (out_dir / "report.json").write_text(json.dumps(result.to_json(), indent=2) + "\n")
+    return result
 
 
 def main() -> None:

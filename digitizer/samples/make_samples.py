@@ -1,4 +1,4 @@
-"""Generate the three sample logos used by the sample run and the tests.
+"""Generate the sample logos used by the sample run and the tests.
 
 Drawing coordinates here describe test pictures, not stitch settings.
   circle.png    solid circle, plus a few specks and a pinhole that cleaning must remove
@@ -8,6 +8,7 @@ Drawing coordinates here describe test pictures, not stitch settings.
   thin_ring.png a thin ring (closed satin loop)
   mixed.png     a wide disc (fill), a thin swoosh arc (satin), a sharp chevron (satin, tight
                 corner) and a lollipop: a disc joined to a thin stick (one shape, wide + narrow)
+  junctions.png thin strokes meeting as a T, an X and a Y (satin junctions only)
 
 WIDTHS_MM is the design width each sample is digitized at in the sample run and tests.
 Like the drawings, these are test fixtures, not product settings.
@@ -86,6 +87,18 @@ def mixed() -> np.ndarray:
     return img
 
 
+def junctions() -> np.ndarray:
+    img = blank()
+    stroke = 30
+    for a, b in [
+        ((40, 100), (260, 100)), ((150, 100), (150, 300)),  # T
+        ((340, 60), (560, 280)), ((560, 60), (340, 280)),  # X
+        ((300, 580), (300, 470)), ((300, 470), (220, 370)), ((300, 470), (380, 370)),  # Y
+    ]:
+        cv2.line(img, a, b, INK, stroke, cv2.LINE_AA)
+    return img
+
+
 SAMPLES = {
     "circle": circle,
     "letter_a": letter_a,
@@ -93,8 +106,9 @@ SAMPLES = {
     "bold_r": bold_r,
     "thin_ring": thin_ring,
     "mixed": mixed,
+    "junctions": junctions,
 }
-WIDTHS_MM = {"circle": 60, "letter_a": 60, "two_shape": 60, "bold_r": 18, "thin_ring": 40, "mixed": 50}
+WIDTHS_MM = {"circle": 60, "letter_a": 60, "two_shape": 60, "bold_r": 18, "thin_ring": 40, "mixed": 50, "junctions": 50}
 
 
 def main() -> None:
