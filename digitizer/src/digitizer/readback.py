@@ -68,6 +68,21 @@ def dst_stats(path: str | Path) -> DstStats:
     )
 
 
+_COMMAND_NAMES = {pyembroidery.STITCH: "stitch", pyembroidery.JUMP: "jump", pyembroidery.TRIM: "trim",
+                  pyembroidery.END: "end"}
+
+
+def records(path: str | Path) -> list[tuple[float, float, str]]:
+    """Every needle command in the file as (x_mm, y_mm, "stitch" | "jump" | "trim" | "end")."""
+    pattern = pyembroidery.read_dst(str(path))
+    out = []
+    for x, y, cmd in pattern.stitches:
+        name = _COMMAND_NAMES.get(cmd & pyembroidery.COMMAND_MASK)
+        if name:
+            out.append((x / UNITS_PER_MM, y / UNITS_PER_MM, name))
+    return out
+
+
 def stitch_points(path: str | Path) -> list[tuple[int, int]]:
     """Every STITCH record in the file, in file units."""
     pattern = pyembroidery.read_dst(str(path))

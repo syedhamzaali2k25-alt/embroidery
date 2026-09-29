@@ -78,10 +78,25 @@ PRODUCT: dict[str, dict[str, Any]] = {
     "input": {
         # Accepted upload types (from the product spec). digitize.py reads PNG/JPG only so far.
         "allowed_types": ["png", "jpg", "jpeg", "svg"],
-        # Largest upload the API accepts.
+        # Largest upload the API accepts, in bytes. Bigger files are rejected.
         "max_upload_bytes": PLACEHOLDER,
-        # Raster images larger than this (width or height) are rejected or downscaled.
+        # Largest image the API accepts: width or height above this many pixels is rejected.
         "max_image_side_px": PLACEHOLDER,
+    },
+    "quality": {
+        # Upload warnings (the upload is still accepted). Smaller long side -> "too small" warning.
+        "min_long_side_px": 300,
+        # Low-contrast warning below this: difference in mean grey level (0-255) between the
+        # logo and the background after an automatic black/white split.
+        "min_contrast": PLACEHOLDER,
+        # Blurry-edges warning below this: variance of the Laplacian of the image after its grey
+        # levels are stretched to 0-255 (so contrast does not count twice).
+        "min_edge_sharpness": PLACEHOLDER,
+    },
+    "api": {
+        # POST /designs/{id}/preview digitizes on the spot only for images whose long side is at
+        # most this many pixels; bigger ones must wait for background processing (not built yet).
+        "sync_preview_max_side_px": PLACEHOLDER,
     },
     "output": {
         # Formats written today, in priority order (DST first, PES second).
@@ -153,6 +168,11 @@ TEST_RUN_OVERRIDES: dict[str, Any] = {
     "stitch.min_stitch_length_mm": 0.5,
     "stitch.jump_threshold_mm": 2,
     "stitch.trim_threshold_mm": 5,
+    "input.max_upload_bytes": 5_000_000,
+    "input.max_image_side_px": 4000,
+    "quality.min_contrast": 100,
+    "quality.min_edge_sharpness": 50,
+    "api.sync_preview_max_side_px": 1000,
 }
 
 
