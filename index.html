@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Stitchbook</title>
+  <meta name="description" content="Turn sketches into machine-ready embroidery files.">
+  <link rel="preload" href="assets/fonts/dm-sans-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="css/fonts.css">
+  <link rel="stylesheet" href="css/tokens.css">
+  <link rel="stylesheet" href="css/base.css">
+  <link rel="stylesheet" href="css/landing.css">
+</head>
+<body class="landing">
+  <div class="sheet">
+    <header class="nav">
+      <a class="brand" href="index.html"><svg aria-hidden="true"><use href="assets/sprite.svg#logo"/></svg>Stitchbook</a>
+      <nav class="nav__links" aria-label="Main">
+        <a href="#features">Features</a>
+        <a href="#how">How it works</a>
+        <a href="#gallery">Gallery</a>
+      </nav>
+      <div class="nav__actions">
+        <a class="btn btn--ghost btn--sm nav__login" href="home.html">Log in</a>
+        <a class="btn btn--ink btn--sm" href="home.html">Start free</a>
+      </div>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div class="hero__copy">
+          <p class="eyebrow"><span class="dot" aria-hidden="true"></span>Digitising, minus the headache</p>
+          <h1>Turn any sketch into <span class="accent">stitches</span></h1>
+          <p class="lede">Draw, trace or drop in a picture. Stitchbook maps every line to the right stitch and exports a file your machine can run, with no manual digitising.</p>
+          <div class="hero__cta">
+            <a class="btn btn--ink btn--lg" href="editor.html">Open the editor <svg aria-hidden="true"><use href="assets/sprite.svg#i-arrow"/></svg></a>
+            <a class="btn btn--ghost btn--lg" href="#gallery">See examples</a>
+          </div>
+          <ul class="hero__facts" aria-label="Highlights">
+            <li><strong>DST, PES, JEF</strong><span>export formats</span></li>
+            <li><strong>3 stitch types</strong><span>running, satin, fill</span></li>
+            <li><strong>Free</strong><span>for personal hoops</span></li>
+          </ul>
+        </div>
+
+        <div class="hero__art" aria-hidden="true">
+          <svg class="shape shape--lavender art-blob-a"><use href="assets/sprite.svg#blob-a"/></svg>
+          <svg class="shape shape--lime art-blob-b"><use href="assets/sprite.svg#blob-b"/></svg>
+          <svg class="shape shape--green art-star"><use href="assets/sprite.svg#star"/></svg>
+          <svg class="shape shape--ink art-sparkle"><use href="assets/sprite.svg#sparkle"/></svg>
+          <div class="hoop">
+            <svg class="motif hoop__motif"><use href="assets/sprite.svg#m-daisy"/></svg>
+          </div>
+          <div class="float-card float-card--pink">
+            <span class="float-card__label">Satin fill</span>
+            <span class="float-card__value">4,210 stitches</span>
+          </div>
+          <div class="float-card float-card--white">
+            <span class="float-card__label">Ready to export</span>
+            <span class="float-card__value">daisy.pes</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="features" id="features">
+        <h2>Everything a <span class="accent">hoop</span> needs</h2>
+        <div class="features__grid">
+          <article class="card card--lavender feature">
+            <svg class="feature__icon" aria-hidden="true"><use href="assets/sprite.svg#i-pen"/></svg>
+            <h3>Draw with real stitches</h3>
+            <p>Each stroke is previewed as thread, so you see density and direction before anything touches fabric.</p>
+          </article>
+          <article class="card card--lime feature">
+            <svg class="feature__icon" aria-hidden="true"><use href="assets/sprite.svg#i-image"/></svg>
+            <h3>Trace a picture</h3>
+            <p>Drop in a photo or a doodle. Clean outlines come back as editable shapes, grouped by thread colour.</p>
+          </article>
+          <article class="card card--pink feature">
+            <svg class="feature__icon" aria-hidden="true"><use href="assets/sprite.svg#i-download"/></svg>
+            <h3>Export for any machine</h3>
+            <p>Pick your hoop size and format. Jump stitches and trims are planned for you to keep runs tidy.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="how" id="how">
+        <div class="how__intro">
+          <h2>Three steps to a <span class="accent">finished</span> file</h2>
+          <p class="lede">No digitising course required. Most people have a design ready in under ten minutes.</p>
+        </div>
+        <ol class="steps">
+          <li class="step">
+            <span class="step__num">1</span>
+            <div><h3>Start a design</h3><p>Pick a hoop size, then sketch, trace or type.</p></div>
+          </li>
+          <li class="step">
+            <span class="step__num">2</span>
+            <div><h3>Tune the stitches</h3><p>Switch stitch types and set density per shape.</p></div>
+          </li>
+          <li class="step">
+            <span class="step__num">3</span>
+            <div><h3>Send to your machine</h3><p>Download the file or save it to a USB stick.</p></div>
+          </li>
+        </ol>
+      </section>
+
+      <section class="gallery" id="gallery">
+        <div class="gallery__head">
+          <h2>Made in <span class="accent">Stitchbook</span></h2>
+          <a class="btn btn--ghost btn--sm" href="home.html">Browse all</a>
+        </div>
+        <ul class="thumbs gallery__grid">
+          <li><div class="thumb"><svg class="motif" aria-hidden="true"><use href="assets/sprite.svg#m-mountain"/></svg></div><p class="gallery__name">Ridge patch</p></li>
+          <li><div class="thumb"><svg class="motif" aria-hidden="true"><use href="assets/sprite.svg#m-wave"/></svg></div><p class="gallery__name">Tide pocket</p></li>
+          <li><div class="thumb"><svg class="motif" aria-hidden="true"><use href="assets/sprite.svg#m-leaf"/></svg></div><p class="gallery__name">Fern cuff</p></li>
+          <li><div class="thumb"><svg class="motif" aria-hidden="true"><use href="assets/sprite.svg#m-heart"/></svg></div><p class="gallery__name">Heart tag</p></li>
+        </ul>
+      </section>
+
+      <section class="cta">
+        <svg class="shape shape--ink cta__sparkle" aria-hidden="true"><use href="assets/sprite.svg#sparkle"/></svg>
+        <svg class="shape shape--lime cta__star" aria-hidden="true"><use href="assets/sprite.svg#star"/></svg>
+        <h2>Your next patch starts here</h2>
+        <p>Free to try. Nothing to install.</p>
+        <a class="btn btn--ink btn--lg" href="home.html">Create an account</a>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <a class="brand" href="index.html"><svg aria-hidden="true"><use href="assets/sprite.svg#logo"/></svg>Stitchbook</a>
+      <p class="footer__note">Made for people who sew.</p>
+    </footer>
+  </div>
+</body>
+</html>

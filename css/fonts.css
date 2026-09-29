@@ -1,0 +1,16 @@
+/* Self-hosted DM Sans (variable, used at 400/500/700) and DM Serif Display 400.
+   Both are SIL Open Font License 1.1. Latin subset. */
+@font-face {
+  font-family: "DM Sans";
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url("../assets/fonts/dm-sans-latin.woff2") format("woff2");
+}
+@font-face {
+  font-family: "DM Serif Display";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("../assets/fonts/dm-serif-display-latin.woff2") format("woff2");
+}

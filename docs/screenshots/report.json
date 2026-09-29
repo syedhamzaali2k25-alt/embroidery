@@ -1,0 +1,144 @@
+[
+  {
+    "page": "index",
+    "viewport": "desktop",
+    "fonts": {
+      "sans": true,
+      "serif": true
+    },
+    "issues": [
+      {
+        "kind": "contrast",
+        "label": "<span.accent> \"stitches\"",
+        "ratio": 1.94,
+        "need": 3,
+        "fontSize": 76
+      },
+      {
+        "kind": "contrast",
+        "label": "<span.accent> \"hoop\"",
+        "ratio": 1.94,
+        "need": 3,
+        "fontSize": 48
+      },
+      {
+        "kind": "contrast",
+        "label": "<span.accent> \"finished\"",
+        "ratio": 1.94,
+        "need": 3,
+        "fontSize": 48
+      },
+      {
+        "kind": "contrast",
+        "label": "<span.accent> \"Stitchbook\"",
+        "ratio": 1.94,
+        "need": 3,
+        "fontSize": 48
+      }
+    ]
+  },
+  {
+    "page": "home",
+    "viewport": "desktop",
+    "fonts": {
+      "sans": true,
+      "serif": true
+    },
+    "issues": [
+      {
+        "kind": "contrast",
+        "label": "<span.accent> \"thread\"",
+        "ratio": 1.94,
+        "need": 3,
+        "fontSize": 44
+      },
+      {
+        "kind": "contrast",
+        "label": "<span.accent> \"designs\"",
+        "ratio": 1.94,
+        "need": 3,
+        "fontSize": 34
+      }
+    ]
+  },
+  {
+    "page": "editor",
+    "viewport": "desktop",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "index",
+    "viewport": "phone",
+    "fonts": {
+      "sans": true,
+      "serif": true
+    },
+    "issues": [
+      {
+        "kind": "contrast",
+        "label": "<span.accent> \"stitches\"",
+        "ratio": 1.94,
+        "need": 3,
+        "fontSize": 40
+      },
+      {
+        "kind": "contrast",
+        "label": "<span.accent> \"hoop\"",
+        "ratio": 1.94,
+        "need": 3,
+        "fontSize": 30
+      },
+      {
+        "kind": "contrast",
+        "label": "<span.accent> \"finished\"",
+        "ratio": 1.94,
+        "need": 3,
+        "fontSize": 30
+      },
+      {
+        "kind": "contrast",
+        "label": "<span.accent> \"Stitchbook\"",
+        "ratio": 1.94,
+        "need": 3,
+        "fontSize": 30
+      }
+    ]
+  },
+  {
+    "page": "home",
+    "viewport": "phone",
+    "fonts": {
+      "sans": true,
+      "serif": true
+    },
+    "issues": [
+      {
+        "kind": "contrast",
+        "label": "<span.accent> \"thread\"",
+        "ratio": 1.94,
+        "need": 3,
+        "fontSize": 30
+      },
+      {
+        "kind": "contrast",
+        "label": "<span.accent> \"designs\"",
+        "ratio": 1.94,
+        "need": 3,
+        "fontSize": 26
+      }
+    ]
+  },
+  {
+    "page": "editor",
+    "viewport": "phone",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  }
+]

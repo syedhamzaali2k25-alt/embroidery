@@ -1,0 +1,100 @@
+<svg xmlns="http://www.w3.org/2000/svg">
+  <!-- Original shapes: colour comes from currentColor, never hard-coded. -->
+
+  <!-- Eight-point star -->
+  <symbol id="star" viewBox="0 0 100 100">
+    <polygon fill="currentColor" stroke="currentColor" stroke-width="6" stroke-linejoin="round"
+      points="50 4 59.2 27.8 85.4 14.6 72.2 40.8 96 50 72.2 59.2 85.4 85.4 59.2 72.2 50 96 40.8 72.2 14.6 85.4 27.8 59.2 4 50 27.8 40.8 14.6 14.6 40.8 27.8"/>
+  </symbol>
+
+  <!-- Logo mark: star with an ink eye of the needle -->
+  <symbol id="logo" viewBox="0 0 100 100">
+    <use href="#star"/>
+    <circle cx="50" cy="50" r="13" style="fill: var(--ink)"/>
+  </symbol>
+
+  <!-- Four-point sparkle -->
+  <symbol id="sparkle" viewBox="0 0 100 100">
+    <path fill="currentColor" d="M50 0 C53 35 65 47 100 50 C65 53 53 65 50 100 C47 65 35 53 0 50 C35 47 47 35 50 0Z"/>
+  </symbol>
+
+  <!-- Soft blobs -->
+  <symbol id="blob-a" viewBox="0 0 200 200">
+    <path fill="currentColor" d="M152 36c25 20 38 58 30 91-8 34-38 62-74 66-37 4-79-16-92-50C3 110 20 66 47 42 74 18 127 16 152 36Z"/>
+  </symbol>
+  <symbol id="blob-b" viewBox="0 0 200 200">
+    <path fill="currentColor" d="M44 30c34-26 92-24 122 6 30 30 32 86 6 120-26 33-80 45-116 26C19 164 4 124 8 90c3-25 14-45 36-60Z"/>
+  </symbol>
+
+  <!-- Stitch motifs (dashed strokes read as running stitch) -->
+  <symbol id="m-daisy" viewBox="0 0 120 120">
+    <g fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-dasharray="7 5">
+      <ellipse cx="60" cy="32" rx="12" ry="22"/>
+      <ellipse cx="60" cy="88" rx="12" ry="22"/>
+      <ellipse cx="32" cy="60" rx="22" ry="12"/>
+      <ellipse cx="88" cy="60" rx="22" ry="12"/>
+    </g>
+    <circle cx="60" cy="60" r="10" fill="currentColor"/>
+  </symbol>
+
+  <symbol id="m-mountain" viewBox="0 0 120 120">
+    <g fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="7 5">
+      <path d="M10 96 L44 40 L62 68 L78 48 L110 96 Z"/>
+      <path d="M36 52 L44 60 L52 52"/>
+    </g>
+    <circle cx="92" cy="26" r="9" fill="currentColor"/>
+  </symbol>
+
+  <symbol id="m-wave" viewBox="0 0 120 120">
+    <g fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-dasharray="7 5">
+      <path d="M8 44 C24 28 40 28 56 44 S88 60 112 44"/>
+      <path d="M8 64 C24 48 40 48 56 64 S88 80 112 64"/>
+      <path d="M8 84 C24 68 40 68 56 84 S88 100 112 84"/>
+    </g>
+  </symbol>
+
+  <symbol id="m-leaf" viewBox="0 0 120 120">
+    <g fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-dasharray="7 5">
+      <path d="M24 100 C18 56 50 20 100 18 C102 70 70 100 24 100 Z"/>
+      <path d="M28 96 L86 34"/>
+    </g>
+  </symbol>
+
+  <symbol id="m-sun" viewBox="0 0 120 120">
+    <g fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-dasharray="7 5">
+      <circle cx="60" cy="60" r="22"/>
+    </g>
+    <g stroke="currentColor" stroke-width="5" stroke-linecap="round">
+      <path d="M60 10v14M60 96v14M10 60h14M96 60h14M25 25l10 10M85 85l10 10M25 95l10-10M85 35l10-10"/>
+    </g>
+  </symbol>
+
+  <symbol id="m-heart" viewBox="0 0 120 120">
+    <g fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="7 5">
+      <path d="M60 100 C20 74 12 50 22 34 C32 18 52 20 60 38 C68 20 88 18 98 34 C108 50 100 74 60 100 Z"/>
+    </g>
+  </symbol>
+
+  <!-- UI icons (24px grid, stroke) -->
+  <symbol id="i-arrow" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M5 12h14M13 6l6 6-6 6"/></symbol>
+  <symbol id="i-back" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M15 5l-7 7 7 7"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-minus" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M5 12h14"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4 4"/></g></symbol>
+  <symbol id="i-select" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" d="M6 4l12 7-5.5 1.5L10 18z"/></symbol>
+  <symbol id="i-pen" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M4 20l1-5L15.5 4.5a2.1 2.1 0 0 1 3 3L8 18zM13.5 6.5l3 3"/></symbol>
+  <symbol id="i-shape" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="3.5" y="10.5" width="10" height="10" rx="2"/><circle cx="15.5" cy="8.5" r="5"/></g></symbol>
+  <symbol id="i-text" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M5 6h14M12 6v13M9 19h6"/></symbol>
+  <symbol id="i-needle" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M19 5L6 18"/><path d="M4 20l2-2"/><ellipse cx="18" cy="6" rx="1.2" ry="2.2" transform="rotate(45 18 6)"/><path d="M8 8c-4 2-4 6 0 8" stroke-dasharray="2 2.5"/></g></symbol>
+  <symbol id="i-hand" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M8 12V6a1.5 1.5 0 0 1 3 0v5M11 11V4.5a1.5 1.5 0 0 1 3 0V11M14 11V6a1.5 1.5 0 0 1 3 0v7c0 4-2.5 7-6 7-2.5 0-4-1.2-5.5-3.5L3.8 13a1.5 1.5 0 0 1 2.5-1.6L8 13.5"/></symbol>
+  <symbol id="i-undo" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M9 7L4 12l5 5M4 12h10a6 6 0 0 1 0 12"/></symbol>
+  <symbol id="i-redo" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M15 7l5 5-5 5M20 12H10a6 6 0 0 0 0 12"/></symbol>
+  <symbol id="i-eye" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z"/><circle cx="12" cy="12" r="3"/></g></symbol>
+  <symbol id="i-eye-off" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z"/><path d="M4 20L20 4"/></g></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M12 4v11M7 10l5 5 5-5M5 20h14"/></symbol>
+  <symbol id="i-grid" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="7" height="7" rx="2"/><rect x="13" y="4" width="7" height="7" rx="2"/><rect x="4" y="13" width="7" height="7" rx="2"/><rect x="13" y="13" width="7" height="7" rx="2"/></g></symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" d="M3.5 7a2 2 0 0 1 2-2h4l2 2.5h7a2 2 0 0 1 2 2V17a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/></symbol>
+  <symbol id="i-users" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.5-4 3-6 6.5-6s6 2 6.5 6"/><path d="M16 4.8a3.5 3.5 0 0 1 0 6.4M18 14c2 .8 3.2 2.8 3.5 6"/></g></symbol>
+  <symbol id="i-image" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="3.5" y="4.5" width="17" height="15" rx="3"/><circle cx="9" cy="10" r="1.8"/><path d="M4 17l5-4.5 4 3.5 3-2.5 4 3.5"/></g></symbol>
+  <symbol id="i-more" viewBox="0 0 24 24"><g fill="currentColor"><circle cx="6" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="18" cy="12" r="1.6"/></g></symbol>
+</svg>

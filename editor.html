@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Stitchbook Editor</title>
+  <link rel="preload" href="assets/fonts/dm-sans-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="css/fonts.css">
+  <link rel="stylesheet" href="css/tokens.css">
+  <link rel="stylesheet" href="css/base.css">
+  <link rel="stylesheet" href="css/editor.css">
+</head>
+<body class="editor">
+  <header class="bar">
+    <div class="bar__left">
+      <a class="icon-btn" href="home.html" aria-label="Back to designs"><svg aria-hidden="true"><use href="assets/sprite.svg#i-back"/></svg></a>
+      <div class="file">
+        <p class="file__name">Daisy jacket patch</p>
+        <p class="file__state"><span class="saved-dot" aria-hidden="true"></span>Saved</p>
+      </div>
+    </div>
+    <div class="bar__right">
+      <button class="icon-btn" type="button" aria-label="Undo"><svg aria-hidden="true"><use href="assets/sprite.svg#i-undo"/></svg></button>
+      <button class="icon-btn" type="button" aria-label="Redo"><svg aria-hidden="true"><use href="assets/sprite.svg#i-redo"/></svg></button>
+      <button class="btn btn--ghost btn--sm bar__preview" type="button">Preview</button>
+      <button class="btn btn--ink btn--sm" type="button"><svg aria-hidden="true"><use href="assets/sprite.svg#i-download"/></svg>Export</button>
+    </div>
+  </header>
+
+  <div class="workspace">
+    <nav class="tools" aria-label="Tools">
+      <button class="tool" type="button" aria-pressed="true" aria-label="Select"><svg aria-hidden="true"><use href="assets/sprite.svg#i-select"/></svg></button>
+      <button class="tool" type="button" aria-pressed="false" aria-label="Draw"><svg aria-hidden="true"><use href="assets/sprite.svg#i-pen"/></svg></button>
+      <button class="tool" type="button" aria-pressed="false" aria-label="Shape"><svg aria-hidden="true"><use href="assets/sprite.svg#i-shape"/></svg></button>
+      <button class="tool" type="button" aria-pressed="false" aria-label="Text"><svg aria-hidden="true"><use href="assets/sprite.svg#i-text"/></svg></button>
+      <button class="tool" type="button" aria-pressed="false" aria-label="Stitch path"><svg aria-hidden="true"><use href="assets/sprite.svg#i-needle"/></svg></button>
+      <button class="tool" type="button" aria-pressed="false" aria-label="Pan"><svg aria-hidden="true"><use href="assets/sprite.svg#i-hand"/></svg></button>
+    </nav>
+
+    <section class="stage" aria-label="Canvas">
+      <div class="stage__canvas">
+        <svg class="hoop-canvas" viewBox="0 0 400 400" role="img" aria-label="Daisy design in a 10 cm hoop">
+          <circle class="hoop-ring" cx="200" cy="200" r="186"/>
+          <circle class="hoop-fabric" cx="200" cy="200" r="176"/>
+          <circle class="hoop-safe" cx="200" cy="200" r="150"/>
+          <g class="design" data-zoom>
+            <g class="stitch stitch--green" data-layer="leaves">
+              <path d="M196 262 C150 250 130 290 118 318 C160 318 190 300 196 262Z"/>
+              <path d="M204 262 C250 250 270 290 282 318 C240 318 210 300 204 262Z"/>
+              <path d="M200 250 L200 330"/>
+            </g>
+            <g class="stitch stitch--ink" data-layer="petals">
+              <ellipse cx="200" cy="130" rx="26" ry="50"/>
+              <ellipse cx="200" cy="130" rx="26" ry="50" transform="rotate(60 200 190)"/>
+              <ellipse cx="200" cy="130" rx="26" ry="50" transform="rotate(120 200 190)"/>
+              <ellipse cx="200" cy="130" rx="26" ry="50" transform="rotate(180 200 190)"/>
+              <ellipse cx="200" cy="130" rx="26" ry="50" transform="rotate(240 200 190)"/>
+              <ellipse cx="200" cy="130" rx="26" ry="50" transform="rotate(300 200 190)"/>
+            </g>
+            <g data-layer="centre">
+              <circle class="fill fill--green" cx="200" cy="190" r="22"/>
+            </g>
+          </g>
+          <g class="selection" aria-hidden="true">
+            <rect x="96" y="76" width="208" height="228" rx="4"/>
+            <rect class="handle" x="91" y="71" width="10" height="10" rx="3"/>
+            <rect class="handle" x="299" y="71" width="10" height="10" rx="3"/>
+            <rect class="handle" x="91" y="299" width="10" height="10" rx="3"/>
+            <rect class="handle" x="299" y="299" width="10" height="10" rx="3"/>
+          </g>
+        </svg>
+      </div>
+
+      <div class="stage__footer">
+        <p class="stats"><strong>4,210</strong> stitches <span class="sep" aria-hidden="true">·</span> 10 × 10 cm <span class="sep" aria-hidden="true">·</span> 2 threads</p>
+        <div class="zoom" role="group" aria-label="Zoom">
+          <button class="icon-btn" type="button" data-zoom-step="-10" aria-label="Zoom out"><svg aria-hidden="true"><use href="assets/sprite.svg#i-minus"/></svg></button>
+          <output class="zoom__value" aria-live="polite">100%</output>
+          <button class="icon-btn" type="button" data-zoom-step="10" aria-label="Zoom in"><svg aria-hidden="true"><use href="assets/sprite.svg#i-plus"/></svg></button>
+        </div>
+      </div>
+    </section>
+
+    <aside class="panel" aria-label="Properties">
+      <section class="panel__section">
+        <h2 class="panel__title">Petals</h2>
+        <p class="panel__hint">6 shapes selected</p>
+      </section>
+
+      <section class="panel__section">
+        <h3 class="label" id="stitch-type">Stitch type</h3>
+        <div class="segmented" role="radiogroup" aria-labelledby="stitch-type">
+          <button type="button" role="radio" aria-checked="false">Running</button>
+          <button type="button" role="radio" aria-checked="true">Satin</button>
+          <button type="button" role="radio" aria-checked="false">Fill</button>
+        </div>
+      </section>
+
+      <section class="panel__section">
+        <div class="field">
+          <label class="label" for="density">Density</label>
+          <output class="field__value" for="density" id="density-out">4.5 lines/mm</output>
+        </div>
+        <input class="range" id="density" type="range" min="2" max="7" step="0.5" value="4.5" data-unit="lines/mm">
+        <div class="field">
+          <label class="label" for="length">Stitch length</label>
+          <output class="field__value" for="length" id="length-out">3.0 mm</output>
+        </div>
+        <input class="range" id="length" type="range" min="1" max="7" step="0.5" value="3" data-unit="mm">
+      </section>
+
+      <section class="panel__section">
+        <h3 class="label">Thread</h3>
+        <div class="threads" role="radiogroup" aria-label="Thread colour">
+          <button class="thread thread--ink" type="button" role="radio" aria-checked="true"><span class="swatch" aria-hidden="true"></span>Ink 1001</button>
+          <button class="thread thread--green" type="button" role="radio" aria-checked="false"><span class="swatch" aria-hidden="true"></span>Green 1049</button>
+        </div>
+      </section>
+
+      <section class="panel__section">
+        <h3 class="label">Layers</h3>
+        <ul class="layers">
+          <li class="layer is-active"><span class="layer__swatch layer__swatch--ink" aria-hidden="true"></span><span class="layer__name">Petals</span><button class="layer__eye" type="button" aria-pressed="true" aria-label="Hide Petals" data-target="petals"><svg aria-hidden="true"><use href="assets/sprite.svg#i-eye"/></svg></button></li>
+          <li class="layer"><span class="layer__swatch layer__swatch--green" aria-hidden="true"></span><span class="layer__name">Centre</span><button class="layer__eye" type="button" aria-pressed="true" aria-label="Hide Centre" data-target="centre"><svg aria-hidden="true"><use href="assets/sprite.svg#i-eye"/></svg></button></li>
+          <li class="layer"><span class="layer__swatch layer__swatch--green" aria-hidden="true"></span><span class="layer__name">Leaves</span><button class="layer__eye" type="button" aria-pressed="true" aria-label="Hide Leaves" data-target="leaves"><svg aria-hidden="true"><use href="assets/sprite.svg#i-eye"/></svg></button></li>
+        </ul>
+      </section>
+    </aside>
+  </div>
+  <script src="js/editor.js"></script>
+</body>
+</html>

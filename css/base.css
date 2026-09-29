@@ -1,0 +1,178 @@
+/* Shared foundations and components. Colours come only from tokens.css. */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-weight: 400;
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--text);
+  background: var(--page-bg);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+img, svg { display: block; max-width: 100%; }
+
+h1, h2, h3, h4 {
+  font-family: var(--font-sans);
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+
+p { margin: 0; }
+
+a { color: inherit; }
+
+button { font: inherit; color: inherit; }
+
+:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+.visually-hidden {
+  position: absolute !important;
+  width: 1px; height: 1px;
+  overflow: hidden; clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* One serif accent word per heading, always green */
+.accent {
+  font-family: var(--font-serif);
+  font-weight: 400;
+  font-style: normal;
+  color: var(--accent);
+  letter-spacing: 0;
+}
+
+/* ---------- Sheet: the white page on the gradient ---------- */
+.sheet {
+  width: min(var(--sheet-max), calc(100% - 2 * var(--gutter)));
+  margin: var(--gutter) auto;
+  background: var(--surface);
+  border-radius: var(--radius-sheet);
+  box-shadow: var(--shadow-sheet);
+  overflow: hidden;
+}
+
+@media (min-width: 900px) {
+  .sheet { margin: 32px auto; }
+}
+
+/* ---------- Brand ---------- */
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 700;
+  font-size: 19px;
+  letter-spacing: -0.02em;
+  text-decoration: none;
+  color: var(--ink);
+}
+.brand svg { width: 26px; height: 26px; color: var(--green); }
+
+/* ---------- Buttons: fully rounded pills ---------- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 22px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  font-family: var(--font-sans);
+  font-weight: 500;
+  font-size: 15px;
+  line-height: 1;
+  white-space: nowrap;
+  text-decoration: none;
+  cursor: pointer;
+  transition: transform .15s ease, background-color .15s ease;
+}
+.btn:hover { transform: translateY(-1px); }
+.btn svg { width: 18px; height: 18px; flex: none; }
+
+.btn--ink   { background: var(--ink);   color: var(--on-ink); }
+.btn--green { background: var(--green); color: var(--on-fill); }
+.btn--ghost { background: var(--surface); color: var(--ink); border-color: var(--border); }
+.btn--ghost:hover { border-color: var(--ink); }
+.btn--sm { min-height: 36px; padding: 0 16px; font-size: 14px; }
+.btn--lg { min-height: 52px; padding: 0 28px; font-size: 16px; }
+
+.icon-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 40px; height: 40px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--ink);
+  cursor: pointer;
+  flex: none;
+}
+.icon-btn svg { width: 18px; height: 18px; }
+.icon-btn:hover { border-color: var(--ink); }
+
+/* ---------- Chips ---------- */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 14px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.chip[aria-pressed="true"] { background: var(--ink); color: var(--on-ink); border-color: var(--ink); }
+
+/* ---------- Cards ---------- */
+.card {
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--ink);
+}
+.card--green    { background: var(--green);    border-color: transparent; color: var(--on-fill); }
+.card--lavender { background: var(--lavender); border-color: transparent; color: var(--on-fill); }
+.card--lime     { background: var(--lime);     border-color: transparent; color: var(--on-fill); }
+.card--pink     { background: var(--pink);     border-color: transparent; color: var(--on-fill); }
+
+/* ---------- Design thumbnails: cycle green, lavender, lime, pink ---------- */
+.thumb {
+  position: relative;
+  display: grid;
+  place-items: center;
+  aspect-ratio: 4 / 3;
+  border-radius: var(--radius-card-sm);
+  color: var(--on-fill);
+  overflow: hidden;
+}
+.thumb svg.motif { width: 58%; height: auto; color: var(--ink); }
+.thumbs > :nth-child(4n + 1) .thumb { background: var(--thumb-1); }
+.thumbs > :nth-child(4n + 2) .thumb { background: var(--thumb-2); }
+.thumbs > :nth-child(4n + 3) .thumb { background: var(--thumb-3); }
+.thumbs > :nth-child(4n + 4) .thumb { background: var(--thumb-4); }
+
+/* ---------- Decorative shapes ---------- */
+.shape { position: absolute; pointer-events: none; }
+.shape--green    { color: var(--green); }
+.shape--lavender { color: var(--lavender); }
+.shape--lime     { color: var(--lime); }
+.shape--pink     { color: var(--pink); }
+.shape--ink      { color: var(--ink); }

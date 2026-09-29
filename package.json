@@ -1,0 +1,14 @@
+{
+  "name": "stitchbook",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "npx http-server -p 8080 -c-1 .",
+    "check:tokens": "node scripts/check-tokens.mjs",
+    "check:ui": "node scripts/check-ui.mjs",
+    "check": "npm run check:tokens && npm run check:ui"
+  },
+  "devDependencies": {
+    "playwright": "1.56.1"
+  }
+}

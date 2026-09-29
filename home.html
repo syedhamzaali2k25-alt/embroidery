@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Stitchbook Home</title>
+  <link rel="preload" href="assets/fonts/dm-sans-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="css/fonts.css">
+  <link rel="stylesheet" href="css/tokens.css">
+  <link rel="stylesheet" href="css/base.css">
+  <link rel="stylesheet" href="css/home.css">
+</head>
+<body class="home">
+  <div class="sheet app">
+    <aside class="side">
+      <a class="brand" href="index.html"><svg aria-hidden="true"><use href="assets/sprite.svg#logo"/></svg>Stitchbook</a>
+      <nav class="side__nav" aria-label="Sections">
+        <a href="home.html" aria-current="page"><svg aria-hidden="true"><use href="assets/sprite.svg#i-grid"/></svg>Designs</a>
+        <a href="#"><svg aria-hidden="true"><use href="assets/sprite.svg#i-folder"/></svg>Collections</a>
+        <a href="#"><svg aria-hidden="true"><use href="assets/sprite.svg#i-users"/></svg>Shared</a>
+      </nav>
+      <div class="side__plan card card--lime">
+        <p class="side__plan-title">Hoop space</p>
+        <div class="meter" role="meter" aria-valuemin="0" aria-valuemax="20" aria-valuenow="7" aria-label="Designs used"><span style="--fill: 35%"></span></div>
+        <p class="side__plan-text">7 of 20 designs on the free plan</p>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <label class="search">
+          <svg aria-hidden="true"><use href="assets/sprite.svg#i-search"/></svg>
+          <span class="visually-hidden">Search designs</span>
+          <input type="search" placeholder="Search designs">
+        </label>
+        <div class="topbar__right">
+          <a class="btn btn--ink" href="editor.html"><svg aria-hidden="true"><use href="assets/sprite.svg#i-plus"/></svg>New design</a>
+          <span class="avatar" aria-label="Your account">SA</span>
+        </div>
+      </header>
+
+      <section class="welcome">
+        <div>
+          <h1>Good to see you. Pick up your <span class="accent">thread</span></h1>
+          <p class="welcome__sub">You have 2 designs waiting to be exported.</p>
+        </div>
+      </section>
+
+      <section class="starts" aria-labelledby="starts-title">
+        <h2 id="starts-title" class="visually-hidden">Quick start</h2>
+        <a class="card card--lavender start" href="editor.html">
+          <svg class="start__icon" aria-hidden="true"><use href="assets/sprite.svg#i-pen"/></svg>
+          <span class="start__title">Blank hoop</span>
+          <span class="start__text">Sketch from scratch</span>
+          <svg class="shape shape--ink start__deco" aria-hidden="true"><use href="assets/sprite.svg#sparkle"/></svg>
+        </a>
+        <a class="card card--pink start" href="editor.html">
+          <svg class="start__icon" aria-hidden="true"><use href="assets/sprite.svg#i-image"/></svg>
+          <span class="start__title">Trace an image</span>
+          <span class="start__text">Photo or drawing</span>
+          <svg class="shape shape--lavender start__deco start__deco--blob" aria-hidden="true"><use href="assets/sprite.svg#blob-b"/></svg>
+        </a>
+        <a class="card card--green start" href="editor.html">
+          <svg class="start__icon" aria-hidden="true"><use href="assets/sprite.svg#i-text"/></svg>
+          <span class="start__title">Monogram</span>
+          <span class="start__text">Letters in satin stitch</span>
+          <svg class="shape shape--lime start__deco start__deco--star" aria-hidden="true"><use href="assets/sprite.svg#star"/></svg>
+        </a>
+      </section>
+
+      <section class="designs" aria-labelledby="designs-title">
+        <div class="designs__head">
+          <h2 id="designs-title">Your <span class="accent">designs</span></h2>
+          <div class="filters" role="group" aria-label="Filter designs">
+            <button class="chip" type="button" aria-pressed="true">All</button>
+            <button class="chip" type="button" aria-pressed="false">Drafts</button>
+            <button class="chip" type="button" aria-pressed="false">Exported</button>
+          </div>
+        </div>
+
+        <ul class="thumbs designs__grid">
+          <li class="design" data-status="draft">
+            <a href="editor.html">
+              <div class="thumb"><svg class="motif" aria-hidden="true"><use href="assets/sprite.svg#m-daisy"/></svg><span class="badge">Draft</span></div>
+              <div class="design__meta"><p class="design__name">Daisy jacket patch</p><p class="design__info">4,210 stitches · 10 × 10 cm</p></div>
+            </a>
+          </li>
+          <li class="design" data-status="exported">
+            <a href="editor.html">
+              <div class="thumb"><svg class="motif" aria-hidden="true"><use href="assets/sprite.svg#m-mountain"/></svg><span class="badge">Exported</span></div>
+              <div class="design__meta"><p class="design__name">Ridge line</p><p class="design__info">6,880 stitches · 13 × 18 cm</p></div>
+            </a>
+          </li>
+          <li class="design" data-status="draft">
+            <a href="editor.html">
+              <div class="thumb"><svg class="motif" aria-hidden="true"><use href="assets/sprite.svg#m-sun"/></svg><span class="badge">Draft</span></div>
+              <div class="design__meta"><p class="design__name">Morning sun</p><p class="design__info">3,150 stitches · 10 × 10 cm</p></div>
+            </a>
+          </li>
+          <li class="design" data-status="exported">
+            <a href="editor.html">
+              <div class="thumb"><svg class="motif" aria-hidden="true"><use href="assets/sprite.svg#m-heart"/></svg><span class="badge">Exported</span></div>
+              <div class="design__meta"><p class="design__name">Heart tag</p><p class="design__info">1,940 stitches · 5 × 5 cm</p></div>
+            </a>
+          </li>
+          <li class="design" data-status="exported">
+            <a href="editor.html">
+              <div class="thumb"><svg class="motif" aria-hidden="true"><use href="assets/sprite.svg#m-wave"/></svg><span class="badge">Exported</span></div>
+              <div class="design__meta"><p class="design__name">Tide pocket</p><p class="design__info">2,760 stitches · 8 × 8 cm</p></div>
+            </a>
+          </li>
+          <li class="design" data-status="exported">
+            <a href="editor.html">
+              <div class="thumb"><svg class="motif" aria-hidden="true"><use href="assets/sprite.svg#m-leaf"/></svg><span class="badge">Exported</span></div>
+              <div class="design__meta"><p class="design__name">Fern cuff</p><p class="design__info">3,420 stitches · 10 × 10 cm</p></div>
+            </a>
+          </li>
+        </ul>
+        <p class="designs__empty" hidden>No designs match this filter.</p>
+      </section>
+    </main>
+  </div>
+  <script src="js/home.js"></script>
+</body>
+</html>

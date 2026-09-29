@@ -1,0 +1,57 @@
+/*
+ * Design tokens — the only file in the project allowed to contain colour literals.
+ * Every component references these variables. `npm run check:tokens` enforces it.
+ */
+:root {
+  /* Brand palette */
+  --green: #2ED47A;
+  --lavender: #C8B8F4;
+  --lime: #DCFAB2;
+  --pink: #F9B8E6;
+  --ink: #1F1F1F;
+  --muted: #8A8A8A;
+  --line: #EDEDED;
+  --white: #FFFFFF;
+
+  /* Page background gradient stops (pink is shared with the palette) */
+  --bg-lavender: #CDB8F5;
+  --bg-butter: #F5E8A8;
+  --bg-lime: #D9F5A5;
+  --page-bg: linear-gradient(160deg, var(--bg-lavender), var(--pink), var(--bg-butter), var(--bg-lime));
+
+  /* Semantic roles */
+  --text: var(--ink);
+  --text-muted: var(--muted);
+  --surface: var(--white);
+  --border: var(--line);
+  --accent: var(--green);
+  --on-fill: var(--ink);        /* text on green, lavender, lime, pink */
+  --on-ink: var(--white);       /* the only place white text is allowed */
+
+  /* Thumbnail cycle */
+  --thumb-1: var(--green);
+  --thumb-2: var(--lavender);
+  --thumb-3: var(--lime);
+  --thumb-4: var(--pink);
+
+  /* Elevation (derived from ink, no extra literals) */
+  --shadow-sheet: 0 1px 2px color-mix(in srgb, var(--ink) 5%, transparent),
+                  0 24px 60px color-mix(in srgb, var(--ink) 10%, transparent);
+  --shadow-float: 0 8px 24px color-mix(in srgb, var(--ink) 10%, transparent);
+
+  /* Type */
+  --font-sans: "DM Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-serif: "DM Serif Display", Georgia, serif;
+
+  /* Shape */
+  --radius-pill: 999px;
+  --radius-card-sm: 22px;
+  --radius-card: 24px;
+  --radius-card-lg: 26px;
+  --radius-sheet: 26px;
+  --radius-control: 12px;
+
+  /* Layout */
+  --gutter: 16px;
+  --sheet-max: 1240px;
+}
