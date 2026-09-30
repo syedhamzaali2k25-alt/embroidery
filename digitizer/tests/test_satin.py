@@ -10,24 +10,15 @@ from shapely.geometry import LineString, Polygon
 
 from digitizer import satin
 from digitizer.config import load_test_run_config
-from digitizer.digitize import (
-    build_pieces,
-    digitize,
-    load_mask,
-    mask_to_polygons,
-    satin_settings,
-    scale_to_width,
-)
+from digitizer.digitize import build_pieces, digitize, satin_settings, trace_design
 
 SAMPLES = Path(__file__).resolve().parents[1] / "samples"
 CONFIG = load_test_run_config()
 
 
 def pieces_for(name: str, width_mm: float, config=CONFIG):
-    mask = load_mask(SAMPLES / f"{name}.png", config.get("image.min_speck_area_px"))
-    polygons_px = mask_to_polygons(mask)
-    polygons, tf = scale_to_width(polygons_px, width_mm)
-    return build_pieces(mask, polygons_px, polygons, tf, config).pieces
+    traced = trace_design(SAMPLES / f"{name}.png", config, width_mm)
+    return build_pieces(traced.shapes, traced.image_shape, traced.tf, config).pieces
 
 
 def kinds(pieces):

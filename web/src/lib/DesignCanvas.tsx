@@ -28,14 +28,17 @@ type ShapesProps = {
   onSelect: (n: number) => void;
 };
 
-/** The uploaded design's shapes, as traced by the digitizer (outline with holes). */
+/** The uploaded design's shapes, as traced by the digitizer (outline with holes), each in its
+ * colour layer's colour (the image's own colour). Once traced they become outlines under the columns. */
 export function DesignShapesLayer({ shapes, fit, hidden, selected, traced, onSelect }: ShapesProps) {
   const visible = shapes.shapes.filter((s) => !hidden.has(s.number));
+  const hexOf = new Map(shapes.colours.map((c) => [c.number, c.hex]));
   const chosen = visible.find((s) => s.number === selected);
   return (
     <g className={traced ? "design-shapes is-under" : "design-shapes"}>
       {visible.map((s) => (
         <path key={s.number} className="design-shape" d={path(s.rings, fit)} fillRule="evenodd"
+              style={traced ? undefined : { fill: hexOf.get(s.colour) }} data-colour={s.colour}
               data-shape={s.number} data-kind={s.kind} onClick={() => onSelect(s.number)} />
       ))}
       {chosen && <path className="design-shape__selected" d={path(chosen.rings, fit)} fillRule="evenodd" />}

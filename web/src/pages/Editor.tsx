@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type CSSProperties } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 
 import { api, ApiError, type ClientConfig, type DesignRecord, type DesignShapes, type TraceResult } from "../lib/api";
@@ -330,10 +330,11 @@ function DesignPanel({ shapes, failed, traced, selected, onSelect, hidden, onTog
   const columnsIn = (n: number) => traced?.columns.filter((c) => c.shape === n).length ?? 0;
   let hint = failed ? "The design could not be loaded." : "Loading…";
   if (shape) {
-    hint = `Sewn as ${shape.kind} · ${shape.max_width_mm.toFixed(1)} mm at its widest`;
+    const colour = shapes?.colours.find((c) => c.number === shape.colour);
+    hint = `Colour ${shape.colour}${colour ? ` (${colour.hex})` : ""} · sewn as ${shape.kind} · ${shape.max_width_mm.toFixed(1)} mm at its widest`;
     if (traced && shape.kind === "satin") hint += ` · ${plural(columnsIn(shape.number), "column")}`;
   } else if (shapes) {
-    hint = `${plural(shapes.shapes.length, "shape")}: ${count("satin")} satin, ${count("fill")} fill`;
+    hint = `${plural(shapes.shapes.length, "shape")} in ${plural(shapes.colours.length, "colour")}: ${count("satin")} satin, ${count("fill")} fill`;
   }
   return (
     <>
@@ -343,35 +344,57 @@ function DesignPanel({ shapes, failed, traced, selected, onSelect, hidden, onTog
       </section>
 
       <section className="panel__section">
-        <h3 className="label">Thread</h3>
-        <div className="thread thread--placeholder">
-          <span className="swatch" aria-hidden="true"></span><span className="placeholder-text">[Thread colour]</span>
-        </div>
-        <p className="panel__note">{THREAD_NOTE} The stitch file has one colour.</p>
+        <h3 className="label">Threads</h3>
+        {shapes ? (
+          <ul className="threads threads--list" aria-label="Thread colours in sewing order">
+            {shapes.colours.map((c) => (
+              <li key={c.number} className="thread thread--placeholder">
+                <span className="swatch" style={{ background: c.hex } as CSSProperties} aria-hidden="true"></span>
+                <span className="thread__text">
+                  <span className="thread__name">Colour {c.number} · {c.hex}</span>
+                  <span className="placeholder-text">{c.thread.name} {c.thread.code}</span>
+                </span>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+        <p className="panel__note">
+          Placeholder: thread names and codes are not chosen yet. The colours are your image's own; one thread
+          change between each.
+        </p>
       </section>
 
       <section className="panel__section">
         <h3 className="label">Layers</h3>
         {shapes ? (
-          <ul className="layers">
-            {shapes.shapes.map((s) => {
-              const visible = !hidden.has(s.number);
-              const name = `Shape ${s.number}`;
-              return (
-                <li key={s.number} className={s.number === selected ? "layer is-active" : "layer"}>
-                  <button className="layer__pick" type="button" aria-pressed={s.number === selected}
-                          onClick={() => onSelect(s.number === selected ? null : s.number)}>
-                    <span className="layer__swatch layer__swatch--ink" aria-hidden="true"></span>
-                    <span className="layer__name">{name}</span>
-                    <span className="layer__kind">{kindName[s.kind]}</span>
-                  </button>
-                  <button className="layer__eye" type="button" aria-pressed={visible} aria-label={`${visible ? "Hide" : "Show"} ${name}`} onClick={() => onToggle(s.number)}>
-                    <svg aria-hidden="true"><use href={`/assets/sprite.svg#${visible ? "i-eye" : "i-eye-off"}`}/></svg>
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
+          <div className="layer-groups">
+            {shapes.colours.map((c) => (
+              <div key={c.number} className="layer-group">
+                <h4 className="layer-group__title">
+                  <span className="layer__swatch" style={{ background: c.hex } as CSSProperties} aria-hidden="true"></span>
+                  Colour {c.number} <span className="layer-group__hex">{c.hex}</span>
+                </h4>
+                <ul className="layers" aria-label={`Shapes in colour ${c.number}`}>
+                  {shapes.shapes.filter((s) => s.colour === c.number).map((s) => {
+                    const visible = !hidden.has(s.number);
+                    const name = `Shape ${s.number}`;
+                    return (
+                      <li key={s.number} className={s.number === selected ? "layer is-active" : "layer"}>
+                        <button className="layer__pick" type="button" aria-pressed={s.number === selected}
+                                onClick={() => onSelect(s.number === selected ? null : s.number)}>
+                          <span className="layer__name">{name}</span>
+                          <span className="layer__kind">{kindName[s.kind]}</span>
+                        </button>
+                        <button className="layer__eye" type="button" aria-pressed={visible} aria-label={`${visible ? "Hide" : "Show"} ${name}`} onClick={() => onToggle(s.number)}>
+                          <svg aria-hidden="true"><use href={`/assets/sprite.svg#${visible ? "i-eye" : "i-eye-off"}`}/></svg>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            ))}
+          </div>
         ) : <p className="panel__hint">{failed ? "No layers: the design could not be loaded." : "Layers appear once the design has loaded."}</p>}
       </section>
     </>

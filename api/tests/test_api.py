@@ -61,7 +61,7 @@ def test_upload_valid_png(client):
     assert body["warnings"] == []  # crisp, high-contrast, 600 px
     record = client.get(f"/designs/{body['id']}").json()
     assert record["status"] == "uploaded"
-    assert record["settings"] == {"width_mm": 60.0, "fill_row_spacing_mm": None}
+    assert record["settings"] == {"width_mm": 60.0, "fill_row_spacing_mm": None, "colours": None}
     assert record["downloads"] == []
 
 
@@ -250,7 +250,8 @@ def test_preview_settings_change_the_stitches_and_are_saved(client):
     assert denser["stats"]["stitch_count"] > default["stats"]["stitch_count"]
     wider = client.post(f"/designs/{design_id}/preview", json={"width_mm": 60}).json()
     assert abs(wider["stats"]["width_mm"] - 60) < 1
-    assert client.get(f"/designs/{design_id}").json()["settings"] == {"width_mm": 60.0, "fill_row_spacing_mm": 0.3}
+    assert client.get(f"/designs/{design_id}").json()["settings"] == {"width_mm": 60.0, "fill_row_spacing_mm": 0.3,
+                                                                      "colours": None}
 
 
 @pytest.mark.parametrize("body,phrase", [
@@ -301,3 +302,61 @@ def test_shapes_refuse_svg_and_large_images_plainly(tmp_path):
 
 def test_config_gives_the_status_timeout(client):
     assert client.get("/config").json()["status_timeout_s"] == CONFIG.get("jobs.status_timeout_s")
+
+
+# ---------- colours ----------
+
+BIRD = ["#1E3A6E", "#F4A261", "#2A9D8F", "#5BAA46", "#7A4A2A", "#F6C90E", "#111111"]  # largest area first
+
+
+def test_upload_lists_the_detected_colours_without_the_background(client):
+    body = upload(client, (SAMPLES / "bird.png").read_bytes(), settings={"width_mm": 90}).json()
+    assert [c["hex"] for c in body["colours"]] == BIRD
+    assert body["background"] == "#FFFFFF"
+    assert abs(sum(c["share"] for c in body["colours"]) - 1) < 1e-9
+    assert all(c["shape_count"] >= 1 and len(c["bounds_px"]) == 4 for c in body["colours"])
+    assert body["specks_removed"] == 0 and body["warnings"] == []
+
+
+def test_many_specks_warn_on_upload(client):
+    body = upload(client, (SAMPLES / "noisy_specks.png").read_bytes(), settings={"width_mm": 60}).json()
+    assert body["specks_removed"] > CONFIG.get("quality.max_specks")
+    warning = next(w for w in body["warnings"] if w["code"] == "many_specks")
+    assert warning["message"] == "This image has many small specks. Use a cleaner logo for better stitches."
+    assert len(body["colours"]) == 1
+
+
+def test_preview_and_shapes_return_colour_layers_with_placeholder_threads(client):
+    design_id = upload(client, (SAMPLES / "bird.png").read_bytes(), settings={"width_mm": 90}).json()["id"]
+    preview = client.post(f"/designs/{design_id}/preview").json()
+    assert [c["hex"] for c in preview["colours"]] == BIRD
+    assert preview["stats"]["color_count"] == len(BIRD) and preview["report"]["colour_changes"] == len(BIRD) - 1
+    assert all(c["thread"] == {"name": "[Thread name]", "code": "[Thread code]", "placeholder": True}
+               for c in preview["colours"])
+    assert sum(c["stitch_count"] for c in preview["colours"]) == preview["stats"]["stitch_count"]
+    assert {layer["colour"] for layer in preview["layers"]} == set(range(1, len(BIRD) + 1))
+    shapes = client.get(f"/designs/{design_id}/shapes").json()
+    assert [(c["hex"], c["shape_count"]) for c in shapes["colours"]] == [(c["hex"], c["shape_count"]) for c in preview["colours"]]
+    assert all(1 <= s["colour"] <= len(BIRD) for s in shapes["shapes"])
+
+
+def test_unchecked_colours_are_left_out_everywhere(client):
+    design_id = upload(client, (SAMPLES / "bird.png").read_bytes(), settings={"width_mm": 90}).json()["id"]
+    keep = [h.lower() for h in BIRD[:3]]
+    preview = client.post(f"/designs/{design_id}/preview", json={"colours": keep}).json()
+    assert [c["hex"] for c in preview["colours"]] == BIRD[:3]
+    assert preview["stats"]["color_count"] == 3
+    assert client.get(f"/designs/{design_id}").json()["settings"]["colours"] == BIRD[:3]
+    shapes = client.get(f"/designs/{design_id}/shapes").json()
+    assert [c["hex"] for c in shapes["colours"]] == BIRD[:3]
+
+
+@pytest.mark.parametrize("body,phrase", [
+    ({"colours": ["#ABCDEF"]}, "is not one of this design's colours"),
+    ({"colours": []}, "colours"),
+    ({"colours": ["red"]}, "colours"),
+])
+def test_bad_colour_choices_are_rejected_plainly(client, body, phrase):
+    design_id = upload(client, (SAMPLES / "bird.png").read_bytes()).json()["id"]
+    response = client.post(f"/designs/{design_id}/preview", json=body)
+    assert response.status_code == 422 and phrase in response.json()["error"]

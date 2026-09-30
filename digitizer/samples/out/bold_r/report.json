@@ -5,5 +5,9 @@
   "satin_columns": 4,
   "junction_patches": 2,
   "skipped_rungs": 13,
-  "trimmed_rungs": 31
+  "trimmed_rungs": 31,
+  "colour_changes": 0,
+  "shapes_found": 1,
+  "specks_removed": 0,
+  "holes_filled": 0
 }

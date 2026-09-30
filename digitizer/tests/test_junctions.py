@@ -12,16 +12,7 @@ from shapely.geometry import LineString, Point
 from shapely.ops import unary_union
 
 from digitizer.config import load_test_run_config
-from digitizer.digitize import (
-    build_pieces,
-    digitize,
-    load_mask,
-    mask_to_polygons,
-    plan_pieces,
-    satin_settings,
-    scale_to_width,
-    travel_allowed,
-)
+from digitizer.digitize import build_pieces, digitize, plan_pieces, satin_settings, trace_design, travel_allowed
 from shapely.geometry import Polygon
 
 SAMPLES = Path(__file__).resolve().parents[1] / "samples"
@@ -31,10 +22,9 @@ JUNCTIONS_PX = [(150, 100), (450, 170), (300, 470)]
 
 
 def build(name: str, width_mm: float):
-    mask = load_mask(SAMPLES / f"{name}.png", CONFIG.get("image.min_speck_area_px"))
-    polygons_px = mask_to_polygons(mask)
-    polygons, tf = scale_to_width(polygons_px, width_mm)
-    return build_pieces(mask, polygons_px, polygons, tf, CONFIG), polygons, tf
+    traced = trace_design(SAMPLES / f"{name}.png", CONFIG, width_mm)
+    built = build_pieces(traced.shapes, traced.image_shape, traced.tf, CONFIG)
+    return built, [s.poly for s in traced.shapes], traced.tf
 
 
 CASES = [("junctions", 50), ("bold_r", 18)]

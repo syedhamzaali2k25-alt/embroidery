@@ -169,7 +169,7 @@ try {
       `${viewport.width}px: ${drawn} shapes on the canvas and ${layers} layers, from the API's ${shapes.shapes.length} shapes`);
     check(await page.locator('.hoop-ring').count() === 0, `${viewport.width}px: no demo hoop ring`);
     const body = await page.locator('body').innerText();
-    check(!/1001|1049|Petals|Leaves/.test(body) && body.includes('[Thread colour]') && body.includes('not chosen yet'),
+    check(!/1001|1049|Petals|Leaves/.test(body) && body.includes('[Thread name]') && body.includes('not chosen yet'),
       `${viewport.width}px: no invented thread names or demo layers; thread colour is a labelled placeholder`);
     // Column numbers: no two label circles overlap on screen.
     const circles = await page.locator('.traced__label > circle:not(.traced__anchor)').evaluateAll((els) =>

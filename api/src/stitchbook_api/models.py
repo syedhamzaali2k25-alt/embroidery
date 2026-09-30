@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 ImageType = Literal["png", "jpg", "svg"]
 
@@ -28,6 +28,11 @@ class DesignSettings(BaseModel):
     fill_row_spacing_mm: float | None = Field(
         default=None, gt=0, description="Fill density as row spacing in mm (smaller = denser). Omit for the default."
     )
+    colours: list[Annotated[str, StringConstraints(pattern=r"^#[0-9A-Fa-f]{6}$")]] | None = Field(
+        default=None, min_length=1,
+        description="Colours to keep, as \"#RRGGBB\" from the design's detected colours; the others are left "
+                    "out. Omit to keep them all.",
+    )
 
 
 class PreviewRequest(DesignSettings):
@@ -48,6 +53,7 @@ class TraceColumn(BaseModel):
     edit_points: list[list[float]] = Field(description="Points along the centerline the user can move, mm")
     label: list[float] = Field(description="Where to draw the column number, mm")
     shape: int | None = Field(default=None, description="Number of the design shape this column belongs to")
+    colour: int | None = Field(default=None, description="Number of the colour layer this column belongs to")
 
 
 class JobsHealth(BaseModel):
@@ -55,8 +61,33 @@ class JobsHealth(BaseModel):
     workers: int = Field(description="Workers listening on the queue; 0 means jobs wait in the queue")
 
 
+class ThreadPlaceholder(BaseModel):
+    """Thread names and codes are not chosen yet. This is a labelled placeholder, never a real code."""
+    name: str = Field(description='Always "[Thread name]" for now')
+    code: str = Field(description='Always "[Thread code]" for now')
+    placeholder: Literal[True] = True
+
+
+class ColourLayerOut(BaseModel):
+    number: int = Field(description="1-based, in sewing order (largest total area first)")
+    hex: str = Field(description="The image's own colour for this layer, #RRGGBB")
+    shape_count: int
+    area_mm2: float
+    stitch_count: int | None = Field(default=None, description="Stitches in this colour (preview only)")
+    thread: ThreadPlaceholder
+
+
+class DetectedColour(BaseModel):
+    """A colour found in the uploaded image (the background is not listed)."""
+    hex: str = Field(description="#RRGGBB, the mean of the image's own pixels of this colour")
+    share: float = Field(description="Fraction of the logo's pixels (all detected colours) in this colour, 0..1")
+    shape_count: int = Field(description="Shapes of this colour after speck removal")
+    bounds_px: list[int] = Field(description="[min x, min y, max x, max y] of its shapes, image pixels")
+
+
 class DesignShape(BaseModel):
-    number: int = Field(description="1-based, in the order the shapes were found")
+    number: int = Field(description="1-based over the whole design, in sewing order")
+    colour: int = Field(description="Number of its colour layer")
     kind: Literal["fill", "satin"] = Field(description="How the shape is sewn: wide shapes fill, narrow ones satin")
     max_width_mm: float
     area_mm2: float
@@ -66,10 +97,13 @@ class DesignShape(BaseModel):
 
 class DesignShapes(BaseModel):
     id: str
+    colours: list[ColourLayerOut]
     shapes: list[DesignShape]
     bounds_mm: list[float]
     width_mm: float
     height_mm: float
+    shapes_found: int = Field(description="Shapes traced before speck removal")
+    specks_removed: int = Field(description="Shapes dropped as specks (smaller than input.min_shape_area_mm2)")
 
 
 class TraceResult(BaseModel):
@@ -114,7 +148,7 @@ class ClientConfig(BaseModel):
 
 
 class QualityWarningOut(BaseModel):
-    code: Literal["too_small", "low_contrast", "blurry_edges"]
+    code: Literal["too_small", "low_contrast", "blurry_edges", "many_specks"]
     message: str
     value: float
     threshold: float
@@ -139,6 +173,10 @@ class DigitizeReport(BaseModel):
     junction_patches: int
     skipped_rungs: int
     trimmed_rungs: int
+    colour_changes: int = 0
+    shapes_found: int = 0
+    specks_removed: int = 0
+    holes_filled: int = 0
 
 
 class DesignRecord(BaseModel):
@@ -151,6 +189,9 @@ class DesignRecord(BaseModel):
     height_px: int | None
     logo_width_px: int | None = None  # bounding box of the logo itself, None if none was found
     logo_height_px: int | None = None
+    colours: list[DetectedColour] = []  # detected thread colours (background removed), largest area first
+    background: str | None = None  # "#RRGGBB" of the removed background; None if transparent or unknown
+    specks_removed: int = 0
     settings: DesignSettings
     warnings: list[QualityWarningOut]
     status: Literal["uploaded", "digitized"]
@@ -168,6 +209,9 @@ class DesignCreated(BaseModel):
     height_px: int | None
     logo_width_px: int | None = Field(description="Logo bounding box; design height = width_mm x logo_height/logo_width")
     logo_height_px: int | None
+    colours: list[DetectedColour] = Field(description="Colours found (background removed), largest area first")
+    background: str | None = Field(description="Removed background colour; None if it was transparent")
+    specks_removed: int = Field(description="Shapes dropped as specks at the upload's design width")
     warnings: list[QualityWarningOut]
 
 
@@ -182,6 +226,7 @@ class Layer(BaseModel):
     number: int = Field(description="1-based, in sewing order")
     type: Literal["fill", "satin", "junction patch"]
     stitch_count: int
+    colour: int = Field(description="Number of the colour layer it belongs to")
 
 
 class SettingsUsed(BaseModel):
@@ -194,6 +239,7 @@ class PreviewResponse(BaseModel):
     stats: StitchStats
     report: DigitizeReport
     settings_used: SettingsUsed
+    colours: list[ColourLayerOut] = Field(description="Colour layers in sewing order, one colour change between each")
     layers: list[Layer]
     warnings: list[QualityWarningOut]
     stitches: list[StitchPoint] = Field(description="Every needle command in the DST, in sewing order.")

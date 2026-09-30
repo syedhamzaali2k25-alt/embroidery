@@ -1,18 +1,22 @@
-"""Single-colour logo image -> fill + satin DST and a preview PNG.
+"""Logo image -> multi-colour fill + satin DST, a preview PNG and a report.
 
 Pipeline:
-  1. load, threshold to black/white (Otsu, or the alpha channel if present), remove specks
-  2. trace contours with OpenCV -> shapely polygons with holes
-  3. scale to the design width (so all stitch spacing is in real millimetres)
+  1. quantize to a few flat colours in Lab and remove the background (digitizer.colours)
+  2. trace each colour's pixels with OpenCV -> shapely polygons with holes
+  3. scale to the design width (so all stitch spacing is in real millimetres); drop specks
+     smaller than input.min_shape_area_mm2 and fill holes smaller than that
   4. classify each polygon by its widest point: wider than satin.max_width_mm -> fill, else satin
+     (steps 1-4 are trace_design(), shared by every caller)
   5. fill: parallel scanlines at the configured angle and row spacing, zigzag row order
      satin: skeleton centerline -> rungs perpendicular to it -> underlay (edge walk, zigzag)
      then satin from edge to edge, widened by pull compensation
-  6. order all pieces greedily to avoid jumps (short in-shape moves are sewn, others jump)
+  6. sew colour by colour, largest total area first (see trace_design); within a colour, order
+     pieces greedily to avoid jumps (short in-shape moves are sewn, others jump); between
+     colours: trim, colour change, jump
   7. split stitches longer than the max length, write DST with pyembroidery
   8. read the DST back, check it matches what was written, render the preview from it
 
-All numbers come from digitizer.config. No lock stitches, fill underlay or colours yet.
+All numbers come from digitizer.config. No lock stitches or fill underlay yet.
 """
 
 from __future__ import annotations
@@ -31,51 +35,11 @@ from shapely import affinity
 from shapely.geometry import LineString, MultiPolygon, Point, Polygon
 from shapely.ops import unary_union
 
-from digitizer import satin
+from digitizer import colours, satin
 from digitizer.config import Config, load_config, load_test_run_config
 from digitizer.readback import DstStats, dst_stats, render_preview, stitch_points
 
 UNITS_PER_MM = 10  # pyembroidery / DST coordinates are in 0.1 mm; a unit conversion, not a setting.
-
-
-# ---------- 1. image -> clean binary mask ----------
-
-def load_mask(path: str | Path, min_speck_area_px: int) -> np.ndarray:
-    """Return a uint8 mask, 255 = logo, 0 = background."""
-    image = cv2.imread(str(path), cv2.IMREAD_UNCHANGED)
-    if image is None:
-        raise ValueError(f"could not read image {path} (PNG and JPG are supported)")
-
-    if image.ndim == 3 and image.shape[2] == 4 and image[:, :, 3].min() < 255:
-        # Transparent PNG: the alpha channel is the logo.
-        _, mask = cv2.threshold(image[:, :, 3], 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    else:
-        gray = image if image.ndim == 2 else cv2.cvtColor(image[:, :, :3], cv2.COLOR_BGR2GRAY)
-        # Dark logo on a light background.
-        _, mask = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
-
-    mask = _drop_small_components(mask, min_speck_area_px)  # specks of ink
-    mask = 255 - _drop_small_components(255 - mask, min_speck_area_px)  # pinholes in the logo
-    if not mask.any():
-        raise ValueError("no logo found after thresholding and speck removal")
-    return mask
-
-
-def logo_bounds(path: str | Path, min_speck_area_px: int) -> tuple[int, int] | None:
-    """Width and height (px) of the logo's bounding box after thresholding, or None if no logo."""
-    try:
-        mask = load_mask(path, min_speck_area_px)
-    except ValueError:
-        return None
-    _, _, w, h = cv2.boundingRect(mask)
-    return w, h
-
-
-def _drop_small_components(mask: np.ndarray, min_area: int) -> np.ndarray:
-    count, labels, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
-    keep = np.zeros(count, dtype=bool)
-    keep[1:] = stats[1:, cv2.CC_STAT_AREA] >= min_area
-    return np.where(keep[labels], 255, 0).astype(np.uint8)
 
 
 # ---------- 2. mask -> polygons with holes ----------
@@ -132,6 +96,116 @@ def scale_to_width(polygons: list[Polygon], width_mm: float) -> tuple[list[Polyg
     return [tf.geom(p) for p in polygons], tf
 
 
+# ---------- 1-4. image -> colour layers of classified shapes (shared by every caller) ----------
+
+@dataclass
+class Shape:
+    number: int  # 1-based over the whole design, in sewing order
+    colour: int  # number of its colour layer (1-based, sewing order)
+    poly_px: Polygon  # in image pixels
+    poly: Polygon  # in mm, design coordinates
+    kind: str = ""  # "fill" or "satin"; "" when the caller did not ask for classification
+    max_width_mm: float = 0.0  # widest point (largest circle that fits inside)
+
+
+@dataclass
+class ColourLayer:
+    number: int  # 1-based, sewing order
+    colour: colours.Colour
+    shapes: list[Shape]
+
+    @property
+    def hex(self) -> str:
+        return self.colour.hex
+
+
+@dataclass
+class Traced:
+    layers: list[ColourLayer]  # in sewing order
+    tf: PxToMm
+    image_shape: tuple[int, int]
+    palette: list[colours.Colour]  # every colour found (background excluded), kept or not
+    background: str | None  # removed background colour, None if it was transparency
+    shapes_found: int  # shapes traced in the kept colours, before speck removal
+    specks_removed: int  # shapes dropped as specks (smaller than input.min_shape_area_mm2)
+    holes_filled: int  # holes filled because they were smaller than input.min_shape_area_mm2
+
+    @property
+    def shapes(self) -> list[Shape]:
+        return [shape for layer in self.layers for shape in layer.shapes]
+
+    @property
+    def bounds_mm(self) -> tuple[float, float, float, float]:
+        return unary_union([s.poly for s in self.shapes]).bounds
+
+
+def trace_design(image_path: str | Path, config: Config, width_mm: float | None = None,
+                 keep_colours: list[str] | None = None, classify: bool = True) -> Traced:
+    """The one place an image becomes colour layers of shapes. The CLI, the API's upload check,
+    preview and shapes endpoints, and the editor's trace job all go through here, so they always
+    agree on colours, shapes and order.
+
+    1. Quantize to at most colour.max_colours flat colours and remove the background
+       (digitizer.colours). keep_colours ("#RRGGBB" values from the palette) leaves the other
+       colours out; None keeps them all.
+    2. Trace each kept colour's pixels into polygons with holes.
+    3. Scale to the design width. Speck removal: shapes smaller than input.min_shape_area_mm2
+       are dropped and smaller holes are filled (judged at the scale of everything traced), then
+       the kept shapes are scaled to the width.
+    4. Classify each shape fill or satin by its widest point (satin.max_width_mm).
+
+    Sewing order (the one rule): colour layers are sewn largest total shape area first, smallest
+    last, so big areas go down first and small details are sewn on top; equal areas keep palette
+    order. Within a layer, shapes keep the order they were traced in.
+    """
+    q = colours.quantize(colours.read_image(image_path), config)
+    chosen = q.colours
+    if keep_colours is not None:
+        wanted = {c.upper() for c in keep_colours}
+        chosen = [c for c in q.colours if c.hex in wanted]
+        if not chosen:
+            raise ValueError("none of the chosen colours are in this image")
+    traced = [(c, mask_to_polygons(np.where(q.labels == c.index, 255, 0).astype(np.uint8))) for c in chosen]
+    found = sum(len(polys) for _, polys in traced)
+    if not found:
+        raise ValueError("no logo found after removing the background")
+
+    width = width_mm or config.get("design.width_mm")
+    _, tf_all = scale_to_width([p for _, polys in traced for p in polys], width)
+    min_area_px = config.get("input.min_shape_area_mm2") / tf_all.mm_per_px ** 2
+    holes_filled = 0
+    cleaned = []
+    for colour, polys in traced:
+        kept = []
+        for p in polys:
+            if p.area < min_area_px:
+                continue
+            holes = [h for h in p.interiors if Polygon(h).area >= min_area_px]
+            holes_filled += len(p.interiors) - len(holes)
+            kept.append(Polygon(p.exterior, holes) if len(holes) != len(p.interiors) else p)
+        if kept:
+            cleaned.append((colour, kept))
+    kept_count = sum(len(polys) for _, polys in cleaned)
+    if not kept_count:
+        raise ValueError("only specks found: every shape is smaller than the minimum shape area")
+
+    cleaned.sort(key=lambda item: (-sum(p.area for p in item[1]), item[0].index))
+    _, tf = scale_to_width([p for _, polys in cleaned for p in polys], width)
+    max_width = config.get("satin.max_width_mm") if classify else None
+    layers, number = [], 0
+    for layer_number, (colour, polys) in enumerate(cleaned, start=1):
+        shapes = []
+        for p in polys:
+            number += 1
+            shape = Shape(number, layer_number, p, tf.geom(p))
+            if classify:
+                shape.kind, _mask, dist = classify_shape(p, q.shape, tf, max_width)
+                shape.max_width_mm = shape_max_width_mm(dist, tf)
+            shapes.append(shape)
+        layers.append(ColourLayer(layer_number, colour, shapes))
+    return Traced(layers, tf, q.shape, q.colours, q.background, found, found - kept_count, holes_filled)
+
+
 # ---------- 5a. fill rows ----------
 
 @dataclass
@@ -163,7 +237,7 @@ def fill_rows(polygon: Polygon, angle_deg: float, spacing_mm: float, min_len_mm:
 
 @dataclass
 class Move:
-    kind: str  # "stitch" or "jump"
+    kind: str  # "stitch", "jump", or "change" (trim, then change to the next thread colour)
     to: tuple[float, float]
     role: str = ""  # fill, patch, travel, underlay, satin
     piece: int = 0  # satin column number (1-based, sewing order); 0 for fill/travel
@@ -233,7 +307,7 @@ class Piece:
     rows: list[Row] = field(default_factory=list)
     column: satin.Column | None = None
     patch: bool = False  # a fill patch where satin columns meet or leave a gap
-    shape: int = 0  # index of the traced shape (polygon) this piece came from
+    shape: int = 0  # number of the Shape this piece came from
 
 
 @dataclass
@@ -260,22 +334,25 @@ def shape_max_width_mm(dist: np.ndarray, tf: PxToMm) -> float:
     return satin.max_width_px(dist) * tf.mm_per_px
 
 
-def build_pieces(mask: np.ndarray, polygons_px: list[Polygon], polygons: list[Polygon], tf: PxToMm,
-                 config: Config, on_shape_done: Callable[[int, int], None] | None = None) -> Pieces:
-    """on_shape_done(done, total) is called after each shape, for progress reporting."""
+def build_pieces(shapes: list[Shape], image_shape: tuple[int, int], tf: PxToMm, config: Config,
+                 on_shape_done: Callable[[int, int], None] | None = None) -> Pieces:
+    """Stitch pieces for classified shapes (from trace_design). on_shape_done(done, total) is
+    called before each shape, for progress reporting."""
     max_width = config.get("satin.max_width_mm")
     min_len = config.get("stitch.min_stitch_length_mm")
     tolerance = tf.mm_per_px  # traced outlines are pixel staircases: allow one source pixel
     result = Pieces([])
     pieces = result.pieces
-    for shape_index, (poly_px, poly) in enumerate(zip(polygons_px, polygons)):
+    for done, shape in enumerate(shapes):
         if on_shape_done:
-            on_shape_done(shape_index, len(polygons))
-        kind, shape_mask, dist = classify_shape(poly_px, mask.shape, tf, max_width)
+            on_shape_done(done, len(shapes))
+        poly, shape_number = shape.poly, shape.number
         area = poly.buffer(tolerance)
-        if kind == "fill":
-            pieces.append(Piece("fill", area, poly, rows=_rows(poly, config), shape=shape_index))
+        if shape.kind == "fill":
+            pieces.append(Piece("fill", area, poly, rows=_rows(poly, config), shape=shape_number))
             continue
+        shape_mask = satin.polygon_mask(shape.poly_px, image_shape)
+        dist = satin.distance_map(shape_mask)
 
         def radius_mm(p, dist=dist):
             x, y = tf.to_px(p)
@@ -322,7 +399,7 @@ def build_pieces(mask: np.ndarray, polygons_px: list[Polygon], polygons: list[Po
             result.trimmed_rungs += dropped
             for column in split:
                 cover = satin.coverage(column)
-                pieces.append(Piece("satin", area, cover, column=column, shape=shape_index))
+                pieces.append(Piece("satin", area, cover, column=column, shape=shape_number))
                 covered = unary_union([covered, cover])
 
         # Whatever the columns leave uncovered (junctions, skipped stations) becomes fill,
@@ -332,7 +409,7 @@ def build_pieces(mask: np.ndarray, polygons_px: list[Polygon], polygons: list[Po
             rows = _rows(gap, config)
             if rows:
                 pieces.append(Piece("fill", gap.buffer(tolerance), gap, rows=rows, patch=not covered.is_empty,
-                                    shape=shape_index))
+                                    shape=shape_number))
     return result
 
 
@@ -367,14 +444,18 @@ class Plan:
 
 
 def plan_pieces(pieces: list[Piece], logo: Polygon, settings: satin.SatinSettings, jump_threshold_mm: float,
-                tolerance_mm: float) -> Plan:
+                tolerance_mm: float, start_pos=None, first_number: int = 1, source_offset: int = 0) -> Plan:
     """Greedy: from the needle position take the piece whose entry point is nearest, preferring
     entries reachable by a short stitch that stays inside the logo and does not run over
-    stitching that is already sewn (it would show on top); otherwise jump."""
+    stitching that is already sewn (it would show on top); otherwise jump.
+
+    For a new colour layer, start_pos is where the previous colour ended: the first piece is
+    the nearest one and is always reached by a jump (the thread has just been changed).
+    Satin columns are numbered from first_number; Move.source is source_offset + piece index."""
     remaining = list(range(len(pieces)))
     moves: list[Move] = []
     labels: dict[int, tuple[float, float]] = {}
-    pos = None
+    pos = start_pos
     sewn_area = Polygon()  # shrunk by the tolerance so a travel may start on a sewn edge
 
     def travel_ok(a, b) -> bool:
@@ -395,6 +476,9 @@ def plan_pieces(pieces: list[Piece], logo: Polygon, settings: satin.SatinSetting
         if pos is None:
             choice = min(options, key=lambda o: (o[1][1], o[1][0]))
             sewn = False
+        elif not moves:  # first piece of a new colour: nearest, jumped to
+            choice = min(options, key=lambda o: _dist(pos, o[1]))
+            sewn = False
         else:
             reachable = [o for o in options if travel_ok(pos, o[1])]
             choice = min(reachable or options, key=lambda o: _dist(pos, o[1]))
@@ -404,13 +488,15 @@ def plan_pieces(pieces: list[Piece], logo: Polygon, settings: satin.SatinSetting
         piece = pieces[i]
         if piece.kind == "fill":
             role = "patch" if piece.patch else "fill"
-            piece_moves = [Move(m.kind, m.to, role, 0, i) for m in order_rows(piece.rows, piece.area, jump_threshold_mm, pos)]
-            piece_moves[0] = Move("stitch" if sewn else "jump", piece_moves[0].to, "travel" if sewn else "", 0, i)
+            src = source_offset + i
+            piece_moves = [Move(m.kind, m.to, role, 0, src) for m in order_rows(piece.rows, piece.area, jump_threshold_mm, pos)]
+            piece_moves[0] = Move("stitch" if sewn else "jump", piece_moves[0].to, "travel" if sewn else "", 0, src)
         else:
-            number = len(labels) + 1
+            src = source_offset + i
+            number = first_number + len(labels)
             labels[number] = satin.label_point(piece.column).coords[0]
-            piece_moves = [Move("stitch", p, role, number, i) for p, role in seq]
-            piece_moves[0] = Move("stitch" if sewn else "jump", entry, "travel" if sewn else "", number, i)
+            piece_moves = [Move("stitch", p, role, number, src) for p, role in seq]
+            piece_moves[0] = Move("stitch" if sewn else "jump", entry, "travel" if sewn else "", number, src)
         moves.extend(piece_moves)
         pos = moves[-1].to
         sewn_area = unary_union([sewn_area, piece.cover.buffer(-tolerance_mm)])
@@ -427,25 +513,44 @@ class Built:
     jumps: int  # needle-up moves after the first positioning move
     trims: int
     sources: list[int] = field(default_factory=list)  # piece index per STITCH record
+    colour_changes: int = 0
 
 
-def build_pattern(moves: list[Move], max_stitch_mm: float, trim_threshold_mm: float) -> Built:
+def build_pattern(moves: list[Move], max_stitch_mm: float, trim_threshold_mm: float,
+                  thread_colours: list[str] | None = None) -> Built:
+    """A "change" move becomes TRIM + COLOR_CHANGE; the jump after it gets no second trim.
+    thread_colours ("#RRGGBB", one per colour layer) are stored as the pattern's threads; DST
+    itself has no colours, only the colour-change stops."""
     # The file stores whole 0.1 mm units; rounding both ends can lengthen a stitch by up to
     # one unit diagonal, so split against the limit minus that amount.
     split_at = max_stitch_mm - math.sqrt(2) / UNITS_PER_MM
     built = Built(pyembroidery.EmbPattern(), [], [], 0, 0)
+    for hex_colour in thread_colours or []:
+        thread = pyembroidery.EmbThread()
+        thread.set_hex_color(hex_colour)
+        built.pattern.add_thread(thread)
     pos, last = None, None
+    just_changed = False
     for move in moves:
+        if move.kind == "change":
+            built.pattern.add_command(pyembroidery.TRIM)
+            built.trims += 1
+            built.pattern.add_command(pyembroidery.COLOR_CHANGE)
+            built.colour_changes += 1
+            just_changed = True
+            continue
         if move.kind == "jump":
             if pos is not None:
                 built.jumps += 1
-                if _dist(pos, move.to) > trim_threshold_mm:
+                if _dist(pos, move.to) > trim_threshold_mm and not just_changed:
                     built.pattern.add_command(pyembroidery.TRIM)
                     built.trims += 1
             last = _units(move.to)
             built.pattern.add_stitch_absolute(pyembroidery.JUMP, *last)
             pos = move.to
+            just_changed = False
             continue
+        just_changed = False
         for point in _split(pos, move.to, split_at):
             q = _units(point)
             if q == last:
@@ -475,6 +580,14 @@ def _units(point_mm) -> tuple[int, int]:
 # ---------- entry point ----------
 
 @dataclass(frozen=True)
+class ColourSummary:
+    hex: str  # the image's own colour, "#RRGGBB"
+    shapes: int
+    stitches: int
+    area_mm2: float
+
+
+@dataclass(frozen=True)
 class Result:
     stats: DstStats  # read back from the DST
     jumps: int  # needle-up moves between pieces or rows (not counting the first move to the start)
@@ -484,12 +597,21 @@ class Result:
     junction_patches: int  # fill patches where satin columns meet or leave a gap
     skipped_rungs: int  # satin stations with no sensible edge-to-edge line
     trimmed_rungs: int  # rungs removed at junctions or where columns would overlap
-    # Layers are the pieces in sewing order: (type, stitch count), type is fill/satin/junction patch.
-    layers: tuple[tuple[str, int], ...] = ()
+    # Layers are the pieces in sewing order: (type, stitch count, colour layer number),
+    # type is fill/satin/junction patch.
+    layers: tuple[tuple[str, int, int], ...] = ()
     stitch_layers: tuple[int, ...] = ()  # 1-based layer number for every STITCH record in the file
+    colours: tuple[ColourSummary, ...] = ()  # colour layers in sewing order
+    shapes_found: int = 0  # shapes traced before speck removal
+    specks_removed: int = 0  # shapes dropped as specks
+    holes_filled: int = 0  # holes smaller than the minimum shape area, filled
 
     def summary(self) -> str:
-        return (f"{self.stats.summary()}\n  pieces: {self.fill_areas} fill, {self.satin_columns} satin columns, "
+        colours = ", ".join(f"{c.hex} ({c.shapes} shapes, {c.stitches} stitches)" for c in self.colours)
+        return (f"{self.stats.summary()}\n  colours in sewing order: {colours}\n"
+                f"  shapes: {self.shapes_found} traced, {self.specks_removed} specks removed, "
+                f"{self.shapes_found - self.specks_removed} kept; {self.holes_filled} small holes filled\n"
+                f"  pieces: {self.fill_areas} fill, {self.satin_columns} satin columns, "
                 f"{self.junction_patches} junction patches; jumps={self.jumps} trims={self.trims}; "
                 f"skipped_rungs={self.skipped_rungs} trimmed_rungs={self.trimmed_rungs}")
 
@@ -498,113 +620,165 @@ class Result:
             "jumps": self.jumps, "trims": self.trims, "fill_areas": self.fill_areas,
             "satin_columns": self.satin_columns, "junction_patches": self.junction_patches,
             "skipped_rungs": self.skipped_rungs, "trimmed_rungs": self.trimmed_rungs,
+            "colour_changes": max(len(self.colours) - 1, 0),
+            "shapes_found": self.shapes_found, "specks_removed": self.specks_removed,
+            "holes_filled": self.holes_filled,
         }
 
 
 def digitize(image_path: str | Path, out_dir: str | Path, config: Config | None = None,
-             width_mm: float | None = None) -> Result:
-    """Write out.dst and preview.png into out_dir. width_mm overrides design.width_mm for this job."""
+             width_mm: float | None = None, keep_colours: list[str] | None = None) -> Result:
+    """Write out.dst, preview.png and report.json into out_dir. width_mm overrides design.width_mm
+    for this job; keep_colours ("#RRGGBB") leaves the other detected colours out."""
     config = config or load_config()
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    mask = load_mask(image_path, config.get("image.min_speck_area_px"))
-    polygons_px = mask_to_polygons(mask)
-    polygons, tf = scale_to_width(polygons_px, width_mm or config.get("design.width_mm"))
-    built_pieces = build_pieces(mask, polygons_px, polygons, tf, config)
-    pieces = built_pieces.pieces
+    traced = trace_design(image_path, config, width_mm, keep_colours)
+    tf = traced.tf
+    settings = satin_settings(config)
+    pieces: list[Piece] = []
+    piece_colour: list[int] = []  # colour layer number per piece
+    moves: list[Move] = []
+    labels: dict[int, tuple[float, float]] = {}
+    skipped = trimmed = patches = 0
+    for layer in traced.layers:
+        built_pieces = build_pieces(layer.shapes, traced.image_shape, tf, config)
+        skipped += built_pieces.skipped_rungs
+        trimmed += built_pieces.trimmed_rungs
+        patches += built_pieces.patches
+        # Travel stitches must stay inside this colour's own shapes (anything else would show).
+        logo = unary_union([s.poly for s in layer.shapes]).buffer(tf.mm_per_px)
+        start = moves[-1].to if moves else None
+        if moves:
+            moves.append(Move("change", start))
+        plan = plan_pieces(built_pieces.pieces, logo, settings, config.get("stitch.jump_threshold_mm"), tf.mm_per_px,
+                           start_pos=start, first_number=len(labels) + 1, source_offset=len(pieces))
+        moves.extend(plan.moves)
+        labels.update(plan.satin_labels)
+        pieces.extend(built_pieces.pieces)
+        piece_colour.extend([layer.number] * len(built_pieces.pieces))
 
-    logo = unary_union(polygons).buffer(tf.mm_per_px)
-    plan = plan_pieces(pieces, logo, satin_settings(config), config.get("stitch.jump_threshold_mm"), tf.mm_per_px)
-    built = build_pattern(plan.moves, config.get("stitch.max_stitch_length_mm"), config.get("stitch.trim_threshold_mm"))
-
+    built = build_pattern(moves, config.get("stitch.max_stitch_length_mm"), config.get("stitch.trim_threshold_mm"),
+                          [layer.hex for layer in traced.layers])
     dst_path = out_dir / "out.dst"
     pyembroidery.write_dst(built.pattern, str(dst_path))
     if stitch_points(dst_path) != built.stitches:
         raise RuntimeError("DST read back from disk does not match the stitches that were written")
+    hex_of = {layer.number: layer.hex for layer in traced.layers}
     render_preview(dst_path, out_dir / "preview.png", config, built.labels,
-                   {n: _units(p) for n, p in plan.satin_labels.items()})
+                   {n: _units(p) for n, p in sorted(labels.items())},
+                   [hex_of[piece_colour[s]] for s in built.sources])
     layer_of: dict[int, int] = {}
     for source in built.sources:  # number pieces in the order they are sewn
         layer_of.setdefault(source, len(layer_of) + 1)
     counts = {n: 0 for n in layer_of.values()}
     for source in built.sources:
         counts[layer_of[source]] += 1
-    kinds = {n: _layer_type(pieces[s]) for s, n in layer_of.items()}
+    kinds = {n: (_layer_type(pieces[s]), piece_colour[s]) for s, n in layer_of.items()}
+    colour_stitches = {layer.number: 0 for layer in traced.layers}
+    for source in built.sources:
+        colour_stitches[piece_colour[source]] += 1
     result = Result(dst_stats(dst_path), built.jumps, built.trims,
                     sum(p.kind == "fill" and not p.patch for p in pieces), sum(p.kind == "satin" for p in pieces),
-                    built_pieces.patches, built_pieces.skipped_rungs, built_pieces.trimmed_rungs,
-                    tuple((kinds[n], counts[n]) for n in sorted(counts)),
-                    tuple(layer_of[s] for s in built.sources))
+                    patches, skipped, trimmed,
+                    tuple((kinds[n][0], counts[n], kinds[n][1]) for n in sorted(counts)),
+                    tuple(layer_of[s] for s in built.sources),
+                    tuple(ColourSummary(layer.hex, len(layer.shapes), colour_stitches[layer.number],
+                                        sum(s.poly.area for s in layer.shapes)) for layer in traced.layers),
+                    traced.shapes_found, traced.specks_removed, traced.holes_filled)
     # The DST format has no room for these; keep them next to it for the readback report.
     (out_dir / "report.json").write_text(json.dumps(result.to_json(), indent=2) + "\n")
     return result
 
 
 def trace_columns(image_path: str | Path, config: Config, width_mm: float | None = None,
-                  on_progress: Callable[[float], None] | None = None) -> dict:
+                  on_progress: Callable[[float], None] | None = None,
+                  keep_colours: list[str] | None = None) -> dict:
     """Satin columns for the editor: each column's two edges and a few edit points along its
     centerline, in mm (same coordinates as the DST). on_progress gets 0..1 as shapes are done."""
     report = on_progress or (lambda _f: None)
     report(0.0)
-    mask = load_mask(image_path, config.get("image.min_speck_area_px"))
-    polygons_px = mask_to_polygons(mask)
-    polygons, tf = scale_to_width(polygons_px, width_mm or config.get("design.width_mm"))
+    traced = trace_design(image_path, config, width_mm, keep_colours)
     report(0.1)
-    built = build_pieces(mask, polygons_px, polygons, tf, config,
-                         on_shape_done=lambda done, total: report(0.1 + 0.85 * done / max(total, 1)))
+    total = max(len(traced.shapes), 1)
     tolerance = config.get("editor.edit_point_tolerance_mm")
     columns = []
-    for piece in built.pieces:
-        if piece.kind != "satin":
-            continue
-        column = piece.column
-        edit = column.centerline.simplify(tolerance)
-        columns.append({
-            "number": len(columns) + 1,
-            "left": [list(r.edge_left) for r in column.rungs],
-            "right": [list(r.edge_right) for r in column.rungs],
-            "edit_points": [list(p) for p in edit.coords],
-            "label": list(satin.label_point(column).coords[0]),
-            "shape": piece.shape + 1,
-        })
-    min_x, min_y, max_x, max_y = unary_union(polygons).bounds
+    fill_shapes = patches = done = 0
+    for layer in traced.layers:
+        built = build_pieces(layer.shapes, traced.image_shape, traced.tf, config,
+                             on_shape_done=lambda d, _t, base=done: report(0.1 + 0.85 * (base + d) / total))
+        done += len(layer.shapes)
+        fill_shapes += sum(p.kind == "fill" and not p.patch for p in built.pieces)
+        patches += built.patches
+        for piece in built.pieces:
+            if piece.kind != "satin":
+                continue
+            column = piece.column
+            edit = column.centerline.simplify(tolerance)
+            columns.append({
+                "number": len(columns) + 1,
+                "left": [list(r.edge_left) for r in column.rungs],
+                "right": [list(r.edge_right) for r in column.rungs],
+                "edit_points": [list(p) for p in edit.coords],
+                "label": list(satin.label_point(column).coords[0]),
+                "shape": piece.shape,
+                "colour": layer.number,
+            })
+    min_x, min_y, max_x, max_y = traced.bounds_mm
     report(1.0)
     return {
         "columns": columns,
-        "fill_shapes": sum(p.kind == "fill" and not p.patch for p in built.pieces),
-        "junction_patches": built.patches,
+        "fill_shapes": fill_shapes,
+        "junction_patches": patches,
         "bounds_mm": [min_x, min_y, max_x, max_y],
         "width_mm": max_x - min_x,
     }
 
 
-def design_shapes(image_path: str | Path, config: Config, width_mm: float | None = None) -> dict:
+def thread_placeholder() -> dict:
+    """Thread names and codes are not chosen yet: a labelled placeholder, never an invented code."""
+    return {"name": "[Thread name]", "code": "[Thread code]", "placeholder": True}
+
+
+def colour_layers_json(traced: Traced) -> list[dict]:
+    return [{
+        "number": layer.number,
+        "hex": layer.hex,
+        "shape_count": len(layer.shapes),
+        "area_mm2": sum(s.poly.area for s in layer.shapes),
+        "thread": thread_placeholder(),
+    } for layer in traced.layers]
+
+
+def design_shapes(image_path: str | Path, config: Config, width_mm: float | None = None,
+                  keep_colours: list[str] | None = None) -> dict:
     """The design's traced shapes for the editor canvas and Layers list, in mm (the same
-    coordinates as the DST and trace_columns). Each shape says whether it will be sewn as
-    fill or satin. Outlines are simplified by one source pixel, which is invisible on screen."""
-    mask = load_mask(image_path, config.get("image.min_speck_area_px"))
-    polygons_px = mask_to_polygons(mask)
-    polygons, tf = scale_to_width(polygons_px, width_mm or config.get("design.width_mm"))
-    max_width = config.get("satin.max_width_mm")
+    coordinates as the DST and trace_columns), grouped into colour layers in sewing order. Each
+    shape says whether it will be sewn as fill or satin. Outlines are simplified by one source
+    pixel, which is invisible on screen."""
+    traced = trace_design(image_path, config, width_mm, keep_colours)
     shapes = []
-    for index, (poly_px, poly) in enumerate(zip(polygons_px, polygons)):
-        kind, _mask, dist = classify_shape(poly_px, mask.shape, tf, max_width)
-        outline = poly.simplify(tf.mm_per_px, preserve_topology=True)
+    for shape in traced.shapes:
+        outline = shape.poly.simplify(traced.tf.mm_per_px, preserve_topology=True)
         shapes.append({
-            "number": index + 1,
-            "kind": kind,
-            "max_width_mm": shape_max_width_mm(dist, tf),
-            "area_mm2": poly.area,
-            "bounds_mm": list(poly.bounds),
+            "number": shape.number,
+            "colour": shape.colour,
+            "kind": shape.kind,
+            "max_width_mm": shape.max_width_mm,
+            "area_mm2": shape.poly.area,
+            "bounds_mm": list(shape.poly.bounds),
             "rings": [[list(p) for p in ring.coords] for ring in (outline.exterior, *outline.interiors)],
         })
-    min_x, min_y, max_x, max_y = unary_union(polygons).bounds
+    min_x, min_y, max_x, max_y = traced.bounds_mm
     return {
+        "colours": colour_layers_json(traced),
         "shapes": shapes,
         "bounds_mm": [min_x, min_y, max_x, max_y],
         "width_mm": max_x - min_x,
         "height_mm": max_y - min_y,
+        "shapes_found": traced.shapes_found,
+        "specks_removed": traced.specks_removed,
     }
 
 
@@ -613,10 +787,11 @@ def _layer_type(piece: Piece) -> str:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Digitize a single-colour logo into out.dst + preview.png")
-    parser.add_argument("image", help="PNG or JPG logo, dark on light or transparent background")
+    parser = argparse.ArgumentParser(description="Digitize a logo into out.dst + preview.png + report.json")
+    parser.add_argument("image", help="PNG or JPG logo on a plain or transparent background")
     parser.add_argument("--out", default=".", help="output folder (default: current folder)")
     parser.add_argument("--width-mm", type=float, help="design width for this job (default: design.width_mm)")
+    parser.add_argument("--colours", help="comma-separated #RRGGBB colours to keep (default: all detected)")
     parser.add_argument(
         "--test-run-values",
         action="store_true",
@@ -624,7 +799,8 @@ def main() -> None:
     )
     args = parser.parse_args()
     config = load_test_run_config() if args.test_run_values else load_config()
-    print(digitize(args.image, args.out, config, args.width_mm).summary())
+    keep = [c.strip() for c in args.colours.split(",")] if args.colours else None
+    print(digitize(args.image, args.out, config, args.width_mm, keep).summary())
 
 
 if __name__ == "__main__":

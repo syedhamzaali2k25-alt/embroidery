@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState, type CSSProperties, type Drag
 import { useNavigate } from "react-router-dom";
 
 import { api, ApiError, type ClientConfig, type DesignCreated } from "../lib/api";
-import { imageColours, type ImageColour } from "../lib/colours";
 import { FlowBar } from "../lib/FlowBar";
 import { takePendingUpload } from "../lib/pendingUpload";
 import { Icon } from "../lib/Icon";
@@ -30,7 +29,8 @@ export default function Upload() {
   const [upload, setUpload] = useState<UploadState>({ status: "empty" });
   const [over, setOver] = useState(false);
   const [width, setWidth] = useState("");
-  const [colours, setColours] = useState<ImageColour[]>([]);
+  // Detected colours the user keeps (all of them until they uncheck some).
+  const [kept, setKept] = useState<Set<string>>(new Set());
 
   const loadConfig = useCallback(() => {
     setConfig({ status: "loading" });
@@ -47,7 +47,10 @@ export default function Upload() {
   const send = useCallback((file: File, url: string) => {
     setUpload({ status: "uploading", file, url });
     api.upload(file).then(
-      (design) => setUpload({ status: "done", file, url, design }),
+      (design) => {
+        setKept(new Set(design.colours.map((c) => c.hex)));
+        setUpload({ status: "done", file, url, design });
+      },
       (err) => setUpload({ status: "error", file, url, message: message(err) }),
     );
   }, []);
@@ -56,8 +59,7 @@ export default function Upload() {
     if (!file) return;
     if (upload.status !== "empty") URL.revokeObjectURL(upload.url);
     const url = URL.createObjectURL(file);
-    setColours([]);
-    imageColours(url).then(setColours, () => setColours([]));
+    setKept(new Set());
     send(file, url);
   };
 
@@ -99,18 +101,35 @@ export default function Upload() {
   const widthMm = Number(width);
   const widthOk = width.trim() !== "" && widthMm > 0 && widthMm <= cfg.max_design_width_mm;
   const design = upload.status === "done" ? upload.design : null;
-  const height = design?.logo_width_px && design.logo_height_px && widthOk
-    ? (widthMm * design.logo_height_px) / design.logo_width_px
+  const colours = design?.colours ?? [];
+  const keptColours = colours.filter((c) => kept.has(c.hex));
+  // The design's proportions follow the colours that are kept (their shapes' bounding box).
+  const box = keptColours.length
+    ? keptColours.map((c) => c.bounds_px).reduce((a, b) => [Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.max(a[2], b[2]), Math.max(a[3], b[3])])
     : null;
+  const height = box && box[2] > box[0] && widthOk ? (widthMm * (box[3] - box[1])) / (box[2] - box[0]) : null;
   const isSvg = design?.type === "svg";
-  const canContinue = Boolean(design) && widthOk && !isSvg;
+  const coloursOk = isSvg || colours.length === 0 || keptColours.length > 0;
+  const canContinue = Boolean(design) && widthOk && !isSvg && coloursOk && colours.length > 0;
+  const toggle = (hex: string) =>
+    setKept((prev) => {
+      const next = new Set(prev);
+      if (next.has(hex)) next.delete(hex);
+      else next.add(hex);
+      return next;
+    });
+  const continueTo = () => {
+    if (!design) return;
+    const subset = keptColours.length < colours.length ? `&colours=${encodeURIComponent(keptColours.map((c) => c.hex).join(","))}` : "";
+    navigate(`/preview/${design.id}?width=${widthMm}${subset}`);
+  };
 
   return (
     <>
       <FlowBar step={1} />
       <main className="flow-main">
         <h1 className="flow-title">Upload your <span className="accent">logo</span></h1>
-        <p className="flow-lede">One logo per design. A dark logo on a plain light background, or a transparent PNG, works best.</p>
+        <p className="flow-lede">One logo per design. Flat colours on a plain background, or a transparent PNG, work best.</p>
 
         <div className="flow-upload">
           <section
@@ -181,7 +200,7 @@ export default function Upload() {
                     <li key={w.code}><span className="mark" aria-hidden="true">!</span>{w.message}</li>
                   ))}
                   {design.logo_width_px === null && (
-                    <li><span className="mark" aria-hidden="true">!</span>No logo shapes were found. Use a dark logo on a plain light background.</li>
+                    <li><span className="mark" aria-hidden="true">!</span>No logo shapes were found. Use a logo on a plain background, or a transparent PNG.</li>
                   )}
                 </ul>
               )}
@@ -193,29 +212,46 @@ export default function Upload() {
                 <span className="flow-label" id="bg-label"><strong>Remove background</strong></span>
                 <button className="flow-switch" type="button" role="switch" aria-checked="true" aria-labelledby="bg-label" disabled />
               </div>
-              <p className="flow-note">Always on for now: the light or transparent background is left out and only the logo is stitched.</p>
+              <p className="flow-note">
+                {design && !isSvg && colours.length > 0
+                  ? design.background
+                    ? <>Always on: the background colour <span className="flow-hex">{design.background}</span> touches the image's edges, so it is left out.</>
+                    : "Always on: your image's transparent background is left out."
+                  : "Always on: the colour around the edges of your image (or its transparency) is left out."}
+              </p>
 
-              <div className="flow-field" style={{ marginTop: 18 }}>
-                <span className="flow-label">Colours to keep</span>
+              <fieldset className="flow-field flow-colours" style={{ marginTop: 18 }} aria-describedby="colours-help">
+                <legend className="flow-label">Colours to keep</legend>
                 {colours.length === 0 ? (
-                  <p className="flow-field__help">{design ? "Reading colours…" : "The colours in your image appear here."}</p>
+                  <p className="flow-field__help">
+                    {upload.status === "uploading" ? "Reading colours…" : design && !isSvg ? "No colours were found." : "The colours in your image appear here."}
+                  </p>
                 ) : (
-                  <ul className="flow-swatches" aria-label="Colours found in your image">
-                    {colours.map((c) => (
-                      <li key={c.hex}>
-                        <label className="flow-swatch">
-                          <input type="checkbox" checked disabled readOnly />
-                          <span className="flow-swatch__chip" style={{ "--swatch": c.hex } as CSSProperties} aria-hidden="true" />
-                          {c.hex} · {Math.round(c.share * 100)}%
-                        </label>
-                      </li>
-                    ))}
-                  </ul>
+                  <>
+                    <p className="flow-colours__count" aria-live="polite">
+                      <strong>{keptColours.length} of {colours.length}</strong> {colours.length === 1 ? "colour" : "colours"} kept
+                    </p>
+                    <ul className="flow-swatches" aria-label="Colours found in your image">
+                      {colours.map((c) => (
+                        <li key={c.hex}>
+                          <label className="flow-swatch">
+                            <input type="checkbox" checked={kept.has(c.hex)} onChange={() => toggle(c.hex)} />
+                            <span className="flow-swatch__chip" style={{ "--swatch": c.hex } as CSSProperties} aria-hidden="true" />
+                            <span>{c.hex} · {c.share < 0.01 ? "<1" : Math.round(c.share * 100)}%</span>
+                          </label>
+                        </li>
+                      ))}
+                    </ul>
+                  </>
                 )}
-                <p className="flow-field__help">
-                  Stitchbook sews one thread colour for now, so these can't be chosen yet: the logo's shapes are stitched in a single colour.
-                </p>
-              </div>
+                {!coloursOk ? (
+                  <p className="flow-field__error" id="colours-help">Keep at least one colour.</p>
+                ) : (
+                  <p className="flow-field__help" id="colours-help">
+                    Each colour you keep is sewn as its own layer, with a thread change in between. Unchecked colours are left out.
+                  </p>
+                )}
+              </fieldset>
 
               <div className="flow-field">
                 <label htmlFor="width">Design width</label>
@@ -236,7 +272,7 @@ export default function Upload() {
               </div>
 
               <button className="btn btn--ink btn--lg flow-continue" type="button" disabled={!canContinue}
-                      onClick={() => design && navigate(`/preview/${design.id}?width=${widthMm}`)}>
+                      onClick={continueTo}>
                 Continue to preview <Icon name="i-arrow" />
               </button>
             </section>

@@ -1,9 +1,90 @@
 {
-  "id": "5b056deaf194440d80c9e8f74c28d325",
-  "type": "jpg",
-  "width_px": 900,
-  "height_px": 600,
-  "logo_width_px": 589,
-  "logo_height_px": 432,
+  "id": "5fe956e5b36c461f98f096ba36717bf9",
+  "type": "png",
+  "width_px": 800,
+  "height_px": 640,
+  "logo_width_px": 656,
+  "logo_height_px": 440,
+  "colours": [
+    {
+      "hex": "#1E3A6E",
+      "share": 0.36530229462570524,
+      "shape_count": 1,
+      "bounds_px": [
+        90,
+        142,
+        625,
+        473
+      ]
+    },
+    {
+      "hex": "#F4A261",
+      "share": 0.17490281496271423,
+      "shape_count": 1,
+      "bounds_px": [
+        322,
+        334,
+        558,
+        466
+      ]
+    },
+    {
+      "hex": "#2A9D8F",
+      "share": 0.16832297197138146,
+      "shape_count": 1,
+      "bounds_px": [
+        218,
+        247,
+        442,
+        393
+      ]
+    },
+    {
+      "hex": "#5BAA46",
+      "share": 0.134410309933294,
+      "shape_count": 3,
+      "bounds_px": [
+        111,
+        388,
+        702,
+        582
+      ]
+    },
+    {
+      "hex": "#7A4A2A",
+      "share": 0.13273131551481598,
+      "shape_count": 1,
+      "bounds_px": [
+        77,
+        449,
+        733,
+        533
+      ]
+    },
+    {
+      "hex": "#F6C90E",
+      "share": 0.020026924414999016,
+      "shape_count": 1,
+      "bounds_px": [
+        612,
+        205,
+        699,
+        262
+      ]
+    },
+    {
+      "hex": "#111111",
+      "share": 0.004303368577090045,
+      "shape_count": 1,
+      "bounds_px": [
+        550,
+        202,
+        576,
+        228
+      ]
+    }
+  ],
+  "background": "#FFFFFF",
+  "specks_removed": 0,
   "warnings": []
 }

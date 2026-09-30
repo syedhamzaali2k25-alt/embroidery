@@ -203,9 +203,17 @@ body.editor {
 .thread--green .swatch { background: var(--green); }
 /* Thread colours are not chosen yet: a dashed empty swatch and a bracketed placeholder label. */
 .thread--placeholder { cursor: default; }
-.thread--placeholder .swatch { border: 2px dashed var(--ink); }
+.thread--placeholder:not(li) .swatch { border: 2px dashed var(--ink); }
 .placeholder-text { font-style: italic; }
 .panel__note { font-size: 13px; margin-top: 8px; }
+.threads--list { list-style: none; margin: 0; padding: 0; }
+.threads--list .thread { min-height: 52px; padding: 6px 14px 6px 8px; border-radius: var(--radius-control); }
+.thread__text { display: grid; min-width: 0; }
+.thread__name { font-weight: 700; }
+.thread--placeholder .swatch { border: 1px solid var(--muted); }
+.layer-group + .layer-group { margin-top: 12px; }
+.layer-group__title { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 700; margin: 0 0 4px; }
+.layer-group__hex { font-weight: 500; }
 
 .layers { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
 .layer {
@@ -351,7 +359,7 @@ body.editor {
 
 /* ---------- The uploaded design on the canvas ---------- */
 .design-canvas__bg { fill: transparent; }
-.design-shape { fill: var(--ink); cursor: pointer; }
+.design-shape { fill: var(--ink); stroke: var(--muted); stroke-width: 0.5; cursor: pointer; } /* the outline keeps pale thread colours visible on white */
 .design-shapes.is-under .design-shape { fill: none; stroke: var(--muted); stroke-width: 1; }
 .design-shape__selected { fill: none; stroke: var(--green); stroke-width: 2; stroke-dasharray: 5 4; pointer-events: none; }
 .stage__message { display: grid; justify-items: center; gap: 12px; max-width: 360px; text-align: center; font-size: 14px; }

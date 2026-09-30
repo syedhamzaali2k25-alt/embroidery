@@ -54,6 +54,15 @@
     "issues": []
   },
   {
+    "page": "upload-colours",
+    "viewport": "desktop",
+    "fonts": {
+      "sans": true,
+      "serif": true
+    },
+    "issues": []
+  },
+  {
     "page": "upload-error",
     "viewport": "desktop",
     "fonts": {
@@ -226,6 +235,15 @@
   },
   {
     "page": "upload-checked",
+    "viewport": "phone",
+    "fonts": {
+      "sans": true,
+      "serif": true
+    },
+    "issues": []
+  },
+  {
+    "page": "upload-colours",
     "viewport": "phone",
     "fonts": {
       "sans": true,

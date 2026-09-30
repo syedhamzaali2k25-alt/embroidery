@@ -16,22 +16,26 @@ from pathlib import Path
 from typing import Annotated
 
 from digitizer.config import Config, PlaceholderValueError, load_config, load_test_run_config
-from digitizer.digitize import design_shapes, digitize, logo_bounds
+from digitizer import quality
+from digitizer.digitize import design_shapes, digitize, thread_placeholder, trace_design
 from digitizer.readback import records
 from fastapi import FastAPI, File, Form, HTTPException, Path as PathParam, Query, Request, UploadFile
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from pydantic import ValidationError
+from shapely.ops import unary_union
 
 from stitchbook_api import uploads
 from stitchbook_api.jobs import AlreadyFinished, JobNotFound, Jobs, QueueUnavailable
 from stitchbook_api.models import (
     ClientConfig,
+    ColourLayerOut,
     DesignCreated,
     DesignRecord,
     DesignSettings,
     DesignShapes,
+    DetectedColour,
     DigitizeReport,
     DownloadQuery,
     ErrorResponse,
@@ -57,6 +61,18 @@ ERRORS = {code: {"model": ErrorResponse} for code in (404, 409, 413, 415, 422, 5
 
 def _warnings(items) -> list[QualityWarningOut]:
     return [QualityWarningOut(code=w.code, message=w.message, value=w.value, threshold=w.threshold) for w in items]
+
+
+def _detected_colours(traced) -> tuple[list[DetectedColour], tuple[int, int] | None]:
+    """Detected colours (largest area first) and the logo's bounding box size in pixels."""
+    pixels = sum(layer.colour.pixels for layer in traced.layers) or 1
+    detected = []
+    for layer in traced.layers:
+        x0, y0, x1, y1 = unary_union([s.poly_px for s in layer.shapes]).bounds
+        detected.append(DetectedColour(hex=layer.hex, share=layer.colour.pixels / pixels, shape_count=len(layer.shapes),
+                                       bounds_px=[int(x0), int(y0), int(round(x1)), int(round(y1))]))
+    x0, y0, x1, y1 = unary_union([s.poly_px for s in traced.shapes]).bounds
+    return detected, (int(round(x1 - x0)), int(round(y1 - y0)))
 
 
 def _plain_validation_message(exc: RequestValidationError | ValidationError) -> str:
@@ -105,8 +121,14 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
             raise HTTPException(404, f"No design with id {design_id}. Upload the image again with POST /designs.") \
                 from None
 
-    def check_settings(s: DesignSettings) -> None:
-        """Plain messages for values outside the limits in config.py."""
+    def check_settings(s: DesignSettings, record: DesignRecord | None = None) -> None:
+        """Plain messages for values outside the limits in config.py (and colours the design lacks)."""
+        if s.colours is not None and record is not None:
+            known = {c.hex for c in record.colours}
+            unknown = [c for c in s.colours if c.upper() not in known]
+            if unknown:
+                raise HTTPException(422, f"{', '.join(unknown)} is not one of this design's colours. Choose from the "
+                                         "colours found on the upload screen.")
         if s.width_mm is not None and s.width_mm > (limit := config.get("api.max_design_width_mm")):
             raise HTTPException(422, f"Design width must be at most {limit:g} mm. Enter a smaller width.")
         if s.fill_row_spacing_mm is not None:
@@ -164,30 +186,46 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
 
         design_id = uuid.uuid4().hex
         storage.put(f"designs/{design_id}/original.{upload.type}", data)
-        bounds = None
+        detected, background, specks, bounds = [], None, 0, None
+        warnings = list(upload.warnings)
         if upload.type != "svg":
             with tempfile.TemporaryDirectory() as tmp:
                 source = Path(tmp) / f"original.{upload.type}"
                 source.write_bytes(data)
-                bounds = logo_bounds(source, config.get("image.min_speck_area_px"))
+                try:
+                    traced = trace_design(source, config, design_settings.width_mm, classify=False)
+                except ValueError:
+                    traced = None  # no logo found: the upload screen says so
+            if traced is not None:
+                detected, bounds = _detected_colours(traced)
+                known = {c.hex for c in detected}
+                if design_settings.colours and not all(c.upper() in known for c in design_settings.colours):
+                    raise HTTPException(422, "settings.colours lists a colour that is not in this image. Leave it out "
+                                             "to keep every colour, then choose colours after the upload.")
+                background, specks = traced.background, traced.specks_removed
+                if (warning := quality.speck_warning(specks, config)) is not None:
+                    warnings.append(warning)
         record = DesignRecord(
             id=design_id, filename=Path(file.filename or f"logo.{upload.type}").name, type=upload.type,
             bytes=len(data), width_px=upload.width_px, height_px=upload.height_px,
             logo_width_px=bounds[0] if bounds else None, logo_height_px=bounds[1] if bounds else None,
-            settings=design_settings,
-            warnings=_warnings(upload.warnings), status="uploaded", created_at=datetime.now(timezone.utc),
+            colours=detected, background=background, specks_removed=specks, settings=design_settings,
+            warnings=_warnings(warnings), status="uploaded", created_at=datetime.now(timezone.utc),
         )
         save_record(record)
         return DesignCreated(id=design_id, type=record.type, width_px=record.width_px, height_px=record.height_px,
                              logo_width_px=record.logo_width_px, logo_height_px=record.logo_height_px,
-                             warnings=record.warnings)
+                             colours=record.colours, background=record.background,
+                             specks_removed=record.specks_removed, warnings=record.warnings)
 
     @app.post("/designs/{design_id}/preview", response_model=PreviewResponse, responses=ERRORS)
     def preview(design_id: DesignId, body: PreviewRequest | None = None) -> PreviewResponse:
         record = load_record(design_id)
         if body is not None:
-            check_settings(body)
+            check_settings(body, record)
             changes = body.model_dump(exclude_none=True)
+            if "colours" in changes:
+                changes["colours"] = [c.upper() for c in changes["colours"]]
             record = record.model_copy(update={"settings": record.settings.model_copy(update=changes)})
         width = record.settings.width_mm or config.get("design.width_mm")
         spacing = record.settings.fill_row_spacing_mm or config.get("stitch.fill_row_spacing_mm")
@@ -205,10 +243,10 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
             source.write_bytes(storage.get(f"designs/{design_id}/original.{record.type}"))
             out = Path(tmp) / "out"
             try:
-                result = digitize(source, out, job_config, width)
+                result = digitize(source, out, job_config, width, record.settings.colours)
             except ValueError as exc:
-                raise HTTPException(422, f"This image could not be digitized ({exc}). Use a dark logo on a "
-                                         "plain light background, or a transparent PNG.") from None
+                raise HTTPException(422, f"This image could not be digitized ({exc}). Use a logo on a plain "
+                                         "background, or a transparent PNG.") from None
             for name in ("out.dst", "preview.png", "report.json"):
                 storage.put(f"designs/{design_id}/{name}", (out / name).read_bytes())
             layers_iter = iter(result.stitch_layers)
@@ -219,10 +257,13 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
         record = record.model_copy(update={"status": "digitized", "stats": stats, "report": report,
                                            "downloads": ["dst"]})
         save_record(record)
-        layers = [Layer(number=i, type=t, stitch_count=n) for i, (t, n) in enumerate(result.layers, start=1)]
+        layers = [Layer(number=i, type=t, stitch_count=n, colour=c) for i, (t, n, c) in enumerate(result.layers, start=1)]
+        colours = [ColourLayerOut(number=i, hex=c.hex, shape_count=c.shapes, area_mm2=c.area_mm2,
+                                  stitch_count=c.stitches, thread=thread_placeholder())
+                   for i, c in enumerate(result.colours, start=1)]
         return PreviewResponse(id=design_id, stats=stats, report=report,
                                settings_used=SettingsUsed(width_mm=width, fill_row_spacing_mm=spacing),
-                               layers=layers, warnings=record.warnings, stitches=stitches)
+                               colours=colours, layers=layers, warnings=record.warnings, stitches=stitches)
 
     @app.get("/designs/{design_id}/shapes", response_model=DesignShapes, responses=ERRORS)
     def shapes(design_id: DesignId) -> DesignShapes:
@@ -241,10 +282,10 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
             source = Path(tmp) / f"original.{record.type}"
             source.write_bytes(storage.get(f"designs/{design_id}/original.{record.type}"))
             try:
-                found = design_shapes(source, config, width)
+                found = design_shapes(source, config, width, record.settings.colours)
             except ValueError as exc:
-                raise HTTPException(422, f"No shapes could be traced from this image ({exc}). Use a dark logo on "
-                                         "a plain light background, or a transparent PNG.") from None
+                raise HTTPException(422, f"No shapes could be traced from this image ({exc}). Use a logo on a plain "
+                                         "background, or a transparent PNG.") from None
         return DesignShapes(id=design_id, **found)
 
     @app.get("/designs/{design_id}", response_model=DesignRecord, responses=ERRORS)
@@ -291,7 +332,7 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
         image = storage.get(f"designs/{design_id}/original.{record.type}")
         try:
             started = jobs.start_trace(
-                design_id, image, record.type, record.settings.width_mm, dict(config.overrides),
+                design_id, image, record.type, record.settings.width_mm, dict(config.overrides), record.settings.colours,
                 timeout_s=config.get("jobs.job_timeout_s"), ttl_s=config.get("jobs.result_ttl_s"),
                 retries=config.get("jobs.max_retries"),
             )

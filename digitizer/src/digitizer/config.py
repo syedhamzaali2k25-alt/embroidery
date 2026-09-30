@@ -20,10 +20,14 @@ PRODUCT: dict[str, dict[str, Any]] = {
         # Working product name. The only place it is defined for Python code.
         "name": "Stitchbook",
     },
-    "image": {
-        # Foreground blobs (and background holes) smaller than this many pixels are
-        # treated as specks and removed before contours are traced.
-        "min_speck_area_px": PLACEHOLDER,
+    "colour": {
+        # Most thread colours a design is reduced to (the background is not counted). The image is
+        # quantized to at most this many flat colours; fewer if it has fewer.
+        "max_colours": PLACEHOLDER,
+        # Two colours closer than this (CIE76 Delta E in Lab: about 1 is a just-visible step)
+        # count as the same thread colour. Also decides which pixels are "flat" (all neighbours
+        # within this distance) and therefore used to find the colours; edge blends are not.
+        "same_colour_delta_e": PLACEHOLDER,
     },
     "design": {
         # Width of the finished design; the logo is scaled so its bounding box has this width.
@@ -82,6 +86,9 @@ PRODUCT: dict[str, dict[str, Any]] = {
         "max_upload_bytes": PLACEHOLDER,
         # Largest image the API accepts: width or height above this many pixels is rejected.
         "max_image_side_px": PLACEHOLDER,
+        # Speck removal: a traced shape (of any colour) smaller than this area, at the design's
+        # size, is dropped; a hole in a shape smaller than this is filled. In square millimetres.
+        "min_shape_area_mm2": PLACEHOLDER,
     },
     "quality": {
         # Upload warnings (the upload is still accepted). Smaller long side -> "too small" warning.
@@ -92,6 +99,8 @@ PRODUCT: dict[str, dict[str, Any]] = {
         # Blurry-edges warning below this: variance of the Laplacian of the image after its grey
         # levels are stretched to 0-255 (so contrast does not count twice).
         "min_edge_sharpness": PLACEHOLDER,
+        # "Many small specks" warning when speck removal drops more than this many shapes.
+        "max_specks": PLACEHOLDER,
     },
     "api": {
         # POST /designs/{id}/preview digitizes on the spot only for images whose long side is at
@@ -129,16 +138,14 @@ PRODUCT: dict[str, dict[str, Any]] = {
         "jump_line_width_pt": 0.5,
         # Dash pattern for jumps in the preview: [dash length, gap length] in points.
         "jump_dash_pt": [2, 2],
-        # Stitch and jump line colours (ink and muted from the design system).
+        # Jump line colour, and the colour of column-number labels (ink and muted from the
+        # design system).
         "stitch_color": "#1F1F1F",
         "jump_color": "#8A8A8A",
         # Blank margin around the design, as a fraction of its larger side.
         "margin_fraction": 0.05,
-        # Satin columns are drawn in these colours in turn, and numbered in sewing order.
-        "satin_colors": ["#1B864C", "#7B4FD6", "#D9467F", "#1F77B4", "#C2410C", "#0F766E"],
-        # Fill patches built where satin columns meet (junctions) are drawn in this colour.
-        "patch_color": "#8A8A8A",
-        # Underlay is drawn in its column's colour at this opacity (0-1).
+        # Stitches are drawn in their colour layer's colour (the image's own colours).
+        # Underlay is drawn in its layer's colour at this opacity (0-1).
         "underlay_alpha": 0.35,
         # Font size of the column numbers, in points.
         "label_font_size_pt": 7,
@@ -183,7 +190,10 @@ PRODUCT: dict[str, dict[str, Any]] = {
 # exercised while the real values above are still PLACEHOLDER. Files produced with
 # these are for checking the code, not for sewing. Replace or delete once PRODUCT is filled in.
 TEST_RUN_OVERRIDES: dict[str, Any] = {
-    "image.min_speck_area_px": 20,
+    "colour.max_colours": 8,
+    "colour.same_colour_delta_e": 10,
+    "input.min_shape_area_mm2": 1.0,
+    "quality.max_specks": 10,
     "design.width_mm": 60,
     "stitch.satin_spacing_mm": 0.4,
     "stitch.underlay_spacing_mm": 2.0,

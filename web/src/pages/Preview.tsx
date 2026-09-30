@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 import { api, ApiError, type ClientConfig, type DesignSettings, type Preview as PreviewData } from "../lib/api";
@@ -32,7 +32,8 @@ export default function Preview() {
   const [config, setConfig] = useState<ClientConfig | null>(null);
   const [width, setWidth] = useState("");
   const [spacing, setSpacing] = useState("");
-  const [selected, setSelected] = useState<number | null>(null);
+  // Selected layers (a piece layer, or every layer of one colour); the rest are faded.
+  const [selected, setSelected] = useState<{ key: string; layers: Set<number> } | null>(null);
 
   const run = useCallback((settings: DesignSettings) => {
     if (!designId) return;
@@ -57,10 +58,19 @@ export default function Preview() {
   useEffect(() => {
     if (!designId) return;
     const w = Number(search.get("width"));
-    run(w > 0 ? { width_mm: w } : {});
+    const colours = search.get("colours")?.split(",").filter(Boolean);
+    run({ ...(w > 0 ? { width_mm: w } : {}), ...(colours?.length ? { colours } : {}) });
     api.design(designId).then((d) => setFilename(d.filename), () => setFilename(""));
     api.config().then(setConfig, () => setConfig(null));
   }, [designId, search, run]);
+
+  const colourOf = useMemo(() => {
+    const hexOfColour = new Map(data?.colours.map((c) => [c.number, c.hex]));
+    const hexOfLayer = new Map(data?.layers.map((l) => [l.number, hexOfColour.get(l.colour) ?? ""]));
+    return (layer: number | null) => (layer !== null && hexOfLayer.get(layer)) || data?.colours[0]?.hex || "";
+  }, [data]);
+  const pick = (key: string, layers: number[]) =>
+    setSelected((cur) => (cur?.key === key ? null : { key, layers: new Set(layers) }));
 
   // ---------- empty, first load, first error ----------
   if (!designId) {
@@ -99,7 +109,7 @@ export default function Preview() {
   }
 
   // ---------- loaded ----------
-  const { stats, report, layers } = data;
+  const { stats, report, layers, colours } = data;
   const w = Number(width), s = Number(spacing);
   const widthOk = w > 0 && (!config || w <= config.max_design_width_mm);
   const spacingOk = s > 0 && (!config || (s >= config.fill_row_spacing_min_mm && s <= config.fill_row_spacing_max_mm));
@@ -153,15 +163,15 @@ export default function Preview() {
             </div>
           )}
           <div className="flow-stage">
-            <StitchCanvas stitches={data.stitches} selected={selected}
+            <StitchCanvas stitches={data.stitches} colourOf={colourOf} selected={selected?.layers ?? null}
                           label={`Stitch preview: ${stats.stitch_count} stitches, ${mm(stats.width_mm)} by ${mm(stats.height_mm)} mm`} />
             {busy && (
               <div className="flow-stage__busy" role="status"><div className="flow-spinner" aria-hidden="true" />Updating stitches…</div>
             )}
             <div className="flow-stage__legend" aria-hidden="true">
-              <span className="flow-legend"><span className="flow-legend__line" />Stitches</span>
+              <span className="flow-legend"><span className="flow-legend__line" />Stitches, in each layer's colour</span>
               <span className="flow-legend"><span className="flow-legend__line flow-legend__line--jump" />Jumps</span>
-              <span className="flow-legend"><span className="flow-legend__line flow-legend__line--active" />Selected layer</span>
+              <span className="flow-legend"><span className="flow-legend__line flow-legend__line--faded" />Not selected</span>
             </div>
           </div>
         </section>
@@ -171,7 +181,7 @@ export default function Preview() {
             <h2 className="flow-card__title" id="summary-title">Summary</h2>
             <dl className="flow-summary">
               <div><dt>Stitches</dt><dd>{stats.stitch_count.toLocaleString("en")}</dd></div>
-              <div><dt>Colours</dt><dd>{stats.color_count}</dd></div>
+              <div><dt>Colours</dt><dd>{stats.color_count} <small>· {stats.color_count - 1} {stats.color_count - 1 === 1 ? "change" : "changes"}</small></dd></div>
               <div className="wide"><dt>Size</dt><dd>{mm(stats.width_mm)} × {mm(stats.height_mm)} <small>mm</small></dd></div>
               <div className="wide"><dt>Jumps</dt><dd>{report.jumps} <small>· {report.trims} trims</small></dd></div>
             </dl>
@@ -185,19 +195,39 @@ export default function Preview() {
 
           <section className="flow-card" aria-labelledby="layers-title">
             <h2 className="flow-card__title" id="layers-title">Layers</h2>
-            <ul className="flow-layers">
-              {layers.map((layer) => (
-                <li key={layer.number}>
-                  <button className="flow-layer" type="button" aria-pressed={selected === layer.number}
-                          onClick={() => setSelected(selected === layer.number ? null : layer.number)}>
-                    <span className="flow-layer__num">{layer.number}</span>
-                    <span className="flow-layer__type">{LAYER_NAMES[layer.type]}</span>
-                    <span className="flow-layer__count">{layer.stitch_count.toLocaleString("en")} stitches</span>
-                  </button>
-                </li>
-              ))}
+            <ul className="flow-layers" aria-label="Layers by colour">
+              {colours.map((colour) => {
+                const own = layers.filter((l) => l.colour === colour.number);
+                const key = `c${colour.number}`;
+                return (
+                  <li key={key} className="flow-colour-group">
+                    <button className="flow-colour" type="button" aria-pressed={selected?.key === key}
+                            onClick={() => pick(key, own.map((l) => l.number))}>
+                      <span className="flow-colour__chip" style={{ "--swatch": colour.hex } as CSSProperties} aria-hidden="true" />
+                      <span className="flow-colour__name">Colour {colour.number}</span>
+                      <span className="flow-layer__count">{(colour.stitch_count ?? 0).toLocaleString("en")} stitches</span>
+                      <span className="flow-colour__thread">{colour.hex} · <em>{colour.thread.name} {colour.thread.code}</em></span>
+                    </button>
+                    <ul className="flow-layers flow-layers--nested" aria-label={`Layers in colour ${colour.number}`}>
+                      {own.map((layer) => (
+                        <li key={layer.number}>
+                          <button className="flow-layer" type="button" aria-pressed={selected?.key === `l${layer.number}`}
+                                  onClick={() => pick(`l${layer.number}`, [layer.number])}>
+                            <span className="flow-layer__num">{layer.number}</span>
+                            <span className="flow-layer__type">{LAYER_NAMES[layer.type]}</span>
+                            <span className="flow-layer__count">{layer.stitch_count.toLocaleString("en")} stitches</span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </li>
+                );
+              })}
             </ul>
-            <p className="flow-note">Layers are listed in sewing order. Select one to see it in green.</p>
+            <p className="flow-note">
+              Colours are sewn in this order, largest area first, with a thread change between each. Select a colour
+              or a layer to see it on its own. Thread names and codes are placeholders until real threads are chosen.
+            </p>
           </section>
         </div>
       </div>

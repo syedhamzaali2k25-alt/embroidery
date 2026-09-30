@@ -29,11 +29,16 @@ class DstStats:
     longest_jump_mm: float
     color_count: int = 1  # thread colours in the file (colour changes + 1)
 
+    @property
+    def color_changes(self) -> int:
+        return self.color_count - 1
+
     def summary(self) -> str:
         return (
             f"stitches={self.stitch_count}  size={self.width_mm:.1f} x {self.height_mm:.1f} mm  "
             f"longest stitch={self.longest_stitch_mm:.2f} mm  "
-            f"jumps={self.jump_count} (longest {self.longest_jump_mm:.2f} mm)  trims={self.trim_count}"
+            f"jumps={self.jump_count} (longest {self.longest_jump_mm:.2f} mm)  trims={self.trim_count}  "
+            f"colour changes={self.color_changes}"
         )
 
 
@@ -93,19 +98,19 @@ def stitch_points(path: str | Path) -> list[tuple[int, int]]:
 
 def render_preview(dst_path: str | Path, png_path: str | Path, config: Config,
                    labels: list[tuple[str, int]] | None = None,
-                   column_labels: dict[int, tuple[int, int]] | None = None) -> None:
+                   column_labels: dict[int, tuple[int, int]] | None = None,
+                   stitch_colours: list[str] | None = None) -> None:
     """Draw every stitch and jump exactly as stored in the DST.
 
-    labels gives (role, satin column number) for each STITCH record in file order; satin
-    columns get their own colour (underlay faded) and a number at their midpoint. Junction
-    patches use preview.patch_color; fill and travel stitches are ink, jumps dashed.
+    stitch_colours gives the thread colour ("#RRGGBB", the image's own colour) of each STITCH
+    record in file order; labels gives its (role, satin column number): underlay is drawn faded
+    and each satin column gets its number at its midpoint. Jumps are dashed.
     """
     pattern = pyembroidery.read_dst(str(dst_path))
     min_x, min_y, max_x, max_y = pattern.bounds()
     w, h = max(max_x - min_x, 1), max(max_y - min_y, 1)
     margin = config.get("preview.margin_fraction") * max(w, h)
     width_in = config.get("preview.width_in")
-    colors = config.get("preview.satin_colors")
     ink = config.get("preview.stitch_color")
     stitch_lw = config.get("preview.stitch_line_width_pt")
 
@@ -120,21 +125,17 @@ def render_preview(dst_path: str | Path, png_path: str | Path, config: Config,
             continue
         start, prev = prev, (x1, y1)
         if cmd == pyembroidery.STITCH:
-            index += 1  # labels are indexed by STITCH record
+            index += 1  # labels and colours are indexed by STITCH record
         if start is None:
             continue
         (x0, y0) = start
         if cmd == pyembroidery.JUMP:
             jumps.append([(x0, y0), (x1, y1)])
             continue
-        role, number = labels[index] if labels else ("fill", 0)
-        if role in ("satin", "underlay") and number:
-            key = (colors[(number - 1) % len(colors)], config.get("preview.underlay_alpha") if role == "underlay" else 1.0)
-        elif role == "patch":
-            key = (config.get("preview.patch_color"), 1.0)
-        else:
-            key = (ink, 1.0)
-        groups.setdefault(key, []).append([(x0, y0), (x1, y1)])
+        role = labels[index][0] if labels else "fill"
+        colour = stitch_colours[index] if stitch_colours else ink
+        groups.setdefault((colour, config.get("preview.underlay_alpha") if role == "underlay" else 1.0), []).append(
+            [(x0, y0), (x1, y1)])
     dash = tuple(config.get("preview.jump_dash_pt"))
     ax.add_collection(LineCollection(jumps, colors=config.get("preview.jump_color"),
                                      linewidths=config.get("preview.jump_line_width_pt"), linestyles=[(0, dash)]))
@@ -142,7 +143,7 @@ def render_preview(dst_path: str | Path, png_path: str | Path, config: Config,
         ax.add_collection(LineCollection(lines, colors=color, alpha=alpha, linewidths=stitch_lw, capstyle="round"))
     for number, (x, y) in (column_labels or {}).items():
         ax.text(x, y, str(number), ha="center", va="center", fontsize=config.get("preview.label_font_size_pt"),
-                color=ink, bbox=dict(boxstyle="round", facecolor="white", edgecolor=colors[(number - 1) % len(colors)]))
+                color=ink, bbox=dict(boxstyle="round", facecolor="white", edgecolor=ink))
     ax.set_xlim(min_x - margin, max_x + margin)
     ax.set_ylim(max_y + margin, min_y - margin)  # file y grows downward, like the source image
     ax.set_aspect("equal")

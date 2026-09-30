@@ -2,7 +2,7 @@
 
 Browser-based embroidery digitizer: upload a PNG/JPG/SVG logo and get machine-ready embroidery files (DST first, then PES) plus a preview image. Stitchbook is a working name, set in `digitizer/src/digitizer/config.py`.
 
-Status: the digitizer turns a single-colour PNG/JPG logo into a DST and a preview. Wide shapes get fill; narrow shapes get satin columns with edge-walk/zigzag underlay and pull compensation. Where satin strokes meet, the columns stop short and a small fill patch covers the junction. No lock stitches, fill underlay or colours yet. The API accepts uploads (with validation and quality warnings), digitizes small images on request and serves the DST. The web app's Upload and Preview screens use the API. The Editor, opened with `?design=<id>`, shows that design's traced shapes on the canvas and in Layers, and runs "Create satin columns" as a background job (Redis + worker); without a design it is still the original mock-up. Thread colours are not chosen yet and show as a placeholder. Home is still a mock-up.
+Status: the digitizer turns a PNG/JPG logo into a DST, a preview and a report. The image is reduced to a few flat colours (k-means in Lab), the background (the colour around the edges, or transparency) is removed, and specks below a minimum area are dropped. Each colour is its own layer, sewn largest area first with a colour change between layers. Wide shapes get fill; narrow shapes get satin columns with edge-walk/zigzag underlay and pull compensation; where satin strokes meet, a small fill patch covers the junction. No lock stitches or fill underlay yet, and thread names/codes are placeholders. The API accepts uploads (validation, quality and speck warnings, detected colours), digitizes small images on request with the colours the user keeps, and serves the DST. The web app's Upload, Preview and Editor screens use the API; Home is still a mock-up.
 
 ## Layout
 
@@ -36,6 +36,7 @@ Digitizer (inside the venv):
 .venv/bin/python -m digitizer.digitize logo.png --out outdir   # needs every stitch value chosen in config.py
 .venv/bin/python -m digitizer.digitize logo.png --out outdir --test-run-values   # stand-in values, not for sewing
 .venv/bin/python -m digitizer.digitize logo.png --out outdir --width-mm 30        # design width for this job
+.venv/bin/python -m digitizer.digitize logo.png --out outdir --colours "#1E3A6E,#F4A261"   # keep only these detected colours
 .venv/bin/python -m digitizer.readback outdir/out.dst          # stitch count, size, longest stitch (+ report.json beside it)
 .venv/bin/python digitizer/samples/make_samples.py             # regenerate the sample logos
 .venv/bin/python digitizer/samples/run_samples.py              # digitize all samples, print DST readback
@@ -47,10 +48,10 @@ API (see http://localhost:$API_PORT/docs for the full schema):
 |---|---|
 | `GET /health` | liveness |
 | `GET /site` | what the landing page shows: demo video URL and export formats (from `config.py`) |
-| `POST /designs` | multipart `file` (PNG/JPG/SVG) + optional `settings` JSON (`{"width_mm": 60}`); validates, stores, returns an id and quality warnings |
-| `POST /designs/{id}/preview` | digitizes small PNG/JPG images on the spot, returns stats, report and every stitch as JSON |
+| `POST /designs` | multipart `file` (PNG/JPG/SVG) + optional `settings` JSON (`{"width_mm": 60}`); validates, stores, returns an id, quality warnings (including "many small specks"), the detected colours and the removed background |
+| `POST /designs/{id}/preview` | digitizes small PNG/JPG images on the spot (optional body: `width_mm`, `fill_row_spacing_mm`, `colours` to keep); returns stats, report, colour layers (image colour + thread placeholder), layers and every stitch as JSON |
 | `GET /designs/{id}` | the stored design record |
-| `GET /designs/{id}/shapes` | the design's shapes in mm (outline + holes), each marked fill or satin: the editor's canvas and Layers |
+| `GET /designs/{id}/shapes` | the design's colour layers and shapes in mm (outline + holes), each shape marked fill or satin: the editor's canvas and Layers |
 | `GET /designs/{id}/download?format=dst` | the DST file |
 | `POST /designs/{id}/trace` | starts "Create satin columns" as a background job (RQ); returns the job |
 | `GET /jobs/health` | whether background jobs can run: `{"status":"ok","workers":N}`, or 503 "Background jobs are not running…" when Redis can't be reached (within `jobs.redis_timeout_s`) |

@@ -3,13 +3,33 @@ import { useEffect, useRef } from "react";
 import type { StitchPoint } from "./api";
 
 const PADDING = 24; // css px around the design
+const FADED = 0.18; // opacity of stitches outside the selection, so the selected ones stand out
+const LIGHT = 0.85; // thread colours lighter than this (relative luminance) get a thin outline on the white canvas
 
 function token(name: string): string {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 }
 
-/** Draws the real needle path from the API: stitches as lines, jumps dashed, the selected layer in green. */
-export function StitchCanvas({ stitches, selected, label }: { stitches: StitchPoint[]; selected: number | null; label: string }) {
+/** WCAG relative luminance of "#RRGGBB" (0 black .. 1 white). */
+function luminance(hex: string): number {
+  const [r, g, b] = [1, 3, 5].map((i) => {
+    const c = parseInt(hex.slice(i, i + 2), 16) / 255;
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+type Props = {
+  stitches: StitchPoint[];
+  /** Thread colour ("#RRGGBB", the image's own colour) of a layer's stitches. */
+  colourOf: (layer: number | null) => string;
+  /** Layers to highlight; the rest are faded. Null or empty: nothing is faded. */
+  selected: Set<number> | null;
+  label: string;
+};
+
+/** Draws the real needle path from the API: each stitch in its thread colour, jumps dashed. */
+export function StitchCanvas({ stitches, colourOf, selected, label }: Props) {
   const ref = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -34,40 +54,56 @@ export function StitchCanvas({ stitches, selected, label }: { stitches: StitchPo
       const offY = (height - (maxY - minY) * scale) / 2;
       const px = (s: StitchPoint): [number, number] => [offX + (s.x_mm - minX) * scale, offY + (s.y_mm - minY) * scale];
 
-      const ink = token("--ink"), green = token("--green"), muted = token("--muted");
-      // Two passes so the selected layer is drawn on top of everything else.
+      const muted = token("--muted");
+      const focus = selected !== null && selected.size > 0;
+      const light = new Map<string, boolean>();
+      const isLight = (hex: string) => {
+        if (!light.has(hex)) light.set(hex, luminance(hex) > LIGHT);
+        return light.get(hex)!;
+      };
+      // Two passes so the selected layers are drawn on top of everything else.
       for (const pass of ["base", "selected"] as const) {
         let prev: StitchPoint | null = null;
         for (const s of moves) {
           if (prev) {
-            const isSelected = s.command === "stitch" && selected !== null && s.layer === selected;
+            const isSelected = focus && s.command === "stitch" && s.layer !== null && selected!.has(s.layer);
             if ((pass === "selected") === isSelected) {
               const [x0, y0] = px(prev);
               const [x1, y1] = px(s);
               ctx.beginPath();
               ctx.moveTo(x0, y0);
               ctx.lineTo(x1, y1);
+              ctx.globalAlpha = focus && !isSelected ? FADED : 1;
               if (s.command === "jump") {
                 ctx.setLineDash([3, 3]);
                 ctx.strokeStyle = muted;
                 ctx.lineWidth = 1;
+                ctx.stroke();
               } else {
+                const colour = colourOf(s.layer);
+                const lineWidth = isSelected ? 1.6 : 0.9;
                 ctx.setLineDash([]);
-                ctx.strokeStyle = isSelected ? green : ink;
-                ctx.lineWidth = isSelected ? 1.6 : 0.8;
+                if (isLight(colour)) { // pale thread on a white canvas: outline it so it stays visible
+                  ctx.strokeStyle = muted;
+                  ctx.lineWidth = lineWidth + 1.2;
+                  ctx.stroke();
+                }
+                ctx.strokeStyle = colour;
+                ctx.lineWidth = lineWidth;
+                ctx.stroke();
               }
-              ctx.stroke();
             }
           }
           prev = s;
         }
       }
+      ctx.globalAlpha = 1;
     };
     draw();
     const observer = new ResizeObserver(draw);
     observer.observe(canvas);
     return () => observer.disconnect();
-  }, [stitches, selected]);
+  }, [stitches, colourOf, selected]);
 
   return <canvas ref={ref} role="img" aria-label={label} />;
 }

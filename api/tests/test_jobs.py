@@ -183,3 +183,20 @@ def test_jobs_health_counts_workers(tmp_path, redis_url, start_worker):
 def test_unknown_job(tmp_path, redis_url):
     response = client_for(tmp_path, redis_url).get("/jobs/" + "0" * 32)
     assert response.status_code == 404 and "Start it again from the editor" in response.json()["error"]
+
+
+def test_trace_job_uses_the_same_colour_layers_as_the_preview(tmp_path, redis_url, start_worker):
+    client = client_for(tmp_path, redis_url)
+    design_id = upload(client, "bird.png", width=90)
+    keep = ["#1E3A6E", "#7A4A2A"]  # body and branch only
+    preview = client.post(f"/designs/{design_id}/preview", json={"colours": keep}).json()
+    shapes = client.get(f"/designs/{design_id}/shapes").json()
+    job_id = client.post(f"/designs/{design_id}/trace").json()["id"]
+    start_worker()
+    done = wait_for(client, job_id, {"done", "failed"}, timeout=60)
+    assert done["status"] == "done", done
+    columns = done["result"]["columns"]
+    assert len(columns) == preview["report"]["satin_columns"]
+    satin = {s["number"]: s["colour"] for s in shapes["shapes"] if s["kind"] == "satin"}
+    assert columns and all(satin[c["shape"]] == c["colour"] for c in columns)
+    assert done["result"]["bounds_mm"] == shapes["bounds_mm"]

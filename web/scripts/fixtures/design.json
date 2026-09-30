@@ -1,37 +1,123 @@
 {
-  "id": "5b056deaf194440d80c9e8f74c28d325",
-  "filename": "cafe-luna.jpg",
-  "type": "jpg",
-  "bytes": 26305,
-  "width_px": 900,
-  "height_px": 600,
-  "logo_width_px": 589,
-  "logo_height_px": 432,
+  "id": "5fe956e5b36c461f98f096ba36717bf9",
+  "filename": "bird.png",
+  "type": "png",
+  "bytes": 35389,
+  "width_px": 800,
+  "height_px": 640,
+  "logo_width_px": 656,
+  "logo_height_px": 440,
+  "colours": [
+    {
+      "hex": "#1E3A6E",
+      "share": 0.36530229462570524,
+      "shape_count": 1,
+      "bounds_px": [
+        90,
+        142,
+        625,
+        473
+      ]
+    },
+    {
+      "hex": "#F4A261",
+      "share": 0.17490281496271423,
+      "shape_count": 1,
+      "bounds_px": [
+        322,
+        334,
+        558,
+        466
+      ]
+    },
+    {
+      "hex": "#2A9D8F",
+      "share": 0.16832297197138146,
+      "shape_count": 1,
+      "bounds_px": [
+        218,
+        247,
+        442,
+        393
+      ]
+    },
+    {
+      "hex": "#5BAA46",
+      "share": 0.134410309933294,
+      "shape_count": 3,
+      "bounds_px": [
+        111,
+        388,
+        702,
+        582
+      ]
+    },
+    {
+      "hex": "#7A4A2A",
+      "share": 0.13273131551481598,
+      "shape_count": 1,
+      "bounds_px": [
+        77,
+        449,
+        733,
+        533
+      ]
+    },
+    {
+      "hex": "#F6C90E",
+      "share": 0.020026924414999016,
+      "shape_count": 1,
+      "bounds_px": [
+        612,
+        205,
+        699,
+        262
+      ]
+    },
+    {
+      "hex": "#111111",
+      "share": 0.004303368577090045,
+      "shape_count": 1,
+      "bounds_px": [
+        550,
+        202,
+        576,
+        228
+      ]
+    }
+  ],
+  "background": "#FFFFFF",
+  "specks_removed": 0,
   "settings": {
-    "width_mm": 80,
-    "fill_row_spacing_mm": 0.3
+    "width_mm": 90,
+    "fill_row_spacing_mm": 0.3,
+    "colours": null
   },
   "warnings": [],
   "status": "digitized",
-  "created_at": "2026-09-30T12:02:39.638136Z",
+  "created_at": "2026-09-30T12:52:20.979679Z",
   "stats": {
-    "stitch_count": 1455,
-    "jump_count": 31,
-    "trim_count": 9,
-    "width_mm": 79.9,
-    "height_mm": 59,
-    "longest_stitch_mm": 5.141984052872976,
-    "longest_jump_mm": 14.263590010933433,
-    "color_count": 1
+    "stitch_count": 2612,
+    "jump_count": 45,
+    "trim_count": 18,
+    "width_mm": 90,
+    "height_mm": 60.4,
+    "longest_stitch_mm": 6.929646455628166,
+    "longest_jump_mm": 13.320660644277371,
+    "color_count": 7
   },
   "report": {
-    "jumps": 24,
-    "trims": 9,
-    "fill_areas": 0,
-    "satin_columns": 21,
-    "junction_patches": 10,
-    "skipped_rungs": 35,
-    "trimmed_rungs": 48
+    "jumps": 28,
+    "trims": 18,
+    "fill_areas": 7,
+    "satin_columns": 6,
+    "junction_patches": 3,
+    "skipped_rungs": 19,
+    "trimmed_rungs": 27,
+    "colour_changes": 6,
+    "shapes_found": 9,
+    "specks_removed": 0,
+    "holes_filled": 0
   },
   "downloads": [
     "dst"

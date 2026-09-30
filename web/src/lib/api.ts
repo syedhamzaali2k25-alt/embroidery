@@ -3,7 +3,7 @@
 export const API_URL: string = (import.meta.env.VITE_API_URL as string | undefined) ?? "http://localhost:8000";
 
 export type QualityWarning = {
-  code: "too_small" | "low_contrast" | "blurry_edges";
+  code: "too_small" | "low_contrast" | "blurry_edges" | "many_specks";
   message: string;
   value: number;
   threshold: number;
@@ -29,14 +29,25 @@ export type ClientConfig = {
 };
 
 export type TraceColumn = {
-  number: number; left: number[][]; right: number[][]; edit_points: number[][]; label: number[]; shape?: number | null;
+  number: number; left: number[][]; right: number[][]; edit_points: number[][]; label: number[];
+  shape?: number | null; colour?: number | null;
 };
+/** Thread names and codes are not chosen yet: the API always sends this labelled placeholder. */
+export type ThreadPlaceholder = { name: string; code: string; placeholder: true };
+/** A colour layer: the image's own colour, sewn as one thread, in sewing order. */
+export type ColourLayer = {
+  number: number; hex: string; shape_count: number; area_mm2: number; stitch_count?: number | null; thread: ThreadPlaceholder;
+};
+export type DetectedColour = { hex: string; share: number; shape_count: number; bounds_px: number[] };
 export type DesignShape = {
-  number: number; kind: "fill" | "satin"; max_width_mm: number; area_mm2: number; bounds_mm: number[];
+  number: number; colour: number; kind: "fill" | "satin"; max_width_mm: number; area_mm2: number; bounds_mm: number[];
   /** Outline first, then holes; points in mm. */
   rings: number[][][];
 };
-export type DesignShapes = { id: string; shapes: DesignShape[]; bounds_mm: number[]; width_mm: number; height_mm: number };
+export type DesignShapes = {
+  id: string; colours: ColourLayer[]; shapes: DesignShape[]; bounds_mm: number[]; width_mm: number; height_mm: number;
+  shapes_found: number; specks_removed: number;
+};
 export type JobsHealth = { status: "ok"; workers: number };
 export type TraceResult = { columns: TraceColumn[]; fill_shapes: number; junction_patches: number; bounds_mm: number[]; width_mm: number };
 export type JobStatus = "queued" | "running" | "done" | "failed" | "cancelled";
@@ -62,10 +73,15 @@ export type DesignCreated = {
   height_px: number | null;
   logo_width_px: number | null;
   logo_height_px: number | null;
+  /** Colours found in the image (background removed), largest area first. */
+  colours: DetectedColour[];
+  /** Removed background colour, or null when the background was transparent. */
+  background: string | null;
+  specks_removed: number;
   warnings: QualityWarning[];
 };
 
-export type DesignSettings = { width_mm?: number | null; fill_row_spacing_mm?: number | null };
+export type DesignSettings = { width_mm?: number | null; fill_row_spacing_mm?: number | null; colours?: string[] | null };
 
 export type DesignRecord = DesignCreated & {
   filename: string;
@@ -76,7 +92,7 @@ export type DesignRecord = DesignCreated & {
 };
 
 export type StitchPoint = { x_mm: number; y_mm: number; command: "stitch" | "jump" | "trim" | "end"; layer: number | null };
-export type Layer = { number: number; type: "fill" | "satin" | "junction patch"; stitch_count: number };
+export type Layer = { number: number; type: "fill" | "satin" | "junction patch"; stitch_count: number; colour: number };
 
 export type Preview = {
   id: string;
@@ -86,9 +102,11 @@ export type Preview = {
   };
   report: {
     jumps: number; trims: number; fill_areas: number; satin_columns: number; junction_patches: number;
-    skipped_rungs: number; trimmed_rungs: number;
+    skipped_rungs: number; trimmed_rungs: number; colour_changes: number; shapes_found: number; specks_removed: number;
+    holes_filled: number;
   };
   settings_used: { width_mm: number; fill_row_spacing_mm: number };
+  colours: ColourLayer[];
   layers: Layer[];
   warnings: QualityWarning[];
   stitches: StitchPoint[];

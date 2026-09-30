@@ -17,11 +17,16 @@ const shots = join(web, 'screenshots', 'e2e');
 const fixtures = join(web, 'scripts', 'fixtures');
 const API_PORT = 8765, WEB_PORT = 4173;
 const API = `http://localhost:${API_PORT}`, WEB = `http://localhost:${WEB_PORT}`;
+const BIRD = join(repo, 'digitizer', 'samples', 'bird.png'); // multi-colour sample (digitizer/samples/make_samples.py)
 const IMAGES = [
   { file: 'cafe-luna.jpg', width: 80 },
   { file: 'fern-studio.png', width: 70 },
   { file: 'k-monogram-small.png', width: 40 },
+  { file: 'bird.png', path: BIRD, width: 90, fixtures: true },
+  // The same bird with the leaves and the branch unchecked under "Colours to keep".
+  { file: 'bird.png', path: BIRD, width: 90, stem: 'bird-some-colours', drop: ['#5BAA46', '#7A4A2A'] },
 ];
+const imagePath = (image) => image.path ?? join(web, 'scripts', 'test-images', image.file);
 const VIEWPORTS = [{ name: 'desktop', width: 1440, height: 900 }, { name: 'phone', width: 390, height: 844 }];
 
 const failures = [];
@@ -76,19 +81,29 @@ try {
     const shot = (name) => page.screenshot({ path: join(shots, `${name}-${vp.name}.png`), fullPage: true });
 
     for (const image of IMAGES) {
-      const stem = image.file.replace(/\.\w+$/, '');
-      console.log(`-- ${image.file}`);
+      const stem = image.stem ?? image.file.replace(/\.\w+$/, '');
+      console.log(`-- ${stem}`);
       await page.goto(`${WEB}/upload`);
       await page.getByText('Drop your logo here').waitFor();
       const uploaded = page.waitForResponse((r) => r.url() === `${API}/designs` && r.request().method() === 'POST');
-      await page.locator('input[type=file]').setInputFiles(join(web, 'scripts', 'test-images', image.file));
+      await page.locator('input[type=file]').setInputFiles(imagePath(image));
       const created = await (await uploaded).json();
       await page.locator('.flow-checks li').first().waitFor();
       const shown = await page.locator('.flow-checks li').allInnerTexts();
       check(created.warnings.length === 0 ? shown.some((t) => t.includes('No problems found'))
         : created.warnings.every((w) => shown.some((t) => t.includes(w.message))), `upload shows the API's quality messages (${created.warnings.map((w) => w.code).join(', ') || 'none'})`);
+      // Colours to keep: every detected colour, checked; unchecking updates the count.
+      await page.locator('.flow-swatch').first().waitFor();
+      const swatches = await page.locator('.flow-swatch').allInnerTexts();
+      check(swatches.length === created.colours.length && created.colours.every((c, i) => swatches[i].startsWith(c.hex)),
+        `Colours to keep lists the API's ${created.colours.length} detected colours (${created.colours.map((c) => c.hex).join(' ')}; background ${created.background ?? 'transparent'})`);
+      for (const hex of image.drop ?? []) await page.locator('.flow-swatch', { hasText: hex }).locator('input').uncheck();
+      const keptColours = created.colours.filter((c) => !(image.drop ?? []).includes(c.hex));
+      check((await page.locator('.flow-colours__count').innerText()).startsWith(`${keptColours.length} of ${created.colours.length}`),
+        `count shows ${keptColours.length} of ${created.colours.length} colours kept`);
       await page.fill('#width', String(image.width));
-      const expectedHeight = (image.width * created.logo_height_px) / created.logo_width_px;
+      const box = keptColours.map((c) => c.bounds_px).reduce((a, b) => [Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.max(a[2], b[2]), Math.max(a[3], b[3])]);
+      const expectedHeight = (image.width * (box[3] - box[1])) / (box[2] - box[0]);
       check((await page.locator('#width-help').innerText()).includes(`Height: ${expectedHeight.toFixed(1)} mm`), `height follows the logo (${expectedHeight.toFixed(1)} mm)`);
       await page.locator('.flow-swatch').first().waitFor();
       await shot(`${stem}-upload`);
@@ -100,8 +115,11 @@ try {
       const summary = await page.locator('.flow-summary').innerText();
       const s = preview.stats, r = preview.report;
       check(summary.includes(s.stitch_count.toLocaleString('en')) && summary.includes(`${s.width_mm.toFixed(1)} × ${s.height_mm.toFixed(1)}`)
-        && summary.includes(`${r.jumps}`) && summary.includes(`${s.color_count}`), `summary matches the API (${s.stitch_count} stitches, ${s.width_mm.toFixed(1)} × ${s.height_mm.toFixed(1)} mm, ${r.jumps} jumps, ${s.color_count} colour)`);
-      check(await page.locator('.flow-layer').count() === preview.layers.length, `layers list shows ${preview.layers.length} layers`);
+        && summary.includes(`${r.jumps}`) && summary.includes(`${s.color_count}`), `summary matches the API (${s.stitch_count} stitches, ${s.width_mm.toFixed(1)} × ${s.height_mm.toFixed(1)} mm, ${r.jumps} jumps, ${s.color_count} colours)`);
+      check(preview.colours.map((c) => c.hex).join() === keptColours.map((c) => c.hex).join() && s.color_count === keptColours.length,
+        `the preview sews exactly the kept colours (${preview.colours.length}, ${s.color_count - 1} colour changes)`);
+      check(await page.locator('.flow-layer').count() === preview.layers.length && await page.locator('.flow-colour').count() === preview.colours.length,
+        `layers list shows ${preview.layers.length} layers grouped under ${preview.colours.length} colours`);
       await page.locator('.flow-layer').first().click();
       await shot(`${stem}-preview`);
 
@@ -111,8 +129,9 @@ try {
         await page.getByRole('link', { name: 'Download DST' }).click();
         const fromApi = await readFile(await (await download).path());
         const cli = join(storage, `cli-${stem}`);
-        execFileSync(python, ['-m', 'digitizer.digitize', join(web, 'scripts', 'test-images', image.file), '--out', cli,
-          '--width-mm', String(image.width), '--test-run-values'], { cwd: repo });
+        execFileSync(python, ['-m', 'digitizer.digitize', imagePath(image), '--out', cli,
+          '--width-mm', String(image.width), '--test-run-values',
+          ...(image.drop ? ['--colours', keptColours.map((c) => c.hex).join(',')] : [])], { cwd: repo });
         check(Buffer.compare(fromApi, await readFile(join(cli, 'out.dst'))) === 0, 'downloaded DST equals the command-line DST');
         console.log('     readback: ' + execFileSync(python, ['-m', 'digitizer.readback', join(cli, 'out.dst')], { cwd: repo }).toString().trim().split('\n').slice(0, 2).join(' | ').replace(/^.*out\.dst: /, ''));
 
@@ -126,7 +145,7 @@ try {
         check(denser.stats.stitch_count > before && (await page.locator('.flow-summary').innerText()).includes(denser.stats.stitch_count.toLocaleString('en')),
           `denser fill updates the preview (${before} -> ${denser.stats.stitch_count} stitches)`);
 
-        if (image.file === 'cafe-luna.jpg') {
+        if (image.fixtures) {
           await writeFile(join(fixtures, 'config.json'), JSON.stringify(await (await fetch(`${API}/config`)).json(), null, 2));
           await writeFile(join(fixtures, 'upload.json'), JSON.stringify(created, null, 2));
           await writeFile(join(fixtures, 'design.json'), JSON.stringify(await (await fetch(`${API}/designs/${created.id}`)).json(), null, 2));
@@ -146,6 +165,7 @@ try {
     console.log('-- landing');
     await page.goto(`${WEB}/`);
     await page.getByText('machine file', { exact: true }).waitFor();
+    await page.locator('.hero__facts strong', { hasText: 'DST' }).waitFor({ timeout: 10000 }).catch(() => {}); // after GET /site answers
     check((await page.locator('.hero__facts').innerText()).startsWith('DST'), 'landing lists the formats from the API (DST)');
     check(await page.getByText('[Demo video]').isVisible(), 'empty demo_video_url shows the [Demo video] poster');
     const handedOff = page.waitForResponse((r) => r.url() === `${API}/designs` && r.request().method() === 'POST');
@@ -210,6 +230,7 @@ try {
       await page.goto(`${WEB}/`);
       await page.goto(editorUrl);
       await page.locator('[data-state=done]').waitFor();
+      await page.locator('.traced__column').first().waitFor(); // drawn once the design's shapes have loaded
       check(await page.locator('.traced__column').count() === columns, 'leaving and reopening the design restores "Traced"');
 
       await page.locator('.manual__row', { hasText: 'Split' }).click();

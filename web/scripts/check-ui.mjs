@@ -15,7 +15,7 @@ const dist = join(root, 'dist');
 // needs no running server. The Upload and Preview screens are audited in every state.
 const fixture = async (name) => JSON.parse(await readFile(join(root, 'scripts', 'fixtures', name), 'utf8'));
 const fx = { config: await fixture('config.json'), upload: await fixture('upload.json'), design: await fixture('design.json'), preview: await fixture('preview.json'), shapes: await fixture('shapes.json') };
-const testImage = join(root, 'scripts', 'test-images', 'cafe-luna.jpg');
+const testImage = join(root, '..', 'digitizer', 'samples', 'bird.png'); // the fixtures were recorded from this image
 const traceResult = await fixture('trace-result.json');
 
 // Editor "Create satin columns" card: one mocked job per state (the done state uses a real trace).
@@ -76,6 +76,8 @@ const pages = {
   editor: { route: '/editor' },
   upload: { route: '/upload', api: {}, ready: 'text=Drop your logo here' },
   'upload-checked': { route: '/upload', api: {}, file: true, ready: '.flow-swatch' },
+  // Two of the detected colours unchecked under "Colours to keep".
+  'upload-colours': { route: '/upload', api: {}, file: true, ready: '.flow-swatch', click: '.flow-swatches li:nth-child(n+6) input' },
   'upload-error': { route: '/upload', api: { upload: 'error' }, file: true, ready: "text=This file can't be used" },
   preview: { route: previewRoute, api: {}, ready: 'text=Summary' },
   'preview-loading': { route: previewRoute, api: { preview: 'loading' }, ready: 'text=Turning your logo into stitches' },

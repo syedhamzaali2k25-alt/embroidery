@@ -15,7 +15,7 @@ from digitizer.config import Config
 
 @dataclass(frozen=True)
 class QualityWarning:
-    code: str  # "too_small", "low_contrast", "blurry_edges"
+    code: str  # "too_small", "low_contrast", "blurry_edges", "many_specks"
     message: str
     value: float
     threshold: float
@@ -65,8 +65,8 @@ def check(gray: np.ndarray, config: Config) -> list[QualityWarning]:
     if value < minimum:
         warnings.append(QualityWarning(
             "low_contrast",
-            "The logo and its background are too close in brightness. Use a dark logo on a plain light "
-            "background (or a transparent PNG) so the shapes can be separated reliably.",
+            "The logo and its background are too close in brightness. Use a logo that stands out clearly "
+            "from a plain background (or a transparent PNG) so the shapes can be separated reliably.",
             round(value, 1), minimum))
     value, minimum = edge_sharpness(gray), config.get("quality.min_edge_sharpness")
     if value < minimum:
@@ -76,3 +76,13 @@ def check(gray: np.ndarray, config: Config) -> list[QualityWarning]:
             "instead of a screenshot, photo or resized copy.",
             round(value, 1), minimum))
     return warnings
+
+
+def speck_warning(specks_removed: int, config: Config) -> QualityWarning | None:
+    """Warn when speck removal (shapes below input.min_shape_area_mm2) dropped more than
+    quality.max_specks shapes."""
+    limit = config.get("quality.max_specks")
+    if specks_removed <= limit:
+        return None
+    return QualityWarning("many_specks", "This image has many small specks. Use a cleaner logo for better stitches.",
+                          specks_removed, limit)

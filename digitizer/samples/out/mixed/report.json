@@ -1,9 +1,13 @@
 {
-  "jumps": 5,
-  "trims": 5,
+  "jumps": 6,
+  "trims": 4,
   "fill_areas": 2,
   "satin_columns": 2,
   "junction_patches": 0,
   "skipped_rungs": 4,
-  "trimmed_rungs": 0
+  "trimmed_rungs": 0,
+  "colour_changes": 0,
+  "shapes_found": 4,
+  "specks_removed": 0,
+  "holes_filled": 0
 }

@@ -13,7 +13,7 @@ from shapely.geometry import LineString
 from shapely.ops import unary_union
 
 from digitizer.config import PlaceholderValueError, load_config, load_test_run_config
-from digitizer.digitize import digitize, load_mask, mask_to_polygons, scale_to_width
+from digitizer.digitize import digitize, trace_design
 from digitizer.readback import UNITS_PER_MM, segments
 
 SAMPLES = Path(__file__).resolve().parents[1] / "samples"
@@ -25,9 +25,8 @@ ALL = list(WIDTHS_MM)
 def run(name: str, tmp_path: Path, width_mm: float | None = None):
     width_mm = width_mm or WIDTHS_MM[name]
     stats = digitize(SAMPLES / f"{name}.png", tmp_path, CONFIG, width_mm).stats
-    mask = load_mask(SAMPLES / f"{name}.png", CONFIG.get("image.min_speck_area_px"))
-    polygons, tf = scale_to_width(mask_to_polygons(mask), width_mm)
-    mm_per_px = tf.mm_per_px
+    traced = trace_design(SAMPLES / f"{name}.png", CONFIG, width_mm, classify=False)
+    polygons, mm_per_px = [s.poly for s in traced.shapes], traced.tf.mm_per_px
     pattern = pyembroidery.read_dst(str(tmp_path / "out.dst"))
     stitches = [
         LineString([(x0 / UNITS_PER_MM, y0 / UNITS_PER_MM), (x1 / UNITS_PER_MM, y1 / UNITS_PER_MM)])
@@ -77,9 +76,9 @@ def test_two_shapes_are_joined_by_jumps(tmp_path):
 
 
 def test_specks_and_pinholes_are_cleaned():
-    mask = load_mask(SAMPLES / "circle.png", CONFIG.get("image.min_speck_area_px"))
-    polygons = mask_to_polygons(mask)
-    assert len(polygons) == 1 and len(polygons[0].interiors) == 0
+    traced = trace_design(SAMPLES / "circle.png", CONFIG, 60, classify=False)
+    assert [len(s.poly.interiors) for s in traced.shapes] == [0]
+    assert traced.specks_removed == 3 and traced.holes_filled == 1
 
 
 def test_product_config_refuses_placeholders(tmp_path):

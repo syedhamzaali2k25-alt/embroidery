@@ -1,0 +1,13 @@
+{
+  "jumps": 30,
+  "trims": 21,
+  "fill_areas": 7,
+  "satin_columns": 6,
+  "junction_patches": 3,
+  "skipped_rungs": 19,
+  "trimmed_rungs": 27,
+  "colour_changes": 6,
+  "shapes_found": 9,
+  "specks_removed": 0,
+  "holes_filled": 0
+}
