@@ -47,6 +47,29 @@ class TraceColumn(BaseModel):
     right: list[list[float]] = Field(description="Right edge points, mm")
     edit_points: list[list[float]] = Field(description="Points along the centerline the user can move, mm")
     label: list[float] = Field(description="Where to draw the column number, mm")
+    shape: int | None = Field(default=None, description="Number of the design shape this column belongs to")
+
+
+class JobsHealth(BaseModel):
+    status: Literal["ok"]
+    workers: int = Field(description="Workers listening on the queue; 0 means jobs wait in the queue")
+
+
+class DesignShape(BaseModel):
+    number: int = Field(description="1-based, in the order the shapes were found")
+    kind: Literal["fill", "satin"] = Field(description="How the shape is sewn: wide shapes fill, narrow ones satin")
+    max_width_mm: float
+    area_mm2: float
+    bounds_mm: list[float] = Field(description="[min x, min y, max x, max y]")
+    rings: list[list[list[float]]] = Field(description="Outline first, then holes; points in mm")
+
+
+class DesignShapes(BaseModel):
+    id: str
+    shapes: list[DesignShape]
+    bounds_mm: list[float]
+    width_mm: float
+    height_mm: float
 
 
 class TraceResult(BaseModel):
@@ -87,6 +110,7 @@ class ClientConfig(BaseModel):
     poll_start_s: float
     poll_max_s: float
     poll_backoff_factor: float
+    status_timeout_s: float = Field(description="How long the editor waits for a job-status answer before saying so")
 
 
 class QualityWarningOut(BaseModel):

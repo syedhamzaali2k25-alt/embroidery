@@ -1,7 +1,8 @@
 """Stitchbook HTTP API.
 
-Endpoints: GET /health, POST /designs, POST /designs/{id}/preview, GET /designs/{id},
-GET /designs/{id}/download?format=dst. Every error body is {"error": "<what to fix>"}.
+Endpoints: GET /health, GET /site, GET /config, POST /designs, POST /designs/{id}/preview,
+GET /designs/{id}, GET /designs/{id}/shapes, GET /designs/{id}/download?format=dst,
+POST /designs/{id}/trace, GET /jobs/health, GET /jobs/{id}, POST /jobs/{id}/cancel. Every error body is {"error": "<what to fix>"}.
 Design records are JSON files in Storage for now (a database comes with Supabase later).
 """
 
@@ -15,7 +16,7 @@ from pathlib import Path
 from typing import Annotated
 
 from digitizer.config import Config, PlaceholderValueError, load_config, load_test_run_config
-from digitizer.digitize import digitize, logo_bounds
+from digitizer.digitize import design_shapes, digitize, logo_bounds
 from digitizer.readback import records
 from fastapi import FastAPI, File, Form, HTTPException, Path as PathParam, Query, Request, UploadFile
 from fastapi.exceptions import RequestValidationError
@@ -30,11 +31,13 @@ from stitchbook_api.models import (
     DesignCreated,
     DesignRecord,
     DesignSettings,
+    DesignShapes,
     DigitizeReport,
     DownloadQuery,
     ErrorResponse,
     HealthResponse,
     JobOut,
+    JobsHealth,
     Layer,
     SiteInfo,
     PreviewRequest,
@@ -69,7 +72,8 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
     settings = settings or load_settings()
     config = config or (load_test_run_config() if settings.test_run_values else load_config())
     storage = storage or LocalDiskStorage(settings.storage_dir)
-    jobs = Jobs(settings.redis_url, settings.rq_queue, settings.trace_job, storage)
+    jobs = Jobs(settings.redis_url, settings.rq_queue, settings.trace_job, storage,
+                redis_timeout_s=lambda: config.get("jobs.redis_timeout_s"))
 
     app = FastAPI(title=f"{config.app_name} API")
     if settings.cors_origin:
@@ -138,6 +142,7 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
             poll_start_s=config.get("jobs.poll_start_s"),
             poll_max_s=config.get("jobs.poll_max_s"),
             poll_backoff_factor=config.get("jobs.poll_backoff_factor"),
+            status_timeout_s=config.get("jobs.status_timeout_s"),
         )
 
     @app.post("/designs", response_model=DesignCreated, status_code=201, responses=ERRORS)
@@ -219,6 +224,29 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
                                settings_used=SettingsUsed(width_mm=width, fill_row_spacing_mm=spacing),
                                layers=layers, warnings=record.warnings, stitches=stitches)
 
+    @app.get("/designs/{design_id}/shapes", response_model=DesignShapes, responses=ERRORS)
+    def shapes(design_id: DesignId) -> DesignShapes:
+        """The design's shapes in mm (same coordinates as the DST) for the editor canvas and
+        Layers list, each marked fill or satin."""
+        record = load_record(design_id)
+        if record.type == "svg":
+            raise HTTPException(422, "SVG files can't be opened in the editor yet. Export the logo as PNG and "
+                                     "upload that instead.")
+        limit = config.get("api.sync_preview_max_side_px")
+        if max(record.width_px or 0, record.height_px or 0) > limit:
+            raise HTTPException(422, f"This image is larger than {limit} px on its long side, too big to open in "
+                                     f"the editor. Resize it to at most {limit} px and upload again.")
+        width = record.settings.width_mm or config.get("design.width_mm")
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / f"original.{record.type}"
+            source.write_bytes(storage.get(f"designs/{design_id}/original.{record.type}"))
+            try:
+                found = design_shapes(source, config, width)
+            except ValueError as exc:
+                raise HTTPException(422, f"No shapes could be traced from this image ({exc}). Use a dark logo on "
+                                         "a plain light background, or a transparent PNG.") from None
+        return DesignShapes(id=design_id, **found)
+
     @app.get("/designs/{design_id}", response_model=DesignRecord, responses=ERRORS)
     def get_design(design_id: DesignId) -> DesignRecord:
         return load_record(design_id)
@@ -236,7 +264,7 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
                         headers={"Content-Disposition": f'attachment; filename="{filename}"'})
 
     # ---------- background jobs ----------
-    QUEUE_DOWN = "The job queue can't be reached right now. Try again in a moment."
+    QUEUE_DOWN = "Background jobs are not running, so satin columns cannot be traced right now."
 
     def job_state(job_id: str) -> JobOut:
         try:
@@ -271,6 +299,15 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
             raise HTTPException(503, QUEUE_DOWN) from None
         save_record(record.model_copy(update={"trace_job_id": started.id}))
         return started
+
+    # Registered before /jobs/{job_id} so "health" is not taken for a job id.
+    @app.get("/jobs/health", response_model=JobsHealth, responses=ERRORS)
+    def jobs_health() -> JobsHealth:
+        """Whether background jobs can run: 503 with a plain message if Redis can't be reached."""
+        try:
+            return JobsHealth(status="ok", workers=jobs.health())
+        except QueueUnavailable:
+            raise HTTPException(503, QUEUE_DOWN) from None
 
     @app.get("/jobs/{job_id}", response_model=JobOut, responses=ERRORS)
     def get_job(job_id: JobId) -> JobOut:

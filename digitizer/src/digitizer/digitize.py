@@ -233,6 +233,7 @@ class Piece:
     rows: list[Row] = field(default_factory=list)
     column: satin.Column | None = None
     patch: bool = False  # a fill patch where satin columns meet or leave a gap
+    shape: int = 0  # index of the traced shape (polygon) this piece came from
 
 
 @dataclass
@@ -246,6 +247,19 @@ class Pieces:
         return sum(p.patch for p in self.pieces)
 
 
+def classify_shape(poly_px: Polygon, mask_shape: tuple[int, int], tf: PxToMm, max_width_mm: float):
+    """"fill" if the shape is anywhere wider than a satin column may be, else "satin".
+    Also returns the shape's own mask and distance map, which satin tracing reuses."""
+    shape_mask = satin.polygon_mask(poly_px, mask_shape)
+    dist = satin.distance_map(shape_mask)
+    kind = "fill" if shape_max_width_mm(dist, tf) > max_width_mm else "satin"
+    return kind, shape_mask, dist
+
+
+def shape_max_width_mm(dist: np.ndarray, tf: PxToMm) -> float:
+    return satin.max_width_px(dist) * tf.mm_per_px
+
+
 def build_pieces(mask: np.ndarray, polygons_px: list[Polygon], polygons: list[Polygon], tf: PxToMm,
                  config: Config, on_shape_done: Callable[[int, int], None] | None = None) -> Pieces:
     """on_shape_done(done, total) is called after each shape, for progress reporting."""
@@ -257,11 +271,10 @@ def build_pieces(mask: np.ndarray, polygons_px: list[Polygon], polygons: list[Po
     for shape_index, (poly_px, poly) in enumerate(zip(polygons_px, polygons)):
         if on_shape_done:
             on_shape_done(shape_index, len(polygons))
-        shape_mask = satin.polygon_mask(poly_px, mask.shape)
-        dist = satin.distance_map(shape_mask)
+        kind, shape_mask, dist = classify_shape(poly_px, mask.shape, tf, max_width)
         area = poly.buffer(tolerance)
-        if satin.max_width_px(dist) * tf.mm_per_px > max_width:
-            pieces.append(Piece("fill", area, poly, rows=_rows(poly, config)))
+        if kind == "fill":
+            pieces.append(Piece("fill", area, poly, rows=_rows(poly, config), shape=shape_index))
             continue
 
         def radius_mm(p, dist=dist):
@@ -309,7 +322,7 @@ def build_pieces(mask: np.ndarray, polygons_px: list[Polygon], polygons: list[Po
             result.trimmed_rungs += dropped
             for column in split:
                 cover = satin.coverage(column)
-                pieces.append(Piece("satin", area, cover, column=column))
+                pieces.append(Piece("satin", area, cover, column=column, shape=shape_index))
                 covered = unary_union([covered, cover])
 
         # Whatever the columns leave uncovered (junctions, skipped stations) becomes fill,
@@ -318,7 +331,8 @@ def build_pieces(mask: np.ndarray, polygons_px: list[Polygon], polygons: list[Po
         for gap in satin_gaps(rest, min_len):
             rows = _rows(gap, config)
             if rows:
-                pieces.append(Piece("fill", gap.buffer(tolerance), gap, rows=rows, patch=not covered.is_empty))
+                pieces.append(Piece("fill", gap.buffer(tolerance), gap, rows=rows, patch=not covered.is_empty,
+                                    shape=shape_index))
     return result
 
 
@@ -552,6 +566,7 @@ def trace_columns(image_path: str | Path, config: Config, width_mm: float | None
             "right": [list(r.edge_right) for r in column.rungs],
             "edit_points": [list(p) for p in edit.coords],
             "label": list(satin.label_point(column).coords[0]),
+            "shape": piece.shape + 1,
         })
     min_x, min_y, max_x, max_y = unary_union(polygons).bounds
     report(1.0)
@@ -561,6 +576,35 @@ def trace_columns(image_path: str | Path, config: Config, width_mm: float | None
         "junction_patches": built.patches,
         "bounds_mm": [min_x, min_y, max_x, max_y],
         "width_mm": max_x - min_x,
+    }
+
+
+def design_shapes(image_path: str | Path, config: Config, width_mm: float | None = None) -> dict:
+    """The design's traced shapes for the editor canvas and Layers list, in mm (the same
+    coordinates as the DST and trace_columns). Each shape says whether it will be sewn as
+    fill or satin. Outlines are simplified by one source pixel, which is invisible on screen."""
+    mask = load_mask(image_path, config.get("image.min_speck_area_px"))
+    polygons_px = mask_to_polygons(mask)
+    polygons, tf = scale_to_width(polygons_px, width_mm or config.get("design.width_mm"))
+    max_width = config.get("satin.max_width_mm")
+    shapes = []
+    for index, (poly_px, poly) in enumerate(zip(polygons_px, polygons)):
+        kind, _mask, dist = classify_shape(poly_px, mask.shape, tf, max_width)
+        outline = poly.simplify(tf.mm_per_px, preserve_topology=True)
+        shapes.append({
+            "number": index + 1,
+            "kind": kind,
+            "max_width_mm": shape_max_width_mm(dist, tf),
+            "area_mm2": poly.area,
+            "bounds_mm": list(poly.bounds),
+            "rings": [[list(p) for p in ring.coords] for ring in (outline.exterior, *outline.interiors)],
+        })
+    min_x, min_y, max_x, max_y = unary_union(polygons).bounds
+    return {
+        "shapes": shapes,
+        "bounds_mm": [min_x, min_y, max_x, max_y],
+        "width_mm": max_x - min_x,
+        "height_mm": max_y - min_y,
     }
 
 

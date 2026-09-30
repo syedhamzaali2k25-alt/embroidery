@@ -201,6 +201,11 @@ body.editor {
 .swatch { width: 28px; height: 28px; border-radius: 50%; flex: none; }
 .thread--ink .swatch   { background: var(--ink); }
 .thread--green .swatch { background: var(--green); }
+/* Thread colours are not chosen yet: a dashed empty swatch and a bracketed placeholder label. */
+.thread--placeholder { cursor: default; }
+.thread--placeholder .swatch { border: 2px dashed var(--ink); }
+.placeholder-text { font-style: italic; }
+.panel__note { font-size: 13px; margin-top: 8px; }
 
 .layers { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
 .layer {
@@ -215,6 +220,21 @@ body.editor {
 }
 .layer.is-active { background: var(--line); }
 .layer__name { flex: 1; min-width: 0; }
+.layer__pick {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.layer__kind { font-size: 13px; }
 .layer__swatch { width: 12px; height: 12px; border-radius: 50%; flex: none; }
 .layer__swatch--ink   { background: var(--ink); }
 .layer__swatch--green { background: var(--green); }
@@ -262,6 +282,7 @@ body.editor {
   font-weight: 500;
 }
 .trace-card__action { justify-self: start; }
+.trace-card [role="alert"] { display: grid; gap: 10px; }
 .trace-card__actions { display: flex; gap: 8px; }
 .trace-card__running { display: flex; align-items: center; gap: 10px; font-size: 14px; font-weight: 700; }
 .trace-card__elapsed { font-size: 13px; }
@@ -325,4 +346,13 @@ body.editor {
 .traced__point { fill: var(--green); stroke: var(--ink); stroke-width: 1; }
 .traced__label circle { fill: var(--surface); stroke: var(--ink); stroke-width: 1; }
 .traced__label text { fill: var(--ink); font-size: 9px; font-weight: 700; }
-.hoop-hint { fill: var(--ink); font-size: 12px; font-weight: 500; }
+.traced__leader { stroke: var(--ink); stroke-width: 1; }
+.traced__anchor { fill: var(--ink); }
+
+/* ---------- The uploaded design on the canvas ---------- */
+.design-canvas__bg { fill: transparent; }
+.design-shape { fill: var(--ink); cursor: pointer; }
+.design-shapes.is-under .design-shape { fill: none; stroke: var(--muted); stroke-width: 1; }
+.design-shape__selected { fill: none; stroke: var(--green); stroke-width: 2; stroke-dasharray: 5 4; pointer-events: none; }
+.stage__message { display: grid; justify-items: center; gap: 12px; max-width: 360px; text-align: center; font-size: 14px; }
+.trace-card__note { font-size: 13px; }

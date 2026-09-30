@@ -22,10 +22,11 @@ type Props = TraceState & {
   estimateMinutes: number | null;
   onStart: () => void;
   onCancel: () => void;
+  onRetry: () => void;
 };
 
-/** "Create satin columns" card: idle, queued, running, done (collapsed), failed, cancelled. */
-export function TraceCard({ phase, job, problem, clockOffsetMs, estimateMinutes, onStart, onCancel }: Props) {
+/** "Create satin columns" card: loading, unavailable, idle, queued, running, done (collapsed), failed, cancelled. */
+export function TraceCard({ phase, job, problem, clockOffsetMs, workers, estimateMinutes, onStart, onCancel, onRetry }: Props) {
   const estimate = estimateMinutes !== null && (phase === "idle" || phase === "queued" || phase === "running") && (
     <p className="trace-card__estimate">Usually about {estimateMinutes} minutes <span className="trace-card__tag">estimate</span></p>
   );
@@ -56,11 +57,19 @@ export function TraceCard({ phase, job, problem, clockOffsetMs, estimateMinutes,
         <span className="chip-beta">Beta</span>
       </div>
 
-      {phase === "loading" && <p className="trace-card__text" role="status">Loading…</p>}
+      {phase === "loading" && <p className="trace-card__text" role="status">Checking background jobs…</p>}
+
+      {phase === "unavailable" && (
+        <div role="alert">
+          <p className="trace-card__text">{problem}</p>
+          <button className="btn btn--ink btn--sm trace-card__action" type="button" onClick={onRetry}>Retry</button>
+        </div>
+      )}
 
       {phase === "idle" && (
         <>
           <p className="trace-card__text">Turns the narrow strokes of your logo into satin columns you can edit.</p>
+          {workers === 0 && <p className="trace-card__note">No background worker is running, so a trace would wait in the queue until one starts.</p>}
           {estimate}
           <button className="btn btn--ink btn--sm trace-card__action" type="button" onClick={onStart}>Trace</button>
         </>
@@ -105,7 +114,7 @@ export function TraceCard({ phase, job, problem, clockOffsetMs, estimateMinutes,
         </>
       )}
 
-      {problem && <p className="trace-card__problem" role="alert">{problem}</p>}
+      {problem && phase !== "unavailable" && <p className="trace-card__problem" role="alert">{problem}</p>}
     </section>
   );
 }

@@ -273,3 +273,31 @@ def test_site_info_works_with_the_product_config(tmp_path):
 def test_site_info_passes_the_configured_video_url(tmp_path):
     client = make_client(tmp_path, CONFIG.with_overrides({"site.demo_video_url": "https://example.com/demo.mp4"}))
     assert client.get("/site").json()["demo_video_url"] == "https://example.com/demo.mp4"
+
+
+# ---------- editor: the design's shapes ----------
+
+def test_shapes_give_outlines_in_mm_and_their_stitch_type(client):
+    design_id = upload(client, (SAMPLES / "mixed.png").read_bytes(), settings={"width_mm": 50}).json()["id"]
+    response = client.get(f"/designs/{design_id}/shapes")
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["id"] == design_id and abs(body["width_mm"] - 50) < 1e-6
+    assert sorted(s["kind"] for s in body["shapes"]) == ["fill", "fill", "satin", "satin"]
+    for shape in body["shapes"]:
+        xs = [p[0] for ring in shape["rings"] for p in ring]
+        assert body["bounds_mm"][0] - 1e-6 <= min(xs) and max(xs) <= body["bounds_mm"][2] + 1e-6
+
+
+def test_shapes_refuse_svg_and_large_images_plainly(tmp_path):
+    client = make_client(tmp_path, CONFIG.with_overrides({"api.sync_preview_max_side_px": 500}))
+    svg = b'<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><rect width="5" height="5"/></svg>'
+    svg_id = upload(client, svg, name="logo.svg").json()["id"]
+    assert "Export the logo as PNG" in client.get(f"/designs/{svg_id}/shapes").json()["error"]
+    big_id = upload(client, (SAMPLES / "circle.png").read_bytes()).json()["id"]
+    response = client.get(f"/designs/{big_id}/shapes")
+    assert response.status_code == 422 and "Resize it to at most 500 px" in response.json()["error"]
+
+
+def test_config_gives_the_status_timeout(client):
+    assert client.get("/config").json()["status_timeout_s"] == CONFIG.get("jobs.status_timeout_s")

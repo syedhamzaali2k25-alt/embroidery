@@ -25,9 +25,19 @@ export type ClientConfig = {
   poll_start_s: number;
   poll_max_s: number;
   poll_backoff_factor: number;
+  status_timeout_s: number;
 };
 
-export type TraceColumn = { number: number; left: number[][]; right: number[][]; edit_points: number[][]; label: number[] };
+export type TraceColumn = {
+  number: number; left: number[][]; right: number[][]; edit_points: number[][]; label: number[]; shape?: number | null;
+};
+export type DesignShape = {
+  number: number; kind: "fill" | "satin"; max_width_mm: number; area_mm2: number; bounds_mm: number[];
+  /** Outline first, then holes; points in mm. */
+  rings: number[][][];
+};
+export type DesignShapes = { id: string; shapes: DesignShape[]; bounds_mm: number[]; width_mm: number; height_mm: number };
+export type JobsHealth = { status: "ok"; workers: number };
 export type TraceResult = { columns: TraceColumn[]; fill_shapes: number; junction_patches: number; bounds_mm: number[]; width_mm: number };
 export type JobStatus = "queued" | "running" | "done" | "failed" | "cancelled";
 export type Job = {
@@ -91,11 +101,20 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+/** Status 0: the server could not be reached. TIMED_OUT: it did not answer within the time allowed. */
+export const TIMED_OUT = -1;
+
+type Options = RequestInit & { timeoutS?: number };
+
+async function request<T>(path: string, { timeoutS, ...init }: Options = {}): Promise<T> {
   let response: Response;
+  const signal = timeoutS ? AbortSignal.timeout(timeoutS * 1000) : undefined;
   try {
-    response = await fetch(`${API_URL}${path}`, init);
-  } catch {
+    response = await fetch(`${API_URL}${path}`, { ...init, signal });
+  } catch (err) {
+    if (signal?.aborted && err instanceof DOMException && err.name === "TimeoutError") {
+      throw new ApiError(`The server did not answer within ${timeoutS} ${timeoutS === 1 ? "second" : "seconds"}.`, TIMED_OUT);
+    }
     throw new ApiError(`Can't reach the Stitchbook server at ${API_URL}. Check that it is running, then try again.`, 0);
   }
   if (!response.ok) {
@@ -121,6 +140,7 @@ export const api = {
     return request<DesignCreated>("/designs", { method: "POST", body: form });
   },
   design: (id: string) => request<DesignRecord>(`/designs/${id}`),
+  shapes: (id: string) => request<DesignShapes>(`/designs/${id}/shapes`),
   preview: (id: string, settings: DesignSettings = {}) =>
     request<Preview>(`/designs/${id}/preview`, {
       method: "POST",
@@ -129,6 +149,7 @@ export const api = {
     }),
   downloadUrl: (id: string) => `${API_URL}/designs/${id}/download?format=dst`,
   trace: (designId: string) => request<Job>(`/designs/${designId}/trace`, { method: "POST" }),
-  job: (jobId: string) => request<Job>(`/jobs/${jobId}`),
+  jobsHealth: (timeoutS?: number) => request<JobsHealth>("/jobs/health", { timeoutS }),
+  job: (jobId: string, timeoutS?: number) => request<Job>(`/jobs/${jobId}`, { timeoutS }),
   cancelJob: (jobId: string) => request<Job>(`/jobs/${jobId}/cancel`, { method: "POST" }),
 };

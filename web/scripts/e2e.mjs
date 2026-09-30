@@ -33,7 +33,8 @@ const storage = await mkdtemp(join(tmpdir(), 'stitchbook-e2e-'));
 // trace so the queued and running states last long enough to see and cancel.
 const REDIS_PORT = 6391;
 const REDIS_URL = `redis://127.0.0.1:${REDIS_PORT}/0`;
-const redisProc = spawn('redis-server', ['--port', String(REDIS_PORT), '--save', '', '--appendonly', 'no', '--dir', storage], { stdio: 'ignore' });
+const startRedis = () => spawn('redis-server', ['--port', String(REDIS_PORT), '--save', '', '--appendonly', 'no', '--dir', storage], { stdio: 'ignore' });
+let redisProc = startRedis();
 let workerProc = null;
 const startWorker = () => {
   workerProc = spawn(python, ['-m', 'stitchbook_worker.main'], {
@@ -130,6 +131,7 @@ try {
           await writeFile(join(fixtures, 'upload.json'), JSON.stringify(created, null, 2));
           await writeFile(join(fixtures, 'design.json'), JSON.stringify(await (await fetch(`${API}/designs/${created.id}`)).json(), null, 2));
           await writeFile(join(fixtures, 'preview.json'), JSON.stringify(preview));
+          await writeFile(join(fixtures, 'shapes.json'), JSON.stringify(await (await fetch(`${API}/designs/${created.id}/shapes`)).json()));
         }
 
         // The editor button opens the editor screen.
@@ -170,6 +172,10 @@ try {
       const card = () => page.locator('.trace-card').innerText();
       await page.goto(editorUrl);
       await page.locator('[data-state=idle]').waitFor();
+      const apiShapes = await (await fetch(`${API}/designs/${traceDesign}/shapes`)).json();
+      await page.locator('.design-shape').first().waitFor();
+      check(await page.locator('.design-shape').count() === apiShapes.shapes.length && await page.locator('.layers .layer').count() === apiShapes.shapes.length
+        && await page.locator('.hoop-ring').count() === 0, `the canvas and Layers show the uploaded design's ${apiShapes.shapes.length} shapes (no demo ring)`);
       await page.getByRole('button', { name: 'Trace', exact: true }).click();
       await page.locator('[data-state=queued]').waitFor();
       await shot('editor-trace-queued');
@@ -212,6 +218,23 @@ try {
       await page.locator('.manual__row', { hasText: 'Select Satin Columns' }).click();
       check(await page.locator('.manual__row', { hasText: 'Select Satin Columns' }).getAttribute('aria-pressed') === 'true',
         'Select Satin Columns row activates that tool');
+
+      // Redis stops: the card says so plainly and offers Retry; Retry works once it is back.
+      redisProc.kill();
+      await new Promise((r) => redisProc.once('exit', r));
+      await page.goto(editorUrl);
+      await page.locator('[data-state=unavailable]').waitFor({ timeout: 15000 });
+      check((await card()).includes('Background jobs are not running, so satin columns cannot be traced right now.') && (await card()).includes('Retry'),
+        'Redis stopped: "Background jobs are not running…" with Retry (no endless Loading…)');
+      await shot('editor-trace-unavailable');
+      redisProc = startRedis();
+      for (let i = 0; i < 40; i++) {
+        try { if ((await fetch(`${API}/jobs/health`)).ok) break; } catch { /* not up yet */ }
+        await new Promise((r) => setTimeout(r, 250));
+      }
+      await page.getByRole('button', { name: 'Retry' }).click();
+      await page.locator('[data-state=done]').waitFor({ timeout: 15000 });
+      check(await page.locator('.traced__column').count() === columns, 'Redis back: Retry restores the traced result');
     }
 
     // ---------- states ----------

@@ -14,7 +14,7 @@ const dist = join(root, 'dist');
 // API responses recorded from the real API by `npm run e2e` (scripts/fixtures), so the audit
 // needs no running server. The Upload and Preview screens are audited in every state.
 const fixture = async (name) => JSON.parse(await readFile(join(root, 'scripts', 'fixtures', name), 'utf8'));
-const fx = { config: await fixture('config.json'), upload: await fixture('upload.json'), design: await fixture('design.json'), preview: await fixture('preview.json') };
+const fx = { config: await fixture('config.json'), upload: await fixture('upload.json'), design: await fixture('design.json'), preview: await fixture('preview.json'), shapes: await fixture('shapes.json') };
 const testImage = join(root, 'scripts', 'test-images', 'cafe-luna.jpg');
 const traceResult = await fixture('trace-result.json');
 
@@ -31,9 +31,18 @@ function jobFor(status) {
     result: status === 'done' ? traceResult : null,
   };
 }
+const QUEUE_DOWN = 'Background jobs are not running, so satin columns cannot be traced right now.';
+/** status: a job state, or 'idle' (no job yet), 'unavailable' (Redis down), 'loading' / 'timeout' (no answer). */
 async function mockEditor(page, status, estimate = null) {
-  await page.route(`${API}/config`, (r) => r.fulfill({ json: { ...fx.config, trace_estimate_minutes: estimate, poll_start_s: 2, poll_max_s: 15, poll_backoff_factor: 2 } }));
+  const timeout = status === 'timeout' ? 1 : 10;
+  await page.route(`${API}/config`, (r) => r.fulfill({ json: { ...fx.config, trace_estimate_minutes: estimate, poll_start_s: 2, poll_max_s: 15, poll_backoff_factor: 2, status_timeout_s: timeout } }));
   await page.route(`${API}/designs/${fx.upload.id}`, (r) => r.fulfill({ json: { ...fx.design, trace_job_id: status === 'idle' ? null : JOB_ID } }));
+  await page.route(`${API}/designs/${fx.upload.id}/shapes`, (r) => r.fulfill({ json: fx.shapes }));
+  await page.route(`${API}/jobs/health`, (r) => {
+    if (status === 'unavailable') return r.fulfill({ status: 503, json: { error: QUEUE_DOWN } });
+    if (status === 'loading' || status === 'timeout') return; // never answers
+    return r.fulfill({ json: { status: 'ok', workers: 1 } });
+  });
   await page.route(`${API}/jobs/${JOB_ID}`, (r) => r.fulfill({ json: jobFor(status) }));
 }
 const editorRoute = `/editor?design=${fx.upload.id}`;
@@ -72,6 +81,9 @@ const pages = {
   'preview-loading': { route: previewRoute, api: { preview: 'loading' }, ready: 'text=Turning your logo into stitches' },
   'preview-error': { route: previewRoute, api: { preview: 'error' }, ready: "text=The preview couldn't be made" },
   'preview-empty': { route: '/preview', api: {}, ready: 'text=No design to preview yet' },
+  'editor-trace-loading': { route: editorRoute, editor: ['loading'], ready: '[data-state=loading]' },
+  'editor-trace-unavailable': { route: editorRoute, editor: ['unavailable'], ready: '[data-state=unavailable]' },
+  'editor-trace-timeout': { route: editorRoute, editor: ['timeout'], ready: '[data-state=unavailable]' },
   'editor-trace-idle': { route: editorRoute, editor: ['idle'], ready: '[data-state=idle]' },
   'editor-trace-queued': { route: editorRoute, editor: ['queued', 3], ready: '[data-state=queued]' },
   'editor-trace-running': { route: editorRoute, editor: ['running', 3], ready: 'text=Getting your layer ready' },
@@ -194,6 +206,7 @@ for (const vp of viewports) {
     await page.goto(`${base}${spec.route}`, { waitUntil: spec.ready ? 'load' : 'networkidle' });
     if (spec.file) await page.locator('input[type=file]').setInputFiles(testImage);
     if (spec.ready) await page.locator(spec.ready).first().waitFor();
+    if (spec.editor) await page.locator('.design-shape').first().waitFor(); // the design's shapes are drawn
     if (spec.click) for (const el of await page.locator(spec.click).all()) await el.click();
     await page.evaluate(() => document.fonts.ready);
     const file = join(outDir, `${name}-${vp.name}.png`);

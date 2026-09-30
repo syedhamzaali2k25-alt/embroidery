@@ -16,5 +16,6 @@
   "trace_estimate_minutes": null,
   "poll_start_s": 2,
   "poll_max_s": 15,
-  "poll_backoff_factor": 2
+  "poll_backoff_factor": 2,
+  "status_timeout_s": 10
 }

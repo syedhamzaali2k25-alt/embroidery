@@ -159,6 +159,12 @@ PRODUCT: dict[str, dict[str, Any]] = {
         "poll_max_s": 15,
         # ...multiplying the wait by this factor after each check.
         "poll_backoff_factor": PLACEHOLDER,
+        # The API gives up connecting to / reading from Redis after this many seconds and
+        # answers "Background jobs are not running" instead of hanging.
+        "redis_timeout_s": PLACEHOLDER,
+        # The editor waits this many seconds for a job-status answer before showing a plain
+        # "no answer" message with Retry (the Create satin columns card never waits forever).
+        "status_timeout_s": PLACEHOLDER,
     },
     "editor": {
         # Edit points on a traced satin column: its centerline is simplified so that no point of
@@ -207,6 +213,8 @@ TEST_RUN_OVERRIDES: dict[str, Any] = {
     "jobs.result_ttl_s": 86400,
     "jobs.max_retries": 0,
     "jobs.poll_backoff_factor": 2,
+    "jobs.redis_timeout_s": 2,
+    "jobs.status_timeout_s": 10,
     "editor.edit_point_tolerance_mm": 0.5,
 }
 

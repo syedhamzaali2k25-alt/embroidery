@@ -149,10 +149,35 @@ def test_failed_trace_gives_a_plain_message(tmp_path, redis_url, start_worker):
     assert failed["error"].startswith("The logo could not be traced") and "Traceback" not in failed["error"]
 
 
+QUEUE_DOWN = "Background jobs are not running, so satin columns cannot be traced right now."
+
+
 def test_queue_down_gives_a_plain_message(tmp_path):
     client = client_for(tmp_path, f"redis://127.0.0.1:{free_port()}/0")  # nothing listens there
     response = client.post(f"/designs/{upload(client)}/trace")
-    assert response.status_code == 503 and "job queue can't be reached" in response.json()["error"]
+    assert response.status_code == 503 and response.json()["error"] == QUEUE_DOWN
+    health = client.get("/jobs/health")
+    assert health.status_code == 503 and health.json()["error"] == QUEUE_DOWN
+
+
+def test_unreachable_redis_host_times_out_instead_of_hanging(tmp_path):
+    # 10.255.255.1 is a non-routable address: connecting never gets an answer, only a timeout.
+    client = client_for(tmp_path, "redis://10.255.255.1:6379/0")
+    started = time.monotonic()
+    response = client.get("/jobs/health")
+    took = time.monotonic() - started
+    assert response.status_code == 503 and response.json()["error"] == QUEUE_DOWN
+    assert took < CONFIG.get("jobs.redis_timeout_s") + 2, f"took {took:.1f} s"
+
+
+def test_jobs_health_counts_workers(tmp_path, redis_url, start_worker):
+    client = client_for(tmp_path, redis_url)
+    assert client.get("/jobs/health").json() == {"status": "ok", "workers": 0}
+    start_worker()
+    end = time.time() + 15
+    while client.get("/jobs/health").json()["workers"] == 0 and time.time() < end:
+        time.sleep(0.1)
+    assert client.get("/jobs/health").json()["workers"] == 1
 
 
 def test_unknown_job(tmp_path, redis_url):
