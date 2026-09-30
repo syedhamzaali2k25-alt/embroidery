@@ -17,6 +17,7 @@ const types = { '.html': 'text/html', '.css': 'text/css', '.js': 'text/javascrip
 const result = JSON.parse(await readFile(join(root, 'scripts', 'fixtures', 'trace-result.json'), 'utf8'));
 const config = JSON.parse(await readFile(join(root, 'scripts', 'fixtures', 'config.json'), 'utf8'));
 const design = JSON.parse(await readFile(join(root, 'scripts', 'fixtures', 'design.json'), 'utf8'));
+const formats = JSON.parse(await readFile(join(root, 'scripts', 'fixtures', 'formats.json'), 'utf8'));
 // GET /designs/{id}/editor recorded from the real API (scripts/make-editor-fixture.py).
 const editorState = JSON.parse(await readFile(join(root, 'scripts', 'fixtures', 'editor.json'), 'utf8'));
 const shapes = editorState.shapes;
@@ -68,6 +69,7 @@ async function open(browser, { status = 'running', traceJob = JOB, estimate = nu
   });
   await page.route(`${API}/config`, (r) => r.fulfill({ json: { ...config, trace_estimate_minutes: estimate, poll_start_s: 2, poll_max_s: 15, poll_backoff_factor: 2, status_timeout_s: timeout } }));
   await page.route(`${API}/designs/${DESIGN}/editor`, (r) => r.fulfill({ json: { ...editorState, id: DESIGN } }));
+  await page.route(`${API}/formats`, (r) => r.fulfill({ json: formats })); // the Export card
   await page.route(`${API}/jobs/health`, (r) => {
     state.healthGets++;
     if (state.health === 'down') return r.fulfill({ status: 503, json: { error: QUEUE_DOWN } });
@@ -120,7 +122,7 @@ try {
     const card = await page.locator('.trace-card').innerText();
     check(card.includes(QUEUE_DOWN) && card.includes('Retry'), `queue down: "${QUEUE_DOWN}" + Retry`);
     state.health = 'ok';
-    await page.getByRole('button', { name: 'Retry' }).click();
+    await page.locator('.trace-card').getByRole('button', { name: 'Retry' }).click();
     await page.locator('[data-state=running]').waitFor();
     check(state.healthGets === 2, 'Retry checks again and picks up the running job once jobs are back');
     await page.close();
