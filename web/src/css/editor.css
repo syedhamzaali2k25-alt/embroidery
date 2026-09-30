@@ -26,12 +26,18 @@ body.editor {
 .file { min-width: 0; }
 .file__name { font-weight: 700; font-size: 15px; line-height: 1.25; }
 .file__state { display: flex; align-items: center; gap: 6px; font-size: 13px; }
-.saved-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); }
+.saved-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); flex: none; }
+.file__state.is-saving .saved-dot, .file__state.is-loading .saved-dot { background: var(--muted); }
+.file__state.is-failed .saved-dot { background: transparent; border: 2px solid var(--ink); }
+.file__state { min-width: 0; }
 .bar__preview { display: none; }
+.btn:disabled, .icon-btn:disabled { cursor: not-allowed; opacity: 0.4; }
+.icon-btn:disabled:hover { border-color: var(--border); }
 
 @media (min-width: 720px) { .bar__preview { display: inline-flex; } }
 @media (max-width: 479px) {
-  .bar__right .icon-btn { display: none; }
+  .bar { flex-wrap: wrap; }
+  .bar__right { margin-left: auto; }
 }
 
 /* ---------- Workspace ---------- */
@@ -101,6 +107,10 @@ body.editor {
   min-height: 0;
   overflow: hidden;
 }
+/* Design editor: a row for tool steps and errors above the canvas (never over the drawing). */
+.stage--design { grid-template-rows: auto minmax(0, 1fr) auto; }
+.stage__notes { display: grid; gap: 8px; padding: 12px 16px 0; }
+.stage__notes:empty { padding: 0; }
 .hoop-canvas {
   width: min(100%, 560px);
   max-height: 100%;
@@ -365,3 +375,75 @@ body.editor {
 .design-shape__selected { fill: none; stroke: var(--green); stroke-width: 2; stroke-dasharray: 5 4; pointer-events: none; }
 .stage__message { display: grid; justify-items: center; gap: 12px; max-width: 360px; text-align: center; font-size: 14px; }
 .trace-card__note { font-size: 13px; }
+.manual__row:disabled { cursor: not-allowed; opacity: 0.45; }
+
+/* ---------- Editing tools ---------- */
+.design-shapes.is-faint .design-shape { opacity: 0.22; }
+.design-shapes.is-inert .design-shape { pointer-events: none; }
+.design-canvas.tool-split, .design-canvas.tool-draw { cursor: crosshair; }
+.design-canvas.is-saving { pointer-events: none; opacity: 0.75; }
+.stitch-line { fill: none; stroke-width: 0.6; stroke-linecap: round; pointer-events: none; }
+
+.ring__line { fill: none; stroke: var(--ink); stroke-width: 1; stroke-dasharray: 3 3; pointer-events: none; }
+.ring__hit { fill: none; stroke: transparent; stroke-width: 10; pointer-events: stroke; cursor: pointer; outline: none; }
+.ring:hover .ring__line, .ring__hit:focus-visible { stroke-dasharray: none; stroke-width: 2.5; }
+.ring:hover .ring__line { stroke: var(--green); }
+.ring__hit:focus-visible { stroke: var(--green); }
+.ring.is-picked .ring__line { stroke: var(--green); stroke-width: 3; stroke-dasharray: none; }
+
+.tool-marks { pointer-events: none; }
+.tool-marks__cut { stroke: var(--ink); stroke-width: 1.5; stroke-dasharray: 4 3; }
+.tool-marks__edge { fill: none; stroke: var(--ink); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.tool-marks__edge.is-done { stroke: var(--green); stroke-width: 3; }
+.tool-marks__point { fill: var(--green); stroke: var(--ink); stroke-width: 1.2; }
+
+.tool-hint, .edit-error {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  padding: 10px 12px 10px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card-sm);
+  background: var(--surface);
+  font-size: 14px;
+}
+.tool-hint p, .edit-error p { flex: 1 1 220px; min-width: 0; }
+.edit-error { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); }
+.tool-hint__actions, .edit-error__actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.tool-hint__colour { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; }
+.tool-hint__colour select {
+  min-height: 36px;
+  max-width: 190px;
+  padding: 0 8px;
+  border: 1px solid var(--muted);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-weight: 500;
+}
+.tool-done { justify-self: start; padding: 4px 12px; border-radius: var(--radius-pill); background: var(--line); font-size: 13px; font-weight: 700; }
+
+.segmented--view { grid-template-columns: repeat(2, auto); }
+.segmented--view button { padding: 0 14px; }
+
+.pull { display: grid; gap: 8px; margin-top: 16px; }
+.pull .label { margin-bottom: 0; }
+.pull .btn--ghost { justify-self: start; }
+.pull__row { display: flex; gap: 8px; align-items: center; }
+.pull__input {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  min-height: 40px;
+  border: 1px solid var(--muted);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+}
+.pull__input:focus-within { outline: 2px solid var(--ink); outline-offset: 1px; }
+.pull__input input { flex: 1; min-width: 0; height: 38px; padding: 0 10px; border: 0; outline: 0; background: transparent; font: inherit; font-size: 16px; color: var(--ink); }
+.pull__input .unit { padding: 0 10px; font-size: 14px; font-weight: 500; }
+.panel__note--error { font-weight: 700; }

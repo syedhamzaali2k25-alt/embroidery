@@ -17,7 +17,9 @@ const types = { '.html': 'text/html', '.css': 'text/css', '.js': 'text/javascrip
 const result = JSON.parse(await readFile(join(root, 'scripts', 'fixtures', 'trace-result.json'), 'utf8'));
 const config = JSON.parse(await readFile(join(root, 'scripts', 'fixtures', 'config.json'), 'utf8'));
 const design = JSON.parse(await readFile(join(root, 'scripts', 'fixtures', 'design.json'), 'utf8'));
-const shapes = JSON.parse(await readFile(join(root, 'scripts', 'fixtures', 'shapes.json'), 'utf8'));
+// GET /designs/{id}/editor recorded from the real API (scripts/make-editor-fixture.py).
+const editorState = JSON.parse(await readFile(join(root, 'scripts', 'fixtures', 'editor.json'), 'utf8'));
+const shapes = editorState.shapes;
 const QUEUE_DOWN = 'Background jobs are not running, so satin columns cannot be traced right now.';
 
 const server = createServer(async (req, res) => {
@@ -65,7 +67,7 @@ async function open(browser, { status = 'running', traceJob = JOB, estimate = nu
     };
   });
   await page.route(`${API}/config`, (r) => r.fulfill({ json: { ...config, trace_estimate_minutes: estimate, poll_start_s: 2, poll_max_s: 15, poll_backoff_factor: 2, status_timeout_s: timeout } }));
-  await page.route(`${API}/designs/${DESIGN}/shapes`, (r) => r.fulfill({ json: { ...shapes, id: DESIGN } }));
+  await page.route(`${API}/designs/${DESIGN}/editor`, (r) => r.fulfill({ json: { ...editorState, id: DESIGN } }));
   await page.route(`${API}/jobs/health`, (r) => {
     state.healthGets++;
     if (state.health === 'down') return r.fulfill({ status: 503, json: { error: QUEUE_DOWN } });
@@ -98,7 +100,7 @@ try {
     const buttons = { queued: 'Cancel job', running: 'Cancel job', failed: 'Retry', cancelled: 'Trace' }[status];
     check(card.includes(text) && (!buttons || card.includes(buttons)), `${status}: "${text}"${buttons ? ` + ${buttons}` : ''}`);
     if (status === 'running') check(card.includes('Time elapsed') && await page.locator('[role=progressbar][aria-valuenow="30"]').count() === 1, 'running: progress bar at 30% and time elapsed');
-    if (status === 'done') check(await page.locator('.traced__column').count() === result.columns.length && await page.locator('.traced__point').count() > 0, `done: ${result.columns.length} numbered columns with edit points on the canvas`);
+    if (status === 'done') check(await page.locator('.traced__column').count() === editorState.columns.length && await page.locator('.traced__point').count() > 0, `done: ${editorState.columns.length} numbered columns with edit points on the canvas`);
     await page.close();
   }
   {
@@ -179,14 +181,14 @@ try {
       const [x1, y1, r1] = circles[i], [x2, y2, r2] = circles[j];
       if (Math.hypot(x1 - x2, y1 - y2) < r1 + r2 - 0.01) overlaps++;
     }
-    check(circles.length === result.columns.length && overlaps === 0,
+    check(circles.length === editorState.columns.length && overlaps === 0,
       `${viewport.width}px: ${circles.length} column numbers, none overlapping (${await page.locator('.traced__label[data-moved]').count()} moved aside with a leader line)`);
     // Hiding a layer hides its shape and its columns.
     const first = shapes.shapes[0].number;
-    const columnsOfFirst = result.columns.filter((c) => c.shape === first).length;
+    const columnsOfFirst = editorState.columns.filter((c) => c.shape === first).length;
     await page.getByRole('button', { name: `Hide Shape ${first}`, exact: true }).click();
     check(await page.locator('.design-shape').count() === shapes.shapes.length - 1
-      && await page.locator('.traced__column').count() === result.columns.length - columnsOfFirst,
+      && await page.locator('.traced__column').count() === editorState.columns.length - columnsOfFirst,
       `${viewport.width}px: hiding Shape ${first} hides it and its ${columnsOfFirst} columns`);
     await page.getByRole('button', { name: new RegExp(`^Shape ${first + 1} `) }).click();
     check((await page.locator('.panel__title').innerText()) === `Shape ${first + 1}`, `${viewport.width}px: picking a layer selects that shape`);

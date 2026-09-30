@@ -39,8 +39,18 @@ export type ColourLayer = {
   number: number; hex: string; shape_count: number; area_mm2: number; stitch_count?: number | null; thread: ThreadPlaceholder;
 };
 export type DetectedColour = { hex: string; share: number; shape_count: number; bounds_px: number[] };
+/** How a shape is sewn. "column": a satin column made in the editor between two edges. */
+export type ShapeKind = "fill" | "satin" | "running" | "column";
 export type DesignShape = {
-  number: number; colour: number; kind: "fill" | "satin"; max_width_mm: number; area_mm2: number; bounds_mm: number[];
+  number: number; colour: number; kind: ShapeKind; max_width_mm: number; area_mm2: number; bounds_mm: number[];
+  /** The stitch type was chosen in the editor (not from the shape's width). */
+  kind_chosen?: boolean;
+  /** Set in the editor; null = the default from config. */
+  pull_compensation_mm?: number | null;
+  /** Plain notes about how the shape will be sewn. */
+  notes?: string[];
+  /** For kind "column": the two edges it runs between (mm). */
+  edges?: { left: number[][]; right: number[][]; closed: boolean } | null;
   /** Outline first, then holes; points in mm (includes the overlap). */
   rings: number[][][];
   /** Where this shape runs under a later colour it touches: polygons (outline, then holes), mm. */
@@ -49,6 +59,8 @@ export type DesignShape = {
 export type DesignShapes = {
   id: string; colours: ColourLayer[]; shapes: DesignShape[]; bounds_mm: number[]; width_mm: number; height_mm: number;
   shapes_found: number; specks_removed: number;
+  /** Editor changes that no longer fit the design (e.g. their colour was left out), in words. */
+  skipped_edits?: string[];
 };
 export type JobsHealth = { status: "ok"; workers: number };
 export type TraceResult = { columns: TraceColumn[]; fill_shapes: number; junction_patches: number; bounds_mm: number[]; width_mm: number };
@@ -94,7 +106,7 @@ export type DesignRecord = DesignCreated & {
 };
 
 export type StitchPoint = { x_mm: number; y_mm: number; command: "stitch" | "jump" | "trim" | "end"; layer: number | null };
-export type Layer = { number: number; type: "fill" | "satin" | "junction patch"; stitch_count: number; colour: number };
+export type Layer = { number: number; type: "fill" | "satin" | "running" | "junction patch"; stitch_count: number; colour: number };
 
 export type Preview = {
   id: string;
@@ -152,6 +164,35 @@ async function request<T>(path: string, { timeoutS, ...init }: Options = {}): Pr
   return response.json() as Promise<T>;
 }
 
+// ---------- editor ----------
+
+export type OutlineRef = { shape: number; ring: number };
+export type DrawnEdge = { points: number[][] };
+/** One change, as the editor sends it: shape numbers as listed now, points in mm. */
+export type Edit =
+  | { op: "set_type"; shape: number; kind: "running" | "satin" | "fill" }
+  | { op: "set_pull_compensation"; shape: number; mm: number | null }
+  | { op: "split"; a: number[]; b: number[] }
+  | { op: "column"; left: OutlineRef | DrawnEdge; right: OutlineRef | DrawnEdge; colour?: number };
+export type EditorState = {
+  id: string;
+  shapes: DesignShapes;
+  /** Satin columns, numbered in sewing order. */
+  columns: TraceColumn[];
+  colours: ColourLayer[];
+  layers: Layer[];
+  stats: Preview["stats"];
+  stitches: StitchPoint[];
+  history: { applied: number; total: number; undo: string | null; redo: string | null };
+  defaults: { pull_compensation_mm: number; pull_compensation_min_mm: number; pull_compensation_max_mm: number; satin_max_width_mm: number };
+};
+
+const post = (body?: unknown): RequestInit => ({
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: body === undefined ? undefined : JSON.stringify(body),
+});
+
 export const api = {
   site: () => request<SiteInfo>("/site"),
   config: () => request<ClientConfig>("/config"),
@@ -163,6 +204,10 @@ export const api = {
   },
   design: (id: string) => request<DesignRecord>(`/designs/${id}`),
   shapes: (id: string) => request<DesignShapes>(`/designs/${id}/shapes`),
+  editor: (id: string) => request<EditorState>(`/designs/${id}/editor`),
+  edit: (id: string, edit: Edit) => request<EditorState>(`/designs/${id}/edits`, post(edit)),
+  undo: (id: string) => request<EditorState>(`/designs/${id}/edits/undo`, post()),
+  redo: (id: string) => request<EditorState>(`/designs/${id}/edits/redo`, post()),
   preview: (id: string, settings: DesignSettings = {}) =>
     request<Preview>(`/designs/${id}/preview`, {
       method: "POST",

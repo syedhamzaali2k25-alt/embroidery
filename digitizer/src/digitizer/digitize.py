@@ -104,11 +104,17 @@ class Shape:
     colour: int  # number of its colour layer (1-based, sewing order)
     poly_px: Polygon  # in image pixels
     poly: Polygon  # in mm, design coordinates
-    kind: str = ""  # "fill" or "satin"; "" when the caller did not ask for classification
+    # "fill", "satin" or "running"; "column" for a satin column made in the editor between two
+    # edges (see `edges`); "" when the caller did not ask for classification.
+    kind: str = ""
     max_width_mm: float = 0.0  # widest point (largest circle that fits inside)
     # The part added by colour overlap (under later, touching colours), in mm; empty if none.
     # poly and poly_px already include it.
     overlap: Polygon | MultiPolygon = field(default_factory=Polygon)
+    pull_compensation_mm: float | None = None  # set in the editor; None = stitch.pull_compensation_mm
+    kind_chosen: bool = False  # the stitch type was chosen in the editor, not by width
+    # kind "column": its two edges in pixels, and whether they are closed loops (outline + hole)
+    edges: tuple[list, list, bool] | None = None
 
 
 @dataclass
@@ -132,6 +138,7 @@ class Traced:
     shapes_found: int  # shapes traced in the kept colours, before speck removal
     specks_removed: int  # shapes dropped as specks (smaller than input.min_shape_area_mm2)
     holes_filled: int  # holes filled because they were smaller than input.min_shape_area_mm2
+    skipped_edits: list[str] = field(default_factory=list)  # editor changes that no longer apply
 
     @property
     def shapes(self) -> list[Shape]:
@@ -143,7 +150,8 @@ class Traced:
 
 
 def trace_design(image_path: str | Path, config: Config, width_mm: float | None = None,
-                 keep_colours: list[str] | None = None, classify: bool = True) -> Traced:
+                 keep_colours: list[str] | None = None, classify: bool = True,
+                 edits: list[dict] | None = None) -> Traced:
     """The one place an image becomes colour layers of shapes. The CLI, the API's upload check,
     preview and shapes endpoints, and the editor's trace job all go through here, so they always
     agree on colours, shapes and order.
@@ -160,6 +168,9 @@ def trace_design(image_path: str | Path, config: Config, width_mm: float | None 
     5. Colour overlap (the one rule): a shape that touches a shape of a colour sewn later grows by
        colour.overlap_mm into that shape, so it runs under the later colour and no fabric shows
        between them (see grow_under_later_colours). Classification uses the grown shape.
+    6. Editor changes (edits: stitch type, pull compensation, splits, satin columns between two
+       edges), stored in image pixels and applied in order (digitizer.edits). A change that no
+       longer fits the design (say its shape was left out) is skipped and listed in skipped_edits.
 
     Sewing order (the one rule): colour layers are sewn largest total shape area first, smallest
     last, so big areas go down first and small details are sewn on top; equal areas keep palette
@@ -213,7 +224,11 @@ def trace_design(image_path: str | Path, config: Config, width_mm: float | None 
                 shape.max_width_mm = shape_max_width_mm(dist, tf)
             shapes.append(shape)
         layers.append(ColourLayer(layer_number, colour, shapes))
-    return Traced(layers, tf, q.shape, q.colours, q.background, found, found - kept_count, holes_filled)
+    traced = Traced(layers, tf, q.shape, q.colours, q.background, found, found - kept_count, holes_filled)
+    if edits and classify:
+        from digitizer.edits import apply_edits  # edits builds on this module
+        traced.skipped_edits = apply_edits(traced, edits, config)
+    return traced
 
 
 # Traced outlines run through the centres of each region's edge pixels, so two colour regions
@@ -346,13 +361,14 @@ def _dist(a, b) -> float:
 
 @dataclass
 class Piece:
-    kind: str  # "fill" or "satin"
+    kind: str  # "fill", "satin" or "running"
     area: Polygon  # the shape it belongs to, slightly grown, for in-shape checks
     cover: Polygon  # the area this piece's stitches cover
     rows: list[Row] = field(default_factory=list)
     column: satin.Column | None = None
     patch: bool = False  # a fill patch where satin columns meet or leave a gap
     shape: int = 0  # number of the Shape this piece came from
+    path: list[tuple[float, float]] = field(default_factory=list)  # kind "running": a closed loop
 
 
 @dataclass
@@ -393,8 +409,26 @@ def build_pieces(shapes: list[Shape], image_shape: tuple[int, int], tf: PxToMm, 
             on_shape_done(done, len(shapes))
         poly, shape_number = shape.poly, shape.number
         area = poly.buffer(tolerance)
+        pull_comp = (config.get("stitch.pull_compensation_mm") if shape.pull_compensation_mm is None
+                     else shape.pull_compensation_mm)
         if shape.kind == "fill":
             pieces.append(Piece("fill", area, poly, rows=_rows(poly, config), shape=shape_number))
+            continue
+        if shape.kind == "running":
+            # A running stitch along every outline of the shape (outside, then each hole).
+            length = config.get("stitch.running_stitch_length_mm")
+            for ring in (poly.exterior, *poly.interiors):
+                path = satin.running_path(list(ring.coords), length)
+                pieces.append(Piece("running", area, LineString(path + path[:1]).buffer(tolerance),
+                                    shape=shape_number, path=path))
+            continue
+        if shape.kind == "column":
+            left_px, right_px, closed = shape.edges
+            column = satin.column_between([tf.geom(Point(p)).coords[0] for p in left_px],
+                                          [tf.geom(Point(p)).coords[0] for p in right_px], closed,
+                                          config.get("stitch.satin_spacing_mm"), pull_comp)
+            cover = satin.coverage(column)
+            pieces.append(Piece("satin", area.union(cover.buffer(tolerance)), cover, column=column, shape=shape_number))
             continue
         shape_mask = satin.polygon_mask(shape.poly_px, image_shape)
         dist = satin.distance_map(shape_mask)
@@ -418,7 +452,7 @@ def build_pieces(shapes: list[Shape], image_shape: tuple[int, int], tf: PxToMm, 
                 )
             column = satin.build_column(
                 line, poly, config.get("stitch.satin_spacing_mm"), max_width,
-                config.get("stitch.pull_compensation_mm"), min_len, radius_mm,
+                pull_comp, min_len, radius_mm,
             )
             result.skipped_rungs += column.skipped_rungs
             columns.append(column)
@@ -486,6 +520,7 @@ def satin_settings(config: Config) -> satin.SatinSettings:
 class Plan:
     moves: list[Move]
     satin_labels: dict[int, tuple[float, float]]  # column number -> label position (mm)
+    satin_pieces: dict[int, int] = field(default_factory=dict)  # column number -> source (piece) index
 
 
 def plan_pieces(pieces: list[Piece], logo: Polygon, settings: satin.SatinSettings, jump_threshold_mm: float,
@@ -500,6 +535,7 @@ def plan_pieces(pieces: list[Piece], logo: Polygon, settings: satin.SatinSetting
     remaining = list(range(len(pieces)))
     moves: list[Move] = []
     labels: dict[int, tuple[float, float]] = {}
+    columns_of: dict[int, int] = {}  # column number -> source (piece) index
     pos = start_pos
     sewn_area = Polygon()  # shrunk by the tolerance so a travel may start on a sewn edge
 
@@ -514,6 +550,11 @@ def plan_pieces(pieces: list[Piece], logo: Polygon, settings: satin.SatinSetting
                 entry = (min((r.start for r in piece.rows), key=lambda p: (p[1], p[0])) if pos is None
                          else min((_nearest_end(r, pos) for r in piece.rows), key=lambda p: _dist(pos, p)))
                 options.append((i, entry, None))
+            elif piece.kind == "running":  # a closed loop: start at its point nearest the needle
+                k = (min(range(len(piece.path)), key=lambda j: (piece.path[j][1], piece.path[j][0])) if pos is None
+                     else min(range(len(piece.path)), key=lambda j: _dist(pos, piece.path[j])))
+                loop = piece.path[k:] + piece.path[:k]
+                options.append((i, loop[0], [(p, "running") for p in loop + loop[:1]]))
             else:
                 for start, forward in satin.entry_options(piece.column, pos):
                     seq = satin.column_sequence(piece.column, start, forward, settings)
@@ -531,7 +572,11 @@ def plan_pieces(pieces: list[Piece], logo: Polygon, settings: satin.SatinSetting
         i, entry, seq = choice
         remaining.remove(i)
         piece = pieces[i]
-        if piece.kind == "fill":
+        if piece.kind == "running":
+            src = source_offset + i
+            piece_moves = [Move("stitch", p, role, 0, src) for p, role in seq]
+            piece_moves[0] = Move("stitch" if sewn else "jump", entry, "travel" if sewn else "", 0, src)
+        elif piece.kind == "fill":
             role = "patch" if piece.patch else "fill"
             src = source_offset + i
             piece_moves = [Move(m.kind, m.to, role, 0, src) for m in order_rows(piece.rows, piece.area, jump_threshold_mm, pos)]
@@ -540,12 +585,13 @@ def plan_pieces(pieces: list[Piece], logo: Polygon, settings: satin.SatinSetting
             src = source_offset + i
             number = first_number + len(labels)
             labels[number] = satin.label_point(piece.column).coords[0]
+            columns_of[number] = src
             piece_moves = [Move("stitch", p, role, number, src) for p, role in seq]
             piece_moves[0] = Move("stitch" if sewn else "jump", entry, "travel" if sewn else "", number, src)
         moves.extend(piece_moves)
         pos = moves[-1].to
         sewn_area = unary_union([sewn_area, piece.cover.buffer(-tolerance_mm)])
-    return Plan(moves, labels)
+    return Plan(moves, labels, columns_of)
 
 
 # ---------- 7. split long stitches and build the pattern ----------
@@ -652,6 +698,9 @@ class Result:
     holes_filled: int = 0  # holes smaller than the minimum shape area, filled
     # Colour overlap: where a colour runs under a later, touching colour (polygons as rings, mm).
     overlaps: tuple = ()
+    columns: tuple = ()  # satin columns for the editor, numbered in sewing order (column_json)
+    shapes: dict | None = None  # the shapes as sewn, for the editor (shapes_json)
+    skipped_edits: tuple[str, ...] = ()  # editor changes that no longer fit the design
 
     def summary(self) -> str:
         colours = ", ".join(f"{c.hex} ({c.shapes} shapes, {c.stitches} stitches)" for c in self.colours)
@@ -674,23 +723,32 @@ class Result:
 
 
 def digitize(image_path: str | Path, out_dir: str | Path, config: Config | None = None,
-             width_mm: float | None = None, keep_colours: list[str] | None = None) -> Result:
+             width_mm: float | None = None, keep_colours: list[str] | None = None,
+             edits: list[dict] | None = None, on_progress: Callable[[float], None] | None = None) -> Result:
     """Write out.dst, preview.png and report.json into out_dir. width_mm overrides design.width_mm
-    for this job; keep_colours ("#RRGGBB") leaves the other detected colours out."""
+    for this job; keep_colours ("#RRGGBB") leaves the other detected colours out; edits are the
+    editor's changes (stored form, see digitizer.edits). on_progress gets 0..1 as shapes are done."""
     config = config or load_config()
+    report = on_progress or (lambda _f: None)
+    report(0.0)
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    traced = trace_design(image_path, config, width_mm, keep_colours)
+    traced = trace_design(image_path, config, width_mm, keep_colours, edits=edits)
+    report(0.1)
     tf = traced.tf
     settings = satin_settings(config)
     pieces: list[Piece] = []
     piece_colour: list[int] = []  # colour layer number per piece
     moves: list[Move] = []
     labels: dict[int, tuple[float, float]] = {}
-    skipped = trimmed = patches = 0
+    column_pieces: dict[int, int] = {}  # satin column number (sewing order) -> piece index
+    skipped = trimmed = patches = done = 0
+    total = max(len(traced.shapes), 1)
     for layer in traced.layers:
-        built_pieces = build_pieces(layer.shapes, traced.image_shape, tf, config)
+        built_pieces = build_pieces(layer.shapes, traced.image_shape, tf, config,
+                                    on_shape_done=lambda d, _t, base=done: report(0.1 + 0.8 * (base + d) / total))
+        done += len(layer.shapes)
         skipped += built_pieces.skipped_rungs
         trimmed += built_pieces.trimmed_rungs
         patches += built_pieces.patches
@@ -703,6 +761,7 @@ def digitize(image_path: str | Path, out_dir: str | Path, config: Config | None 
                            start_pos=start, first_number=len(labels) + 1, source_offset=len(pieces))
         moves.extend(plan.moves)
         labels.update(plan.satin_labels)
+        column_pieces.update(plan.satin_pieces)
         pieces.extend(built_pieces.pieces)
         piece_colour.extend([layer.number] * len(built_pieces.pieces))
 
@@ -726,6 +785,8 @@ def digitize(image_path: str | Path, out_dir: str | Path, config: Config | None 
     colour_stitches = {layer.number: 0 for layer in traced.layers}
     for source in built.sources:
         colour_stitches[piece_colour[source]] += 1
+    columns = tuple(column_json(n, pieces[i].column, pieces[i].shape, piece_colour[i], config)
+                    for n, i in sorted(column_pieces.items()))
     result = Result(dst_stats(dst_path), built.jumps, built.trims,
                     sum(p.kind == "fill" and not p.patch for p in pieces), sum(p.kind == "satin" for p in pieces),
                     patches, skipped, trimmed,
@@ -734,53 +795,45 @@ def digitize(image_path: str | Path, out_dir: str | Path, config: Config | None 
                     tuple(ColourSummary(layer.hex, len(layer.shapes), colour_stitches[layer.number],
                                         sum(s.poly.area for s in layer.shapes)) for layer in traced.layers),
                     traced.shapes_found, traced.specks_removed, traced.holes_filled,
-                    tuple(ring for s in traced.shapes for ring in polygons_json(s.overlap)))
+                    tuple(ring for s in traced.shapes for ring in polygons_json(s.overlap)),
+                    columns, shapes_json(traced, config), tuple(traced.skipped_edits))
     # The DST format has no room for these; keep them next to it for the readback report.
     (out_dir / "report.json").write_text(json.dumps(result.to_json(), indent=2) + "\n")
+    report(1.0)
     return result
+
+
+def column_json(number: int, column: satin.Column, shape: int, colour: int, config: Config) -> dict:
+    """One satin column for the editor: both edges, a few edit points along its centerline and
+    where its number goes, in mm. Numbers follow the sewing order."""
+    edit = column.centerline.simplify(config.get("editor.edit_point_tolerance_mm"))
+    return {
+        "number": number,
+        "left": [list(r.edge_left) for r in column.rungs],
+        "right": [list(r.edge_right) for r in column.rungs],
+        "edit_points": [list(p) for p in edit.coords],
+        "label": list(satin.label_point(column).coords[0]),
+        "shape": shape,
+        "colour": colour,
+    }
 
 
 def trace_columns(image_path: str | Path, config: Config, width_mm: float | None = None,
                   on_progress: Callable[[float], None] | None = None,
-                  keep_colours: list[str] | None = None) -> dict:
-    """Satin columns for the editor: each column's two edges and a few edit points along its
-    centerline, in mm (same coordinates as the DST). on_progress gets 0..1 as shapes are done."""
-    report = on_progress or (lambda _f: None)
-    report(0.0)
-    traced = trace_design(image_path, config, width_mm, keep_colours)
-    report(0.1)
-    total = max(len(traced.shapes), 1)
-    tolerance = config.get("editor.edit_point_tolerance_mm")
-    columns = []
-    fill_shapes = patches = done = 0
-    for layer in traced.layers:
-        built = build_pieces(layer.shapes, traced.image_shape, traced.tf, config,
-                             on_shape_done=lambda d, _t, base=done: report(0.1 + 0.85 * (base + d) / total))
-        done += len(layer.shapes)
-        fill_shapes += sum(p.kind == "fill" and not p.patch for p in built.pieces)
-        patches += built.patches
-        for piece in built.pieces:
-            if piece.kind != "satin":
-                continue
-            column = piece.column
-            edit = column.centerline.simplify(tolerance)
-            columns.append({
-                "number": len(columns) + 1,
-                "left": [list(r.edge_left) for r in column.rungs],
-                "right": [list(r.edge_right) for r in column.rungs],
-                "edit_points": [list(p) for p in edit.coords],
-                "label": list(satin.label_point(column).coords[0]),
-                "shape": piece.shape,
-                "colour": layer.number,
-            })
-    min_x, min_y, max_x, max_y = traced.bounds_mm
-    report(1.0)
+                  keep_colours: list[str] | None = None, edits: list[dict] | None = None) -> dict:
+    """Satin columns for the editor ("Create satin columns"): the same run as digitize(), so the
+    columns, their numbers (sewing order) and the stitch file always agree."""
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmp:
+        result = digitize(image_path, tmp, config, width_mm, keep_colours, edits, on_progress)
+    bounds = result.shapes["bounds_mm"]
     return {
-        "columns": columns,
-        "fill_shapes": fill_shapes,
-        "junction_patches": patches,
-        "bounds_mm": [min_x, min_y, max_x, max_y],
-        "width_mm": max_x - min_x,
+        "columns": list(result.columns),
+        "fill_shapes": result.fill_areas,
+        "junction_patches": result.junction_patches,
+        "bounds_mm": bounds,
+        "width_mm": bounds[2] - bounds[0],
     }
 
 
@@ -805,26 +858,44 @@ def colour_layers_json(traced: Traced) -> list[dict]:
     } for layer in traced.layers]
 
 
-def design_shapes(image_path: str | Path, config: Config, width_mm: float | None = None,
-                  keep_colours: list[str] | None = None) -> dict:
-    """The design's traced shapes for the editor canvas and Layers list, in mm (the same
-    coordinates as the DST and trace_columns), grouped into colour layers in sewing order. Each
-    shape says whether it will be sewn as fill or satin. Outlines are simplified by one source
-    pixel, which is invisible on screen."""
-    traced = trace_design(image_path, config, width_mm, keep_colours)
+def _shape_notes(shape: Shape, limit: float) -> list[str]:
+    if shape.max_width_mm <= limit:
+        return []
+    if shape.kind == "satin":
+        return [f"Wider than {limit:g} mm (the satin limit) in places: those parts are sewn as fill."]
+    if shape.kind == "column":
+        return [f"This column is wider than {limit:g} mm (the satin limit) in places."]
+    return []
+
+
+def shapes_json(traced: Traced, config: Config) -> dict:
+    """The design's shapes for the editor canvas and Layers list, in mm (the same coordinates as
+    the DST), grouped into colour layers in sewing order, with their stitch type and editor
+    settings. Outlines are simplified by one source pixel, which is invisible on screen; the
+    number of rings (outline, holes) is kept, so a ring index names the same outline."""
+    tf = traced.tf
+    limit = config.get("satin.max_width_mm")
     shapes = []
     for shape in traced.shapes:
-        outline = shape.poly.simplify(traced.tf.mm_per_px, preserve_topology=True)
-        shapes.append({
+        outline = shape.poly.simplify(tf.mm_per_px, preserve_topology=True)
+        item = {
             "number": shape.number,
             "colour": shape.colour,
             "kind": shape.kind,
+            "kind_chosen": shape.kind_chosen,
+            "pull_compensation_mm": shape.pull_compensation_mm,
             "max_width_mm": shape.max_width_mm,
             "area_mm2": shape.poly.area,
             "bounds_mm": list(shape.poly.bounds),
             "rings": [[list(p) for p in ring.coords] for ring in (outline.exterior, *outline.interiors)],
             "overlap": polygons_json(shape.overlap),
-        })
+            "notes": _shape_notes(shape, limit),
+        }
+        if shape.edges:
+            left, right, closed = shape.edges
+            item["edges"] = {"left": [list(tf.geom(Point(p)).coords[0]) for p in left],
+                             "right": [list(tf.geom(Point(p)).coords[0]) for p in right], "closed": closed}
+        shapes.append(item)
     min_x, min_y, max_x, max_y = traced.bounds_mm
     return {
         "colours": colour_layers_json(traced),
@@ -834,11 +905,20 @@ def design_shapes(image_path: str | Path, config: Config, width_mm: float | None
         "height_mm": max_y - min_y,
         "shapes_found": traced.shapes_found,
         "specks_removed": traced.specks_removed,
+        "skipped_edits": list(traced.skipped_edits),
     }
 
 
+def design_shapes(image_path: str | Path, config: Config, width_mm: float | None = None,
+                  keep_colours: list[str] | None = None, edits: list[dict] | None = None) -> dict:
+    """shapes_json() for an image, without sewing it (see shapes_json)."""
+    return shapes_json(trace_design(image_path, config, width_mm, keep_colours, edits=edits), config)
+
+
 def _layer_type(piece: Piece) -> str:
-    return "satin" if piece.kind == "satin" else "junction patch" if piece.patch else "fill"
+    if piece.kind in ("satin", "running"):
+        return piece.kind
+    return "junction patch" if piece.patch else "fill"
 
 
 def main() -> None:
@@ -847,6 +927,7 @@ def main() -> None:
     parser.add_argument("--out", default=".", help="output folder (default: current folder)")
     parser.add_argument("--width-mm", type=float, help="design width for this job (default: design.width_mm)")
     parser.add_argument("--colours", help="comma-separated #RRGGBB colours to keep (default: all detected)")
+    parser.add_argument("--edits", help="JSON file with editor changes (stored form, see digitizer.edits)")
     parser.add_argument(
         "--test-run-values",
         action="store_true",
@@ -855,7 +936,8 @@ def main() -> None:
     args = parser.parse_args()
     config = load_test_run_config() if args.test_run_values else load_config()
     keep = [c.strip() for c in args.colours.split(",")] if args.colours else None
-    print(digitize(args.image, args.out, config, args.width_mm, keep).summary())
+    edits = json.loads(Path(args.edits).read_text()) if args.edits else None
+    print(digitize(args.image, args.out, config, args.width_mm, keep, edits).summary())
 
 
 if __name__ == "__main__":

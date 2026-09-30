@@ -1,11 +1,8 @@
-import { useCallback, useEffect, useState, type CSSProperties } from "react";
+import { useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 
-import { api, ApiError, type ClientConfig, type DesignRecord, type DesignShapes, type TraceResult } from "../lib/api";
-import { DesignShapesLayer, fitTo, TracedColumns } from "../lib/DesignCanvas";
-import { TraceCard } from "../lib/TraceCard";
 import { usePage } from "../lib/usePage";
-import { useTraceJob } from "../lib/useTraceJob";
+import DesignEditor from "./DesignEditor";
 import "../css/editor.css";
 
 const TOOLS = [
@@ -19,57 +16,18 @@ const THREAD_NOTE = "Placeholder: real thread colours are not chosen yet.";
 const LAYERS = [["petals", "Petals", "ink"], ["centre", "Centre", "green"], ["leaves", "Leaves", "green"]] as const;
 type LayerId = (typeof LAYERS)[number][0];
 
-const MANUAL_TOOLS = [
-  ["Split", "i-shape", "Cut a column in two"],
-  ["Select Satin Columns", "i-select", "Pick columns to change"],
-] as const;
-
-const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
-const kindName = { fill: "Fill", satin: "Satin" } as const;
-
-// Ported from the static editor.html. Without ?design=<id> it is the original mock-up; with a
-// design it shows that design's traced shapes, its Layers, and the "Create satin columns" card.
+// With ?design=<id> the editor works on that design (DesignEditor). Without one it is the
+// original mock-up, ported from the static editor.html; nothing in it is saved.
 export default function Editor() {
   usePage("Stitchbook Editor", "editor");
   const [search] = useSearchParams();
   const designParam = search.get("design");
   const designId = designParam && /^[0-9a-f]{32}$/.test(designParam) ? designParam : null;
-  const [design, setDesign] = useState<DesignRecord | null>(null);
-  const [config, setConfig] = useState<ClientConfig | null>(null);
-  const [loadProblem, setLoadProblem] = useState<string | null>(null);
+  if (designId) return <DesignEditor designId={designId} />;
+  return <MockEditor />;
+}
 
-  const load = useCallback(() => {
-    if (!designId) return;
-    setLoadProblem(null);
-    Promise.all([api.design(designId), api.config()]).then(
-      ([d, c]) => { setDesign(d); setConfig(c); },
-      (err) => setLoadProblem(err instanceof ApiError ? err.message : "Something went wrong. Try again."),
-    );
-  }, [designId]);
-  useEffect(load, [load]);
-
-  // The design's shapes (from the digitizer) for the canvas and the Layers list.
-  const [shapes, setShapes] = useState<DesignShapes | null>(null);
-  const [shapesProblem, setShapesProblem] = useState<string | null>(null);
-  const loadShapes = useCallback(() => {
-    if (!designId) return;
-    setShapesProblem(null);
-    api.shapes(designId).then(setShapes, (err) =>
-      setShapesProblem(err instanceof ApiError ? err.message : "Something went wrong. Try again."));
-  }, [designId]);
-  useEffect(loadShapes, [loadShapes]);
-  const [selected, setSelected] = useState<number | null>(null);
-  const [hiddenShapes, setHiddenShapes] = useState<Set<number>>(new Set());
-  const toggleShape = (n: number) =>
-    setHiddenShapes((prev) => {
-      const next = new Set(prev);
-      if (next.has(n)) next.delete(n);
-      else next.add(n);
-      return next;
-    });
-
-  const trace = useTraceJob(designId, design ? design.trace_job_id : undefined, config);
-  const traced = trace.phase === "done" ? trace.job?.result ?? null : null;
+function MockEditor() {
   const [tool, setTool] = useState<string>("Select");
   const [stitchType, setStitchType] = useState<string>("Satin");
   const [thread, setThread] = useState<string>("ink");
@@ -93,15 +51,12 @@ export default function Editor() {
         <div className="bar__left">
           <a className="icon-btn" href="/home" aria-label="Back to designs"><svg aria-hidden="true"><use href="/assets/sprite.svg#i-back"/></svg></a>
           <div className="file">
-            <p className="file__name">{designId ? design?.filename ?? (loadProblem ? "Design not loaded" : "Loading…") : "Daisy jacket patch"}</p>
-            <p className="file__state"><span className="saved-dot" aria-hidden="true"></span>Saved</p>
+            <p className="file__name">Daisy jacket patch</p>
+            <p className="file__state"><span className="saved-dot" aria-hidden="true"></span>Example only, not saved</p>
           </div>
         </div>
         <div className="bar__right">
-          <button className="icon-btn" type="button" aria-label="Undo"><svg aria-hidden="true"><use href="/assets/sprite.svg#i-undo"/></svg></button>
-          <button className="icon-btn" type="button" aria-label="Redo"><svg aria-hidden="true"><use href="/assets/sprite.svg#i-redo"/></svg></button>
-          <button className="btn btn--ghost btn--sm bar__preview" type="button">Preview</button>
-          <button className="btn btn--ink btn--sm" type="button"><svg aria-hidden="true"><use href="/assets/sprite.svg#i-download"/></svg>Export</button>
+          <Link className="btn btn--ink btn--sm" to="/upload">Upload a logo</Link>
         </div>
       </header>
 
@@ -115,47 +70,15 @@ export default function Editor() {
           ))}
         </nav>
 
-        {!designId && (
-          <section className="trace-card" aria-label="Create satin columns" data-state="no-design">
-            <div className="trace-card__head"><h2 className="trace-card__title">Create satin columns</h2><span className="chip-beta">Beta</span></div>
-            <p className="trace-card__text">Open a design from its preview to trace it into satin columns.</p>
-            <Link className="btn btn--ghost btn--sm trace-card__action" to="/upload">Upload a logo</Link>
-          </section>
-        )}
-        {designId && loadProblem && (
-          <section className="trace-card" aria-label="Create satin columns" data-state="error" role="alert">
-            <div className="trace-card__head"><h2 className="trace-card__title">Create satin columns</h2><span className="chip-beta">Beta</span></div>
-            <p className="trace-card__text">{loadProblem}</p>
-            <button className="btn btn--ink btn--sm trace-card__action" type="button" onClick={load}>Retry</button>
-          </section>
-        )}
-        {designId && !loadProblem && (
-          <TraceCard {...trace} estimateMinutes={config?.trace_estimate_minutes ?? null}
-                     onStart={() => void trace.start()} onCancel={() => void trace.cancel()} onRetry={() => void trace.retry()} />
-        )}
-
-        <section className="manual" aria-labelledby="manual-title">
-          <h2 className="manual__title" id="manual-title">Or start manually editing</h2>
-          <ul className="manual__list">
-            {MANUAL_TOOLS.map(([label, icon, hint]) => (
-              <li key={label}>
-                <button className="manual__row" type="button" aria-pressed={tool === label} onClick={() => setTool(label)}>
-                  <svg aria-hidden="true"><use href={`/assets/sprite.svg#${icon}`}/></svg>
-                  <span className="manual__name">{label}</span>
-                  <span className="manual__hint">{hint}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
+        <section className="trace-card" aria-label="Create satin columns" data-state="no-design">
+          <div className="trace-card__head"><h2 className="trace-card__title">Create satin columns</h2><span className="chip-beta">Beta</span></div>
+          <p className="trace-card__text">Open a design from its preview to trace it into satin columns and edit it.</p>
+          <Link className="btn btn--ghost btn--sm trace-card__action" to="/upload">Upload a logo</Link>
         </section>
         </aside>
 
         <section className="stage" aria-label="Canvas">
           <div className="stage__canvas">
-            {designId ? (
-              <DesignStage shapes={shapes} problem={shapesProblem} onRetry={loadShapes} name={design?.filename ?? "Your design"}
-                           traced={traced} hidden={hiddenShapes} selected={selected} onSelect={setSelected} zoom={zoom} />
-            ) : (
             <svg className="hoop-canvas" viewBox="0 0 400 400" role="img" aria-label="Daisy design in a 10 cm hoop">
               <circle className="hoop-ring" cx="200" cy="200" r="186"/>
               <circle className="hoop-fabric" cx="200" cy="200" r="176"/>
@@ -186,21 +109,10 @@ export default function Editor() {
                 <rect className="handle" x="299" y="299" width="10" height="10" rx="3"/>
               </g>
             </svg>
-            )}
           </div>
 
           <div className="stage__footer">
-            {designId ? (
-              <p className="stats">
-                {shapes && <><strong>{shapes.shapes.length}</strong> {shapes.shapes.length === 1 ? "shape" : "shapes"} <span className="sep" aria-hidden="true">·</span> {shapes.width_mm.toFixed(1)} × {shapes.height_mm.toFixed(1)} mm <span className="sep" aria-hidden="true">·</span> </>}
-                {traced
-                  ? <><strong>{traced.columns.length}</strong> satin columns</>
-                  : "Not traced yet"}
-                {tool === "Split" || tool === "Select Satin Columns" ? <> <span className="sep" aria-hidden="true">·</span> {tool} tool on</> : null}
-              </p>
-            ) : (
-              <p className="stats"><strong>4,210</strong> stitches <span className="sep" aria-hidden="true">·</span> 10 × 10 cm <span className="sep" aria-hidden="true">·</span> 2 threads</p>
-            )}
+            <p className="stats"><strong>4,210</strong> stitches <span className="sep" aria-hidden="true">·</span> 10 × 10 cm <span className="sep" aria-hidden="true">·</span> 2 threads</p>
             <div className="zoom" role="group" aria-label="Zoom">
               <button className="icon-btn" type="button" aria-label="Zoom out" onClick={() => setZoom((z) => Math.max(50, z - 10))}><svg aria-hidden="true"><use href="/assets/sprite.svg#i-minus"/></svg></button>
               <output className="zoom__value" aria-live="polite">{zoom}%</output>
@@ -210,10 +122,6 @@ export default function Editor() {
         </section>
 
         <aside className="panel" aria-label="Properties">
-          {designId ? (
-            <DesignPanel shapes={shapes} failed={!!shapesProblem} traced={traced} selected={selected} onSelect={setSelected}
-                         hidden={hiddenShapes} onToggle={toggleShape} />
-          ) : (<>
           <section className="panel__section">
             <h2 className="panel__title">Petals</h2>
             <p className="panel__hint">6 shapes selected</p>
@@ -270,133 +178,8 @@ export default function Editor() {
               })}
             </ul>
           </section>
-          </>)}
         </aside>
       </div>
-    </>
-  );
-}
-
-type StageProps = {
-  shapes: DesignShapes | null;
-  problem: string | null;
-  onRetry: () => void;
-  name: string;
-  traced: TraceResult | null;
-  hidden: Set<number>;
-  selected: number | null;
-  onSelect: (n: number | null) => void;
-  zoom: number;
-};
-
-/** The uploaded design on the canvas: its traced shapes, and the satin columns once traced. */
-function DesignStage({ shapes, problem, onRetry, name, traced, hidden, selected, onSelect, zoom }: StageProps) {
-  if (problem) {
-    return (
-      <div className="stage__message" role="alert">
-        <p>{problem}</p>
-        <button className="btn btn--ink btn--sm" type="button" onClick={onRetry}>Retry</button>
-      </div>
-    );
-  }
-  if (!shapes) return <p className="stage__message" role="status">Loading your design…</p>;
-  const fit = fitTo(shapes.bounds_mm);
-  return (
-    <svg className="hoop-canvas design-canvas" viewBox="0 0 400 400" role="img"
-         aria-label={`${name}: ${plural(shapes.shapes.length, "shape")}`}>
-      <rect className="design-canvas__bg" width="400" height="400" onClick={() => onSelect(null)} />
-      <g className="design" style={zoom === 100 ? undefined : { transform: `scale(${zoom / 100})` }}>
-        <DesignShapesLayer shapes={shapes} fit={fit} hidden={hidden} selected={selected} traced={!!traced} onSelect={onSelect} />
-        {traced && <TracedColumns result={traced} fit={fit} hidden={hidden} />}
-      </g>
-    </svg>
-  );
-}
-
-type PanelProps = {
-  shapes: DesignShapes | null;
-  failed: boolean;
-  traced: TraceResult | null;
-  selected: number | null;
-  onSelect: (n: number | null) => void;
-  hidden: Set<number>;
-  onToggle: (n: number) => void;
-};
-
-/** Properties for the real design: the selected shape, the thread (placeholder) and its Layers. */
-function DesignPanel({ shapes, failed, traced, selected, onSelect, hidden, onToggle }: PanelProps) {
-  const shape = shapes?.shapes.find((s) => s.number === selected) ?? null;
-  const count = (kind: "fill" | "satin") => shapes?.shapes.filter((s) => s.kind === kind).length ?? 0;
-  const columnsIn = (n: number) => traced?.columns.filter((c) => c.shape === n).length ?? 0;
-  let hint = failed ? "The design could not be loaded." : "Loading…";
-  if (shape) {
-    const colour = shapes?.colours.find((c) => c.number === shape.colour);
-    hint = `Colour ${shape.colour}${colour ? ` (${colour.hex})` : ""} · sewn as ${shape.kind} · ${shape.max_width_mm.toFixed(1)} mm at its widest`;
-    if (traced && shape.kind === "satin") hint += ` · ${plural(columnsIn(shape.number), "column")}`;
-  } else if (shapes) {
-    hint = `${plural(shapes.shapes.length, "shape")} in ${plural(shapes.colours.length, "colour")}: ${count("satin")} satin, ${count("fill")} fill`;
-  }
-  return (
-    <>
-      <section className="panel__section">
-        <h2 className="panel__title">{shape ? `Shape ${shape.number}` : "All shapes"}</h2>
-        <p className="panel__hint">{hint}</p>
-      </section>
-
-      <section className="panel__section">
-        <h3 className="label">Threads</h3>
-        {shapes ? (
-          <ul className="threads threads--list" aria-label="Thread colours in sewing order">
-            {shapes.colours.map((c) => (
-              <li key={c.number} className="thread thread--placeholder">
-                <span className="swatch" style={{ background: c.hex } as CSSProperties} aria-hidden="true"></span>
-                <span className="thread__text">
-                  <span className="thread__name">Colour {c.number} · {c.hex}</span>
-                  <span className="placeholder-text">{c.thread.name} {c.thread.code}</span>
-                </span>
-              </li>
-            ))}
-          </ul>
-        ) : null}
-        <p className="panel__note">
-          Placeholder: thread names and codes are not chosen yet. The colours are your image's own; one thread
-          change between each.
-        </p>
-      </section>
-
-      <section className="panel__section">
-        <h3 className="label">Layers</h3>
-        {shapes ? (
-          <div className="layer-groups">
-            {shapes.colours.map((c) => (
-              <div key={c.number} className="layer-group">
-                <h4 className="layer-group__title">
-                  <span className="layer__swatch" style={{ background: c.hex } as CSSProperties} aria-hidden="true"></span>
-                  Colour {c.number} <span className="layer-group__hex">{c.hex}</span>
-                </h4>
-                <ul className="layers" aria-label={`Shapes in colour ${c.number}`}>
-                  {shapes.shapes.filter((s) => s.colour === c.number).map((s) => {
-                    const visible = !hidden.has(s.number);
-                    const name = `Shape ${s.number}`;
-                    return (
-                      <li key={s.number} className={s.number === selected ? "layer is-active" : "layer"}>
-                        <button className="layer__pick" type="button" aria-pressed={s.number === selected}
-                                onClick={() => onSelect(s.number === selected ? null : s.number)}>
-                          <span className="layer__name">{name}</span>
-                          <span className="layer__kind">{kindName[s.kind]}</span>
-                        </button>
-                        <button className="layer__eye" type="button" aria-pressed={visible} aria-label={`${visible ? "Hide" : "Show"} ${name}`} onClick={() => onToggle(s.number)}>
-                          <svg aria-hidden="true"><use href={`/assets/sprite.svg#${visible ? "i-eye" : "i-eye-off"}`}/></svg>
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </div>
-            ))}
-          </div>
-        ) : <p className="panel__hint">{failed ? "No layers: the design could not be loaded." : "Layers appear once the design has loaded."}</p>}
-      </section>
     </>
   );
 }

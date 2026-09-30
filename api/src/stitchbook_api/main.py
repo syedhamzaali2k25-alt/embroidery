@@ -2,7 +2,9 @@
 
 Endpoints: GET /health, GET /site, GET /config, POST /designs, POST /designs/{id}/preview,
 GET /designs/{id}, GET /designs/{id}/shapes, GET /designs/{id}/download?format=dst,
-POST /designs/{id}/trace, GET /jobs/health, GET /jobs/{id}, POST /jobs/{id}/cancel. Every error body is {"error": "<what to fix>"}.
+GET /designs/{id}/editor, POST /designs/{id}/edits, POST /designs/{id}/edits/undo,
+POST /designs/{id}/edits/redo, POST /designs/{id}/trace, GET /jobs/health, GET /jobs/{id},
+POST /jobs/{id}/cancel. Every error body is {"error": "<what to fix>"}.
 Design records are JSON files in Storage for now (a database comes with Supabase later).
 """
 
@@ -18,8 +20,9 @@ from typing import Annotated
 from digitizer.config import Config, PlaceholderValueError, load_config, load_test_run_config
 from digitizer import quality
 from digitizer.digitize import design_shapes, digitize, thread_placeholder, trace_design
+from digitizer.edits import EditError, apply_edit, label as edit_label, to_pixels
 from digitizer.readback import records
-from fastapi import FastAPI, File, Form, HTTPException, Path as PathParam, Query, Request, UploadFile
+from fastapi import Body, FastAPI, File, Form, HTTPException, Path as PathParam, Query, Request, UploadFile
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
@@ -38,8 +41,12 @@ from stitchbook_api.models import (
     DetectedColour,
     DigitizeReport,
     DownloadQuery,
+    EditorDefaults,
+    EditorState,
+    EditRequest,
     ErrorResponse,
     HealthResponse,
+    History,
     JobOut,
     JobsHealth,
     Layer,
@@ -50,6 +57,7 @@ from stitchbook_api.models import (
     QualityWarningOut,
     StitchPoint,
     StitchStats,
+    TraceColumn,
 )
 from stitchbook_api.settings import Settings, load_settings
 from stitchbook_api.storage import LocalDiskStorage, NotFound, Storage
@@ -218,8 +226,59 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
                              colours=record.colours, background=record.background,
                              specks_removed=record.specks_removed, warnings=record.warnings)
 
+    def check_sync_size(record: DesignRecord, what: str) -> None:
+        if record.type == "svg":
+            raise HTTPException(422, f"SVG files can be uploaded but not {what} yet. Export the logo as PNG and "
+                                     "upload that instead.")
+        limit = config.get("api.sync_preview_max_side_px")
+        if max(record.width_px or 0, record.height_px or 0) > limit:
+            raise HTTPException(422, f"This image is larger than {limit} px on its long side, too big to work on "
+                                     f"while you wait. Resize it to at most {limit} px and upload again "
+                                     "(background processing for large images is not built yet).")
+
+    def record_config(record: DesignRecord) -> tuple[Config, float, float]:
+        width = record.settings.width_mm or config.get("design.width_mm")
+        spacing = record.settings.fill_row_spacing_mm or config.get("stitch.fill_row_spacing_mm")
+        return config.with_overrides({"stitch.fill_row_spacing_mm": spacing}), width, spacing
+
+    def applied(record: DesignRecord) -> list[dict]:
+        return record.edits[:record.edits_applied]
+
+    def sew(record: DesignRecord):
+        """Digitize the design with its settings and the changes in effect; store the DST, preview
+        and report (so Download matches), and the stats on the record. Returns
+        (record, result, stitches, width, spacing)."""
+        job_config, width, spacing = record_config(record)
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / f"original.{record.type}"
+            source.write_bytes(storage.get(f"designs/{record.id}/original.{record.type}"))
+            out = Path(tmp) / "out"
+            try:
+                result = digitize(source, out, job_config, width, record.settings.colours, applied(record))
+            except ValueError as exc:
+                raise HTTPException(422, f"This image could not be digitized ({exc}). Use a logo on a plain "
+                                         "background, or a transparent PNG.") from None
+            for name in ("out.dst", "preview.png", "report.json"):
+                storage.put(f"designs/{record.id}/{name}", (out / name).read_bytes())
+            layers_iter = iter(result.stitch_layers)
+            stitches = [StitchPoint(x_mm=x, y_mm=y, command=c, layer=next(layers_iter) if c == "stitch" else None)
+                        for x, y, c in records(out / "out.dst")]
+        record = record.model_copy(update={"status": "digitized", "stats": StitchStats(**vars(result.stats)),
+                                           "report": DigitizeReport(**result.to_json()), "downloads": ["dst"]})
+        save_record(record)
+        return record, result, stitches, width, spacing
+
+    def layers_and_colours(result):
+        layers = [Layer(number=i, type=t, stitch_count=n, colour=c) for i, (t, n, c) in enumerate(result.layers, start=1)]
+        colours = [ColourLayerOut(number=i, hex=c.hex, shape_count=c.shapes, area_mm2=c.area_mm2,
+                                  stitch_count=c.stitches, thread=thread_placeholder())
+                   for i, c in enumerate(result.colours, start=1)]
+        return layers, colours
+
     @app.post("/designs/{design_id}/preview", response_model=PreviewResponse, responses=ERRORS)
     def preview(design_id: DesignId, body: PreviewRequest | None = None) -> PreviewResponse:
+        """Digitize with the design's settings (optionally changed here) and every editor change
+        in effect. Stores the DST for download."""
         record = load_record(design_id)
         if body is not None:
             check_settings(body, record)
@@ -227,41 +286,10 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
             if "colours" in changes:
                 changes["colours"] = [c.upper() for c in changes["colours"]]
             record = record.model_copy(update={"settings": record.settings.model_copy(update=changes)})
-        width = record.settings.width_mm or config.get("design.width_mm")
-        spacing = record.settings.fill_row_spacing_mm or config.get("stitch.fill_row_spacing_mm")
-        job_config = config.with_overrides({"stitch.fill_row_spacing_mm": spacing})
-        if record.type == "svg":
-            raise HTTPException(422, "SVG files can be uploaded but not digitized yet. Export the logo as PNG "
-                                     "and upload that instead.")
-        limit = config.get("api.sync_preview_max_side_px")
-        if max(record.width_px or 0, record.height_px or 0) > limit:
-            raise HTTPException(422, f"This image is larger than {limit} px on its long side, too big to digitize "
-                                     f"while you wait. Resize it to at most {limit} px and upload again "
-                                     "(background processing for large images is not built yet).")
-        with tempfile.TemporaryDirectory() as tmp:
-            source = Path(tmp) / f"original.{record.type}"
-            source.write_bytes(storage.get(f"designs/{design_id}/original.{record.type}"))
-            out = Path(tmp) / "out"
-            try:
-                result = digitize(source, out, job_config, width, record.settings.colours)
-            except ValueError as exc:
-                raise HTTPException(422, f"This image could not be digitized ({exc}). Use a logo on a plain "
-                                         "background, or a transparent PNG.") from None
-            for name in ("out.dst", "preview.png", "report.json"):
-                storage.put(f"designs/{design_id}/{name}", (out / name).read_bytes())
-            layers_iter = iter(result.stitch_layers)
-            stitches = [StitchPoint(x_mm=x, y_mm=y, command=c, layer=next(layers_iter) if c == "stitch" else None)
-                        for x, y, c in records(out / "out.dst")]
-        stats = StitchStats(**vars(result.stats))
-        report = DigitizeReport(**result.to_json())
-        record = record.model_copy(update={"status": "digitized", "stats": stats, "report": report,
-                                           "downloads": ["dst"]})
-        save_record(record)
-        layers = [Layer(number=i, type=t, stitch_count=n, colour=c) for i, (t, n, c) in enumerate(result.layers, start=1)]
-        colours = [ColourLayerOut(number=i, hex=c.hex, shape_count=c.shapes, area_mm2=c.area_mm2,
-                                  stitch_count=c.stitches, thread=thread_placeholder())
-                   for i, c in enumerate(result.colours, start=1)]
-        return PreviewResponse(id=design_id, stats=stats, report=report,
+        check_sync_size(record, "digitized")
+        record, result, stitches, width, spacing = sew(record)
+        layers, colours = layers_and_colours(result)
+        return PreviewResponse(id=design_id, stats=record.stats, report=record.report,
                                settings_used=SettingsUsed(width_mm=width, fill_row_spacing_mm=spacing),
                                colours=colours, overlaps=list(result.overlaps), layers=layers,
                                warnings=record.warnings, stitches=stitches)
@@ -269,25 +297,87 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
     @app.get("/designs/{design_id}/shapes", response_model=DesignShapes, responses=ERRORS)
     def shapes(design_id: DesignId) -> DesignShapes:
         """The design's shapes in mm (same coordinates as the DST) for the editor canvas and
-        Layers list, each marked fill or satin."""
+        Layers list, with the editor's changes in effect."""
         record = load_record(design_id)
-        if record.type == "svg":
-            raise HTTPException(422, "SVG files can't be opened in the editor yet. Export the logo as PNG and "
-                                     "upload that instead.")
-        limit = config.get("api.sync_preview_max_side_px")
-        if max(record.width_px or 0, record.height_px or 0) > limit:
-            raise HTTPException(422, f"This image is larger than {limit} px on its long side, too big to open in "
-                                     f"the editor. Resize it to at most {limit} px and upload again.")
-        width = record.settings.width_mm or config.get("design.width_mm")
+        check_sync_size(record, "opened in the editor")
+        job_config, width, _spacing = record_config(record)
         with tempfile.TemporaryDirectory() as tmp:
             source = Path(tmp) / f"original.{record.type}"
             source.write_bytes(storage.get(f"designs/{design_id}/original.{record.type}"))
             try:
-                found = design_shapes(source, config, width, record.settings.colours)
+                found = design_shapes(source, job_config, width, record.settings.colours, applied(record))
             except ValueError as exc:
                 raise HTTPException(422, f"No shapes could be traced from this image ({exc}). Use a logo on a plain "
                                          "background, or a transparent PNG.") from None
         return DesignShapes(id=design_id, **found)
+
+    # ---------- editor: changes, undo, redo ----------
+
+    def editor_state(record: DesignRecord) -> EditorState:
+        record, result, stitches, _width, _spacing = sew(record)
+        layers, colours = layers_and_colours(result)
+        n, total = record.edits_applied, len(record.edits)
+        history = History(applied=n, total=total, undo=edit_label(record.edits[n - 1]) if n else None,
+                          redo=edit_label(record.edits[n]) if n < total else None)
+        defaults = EditorDefaults(
+            pull_compensation_mm=config.get("stitch.pull_compensation_mm"),
+            pull_compensation_min_mm=config.get("api.pull_compensation_min_mm"),
+            pull_compensation_max_mm=config.get("api.pull_compensation_max_mm"),
+            satin_max_width_mm=config.get("satin.max_width_mm"),
+        )
+        return EditorState(id=record.id, shapes=DesignShapes(id=record.id, **result.shapes),
+                           columns=[TraceColumn(**c) for c in result.columns], colours=colours, layers=layers,
+                           stats=record.stats, stitches=stitches, history=history, defaults=defaults)
+
+    @app.get("/designs/{design_id}/editor", response_model=EditorState, responses=ERRORS)
+    def get_editor(design_id: DesignId) -> EditorState:
+        """The editor's view of the design: shapes, satin columns and every stitch, from one run
+        of the digitizer with the changes in effect (which also refreshes the DST for download)."""
+        record = load_record(design_id)
+        check_sync_size(record, "opened in the editor")
+        return editor_state(record)
+
+    @app.post("/designs/{design_id}/edits", response_model=EditorState, responses=ERRORS)
+    def add_edit(design_id: DesignId, body: Annotated[EditRequest, Body()]) -> EditorState:
+        """Make one change (stitch type, pull compensation, split, satin column from two edges).
+        It is checked against the design as it is now; a change that cannot be made is refused
+        with a plain message and nothing is stored. Changes that could be redone are dropped."""
+        record = load_record(design_id)
+        check_sync_size(record, "edited")
+        if body.op == "set_pull_compensation" and body.mm is not None:
+            lo, hi = config.get("api.pull_compensation_min_mm"), config.get("api.pull_compensation_max_mm")
+            if not lo <= body.mm <= hi:
+                raise HTTPException(422, f"Pull compensation must be between {lo:g} and {hi:g} mm.")
+        job_config, width, _spacing = record_config(record)
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / f"original.{record.type}"
+            source.write_bytes(storage.get(f"designs/{design_id}/original.{record.type}"))
+            try:
+                traced = trace_design(source, job_config, width, record.settings.colours, edits=applied(record))
+                stored = to_pixels(body.model_dump(), traced)
+                apply_edit(traced, stored, job_config)
+            except EditError as exc:
+                raise HTTPException(422, str(exc)) from None
+            except ValueError as exc:
+                raise HTTPException(422, f"This image could not be digitized ({exc}).") from None
+        edits = applied(record) + [stored]
+        return editor_state(record.model_copy(update={"edits": edits, "edits_applied": len(edits)}))
+
+    @app.post("/designs/{design_id}/edits/undo", response_model=EditorState, responses=ERRORS)
+    def undo(design_id: DesignId) -> EditorState:
+        record = load_record(design_id)
+        if record.edits_applied == 0:
+            raise HTTPException(409, "There is nothing to undo.")
+        check_sync_size(record, "edited")
+        return editor_state(record.model_copy(update={"edits_applied": record.edits_applied - 1}))
+
+    @app.post("/designs/{design_id}/edits/redo", response_model=EditorState, responses=ERRORS)
+    def redo(design_id: DesignId) -> EditorState:
+        record = load_record(design_id)
+        if record.edits_applied >= len(record.edits):
+            raise HTTPException(409, "There is nothing to redo.")
+        check_sync_size(record, "edited")
+        return editor_state(record.model_copy(update={"edits_applied": record.edits_applied + 1}))
 
     @app.get("/designs/{design_id}", response_model=DesignRecord, responses=ERRORS)
     def get_design(design_id: DesignId) -> DesignRecord:
@@ -334,6 +424,7 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
         try:
             started = jobs.start_trace(
                 design_id, image, record.type, record.settings.width_mm, dict(config.overrides), record.settings.colours,
+                applied(record),
                 timeout_s=config.get("jobs.job_timeout_s"), ttl_s=config.get("jobs.result_ttl_s"),
                 retries=config.get("jobs.max_retries"),
             )

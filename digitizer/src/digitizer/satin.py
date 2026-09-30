@@ -346,3 +346,59 @@ def entry_options(column: Column, pos: Pt | None) -> list[tuple[int, bool]]:
 
 def label_point(column: Column) -> Point:
     return column.centerline.interpolate(0.5, normalized=True)
+
+
+# ---------- a column between two given edges (editor: "Select Satin Columns", "Draw edges") ----------
+
+def _ring_orientation(points: list[Pt]) -> float:
+    """Twice the signed area: > 0 counter-clockwise (in y-up terms), < 0 clockwise."""
+    return sum(a[0] * b[1] - b[0] * a[1] for a, b in zip(points, points[1:] + points[:1]))
+
+
+def _at(line: LineString, fraction: float) -> Pt:
+    p = line.interpolate(fraction, normalized=True)
+    return p.x, p.y
+
+
+def column_between(left: list[Pt], right: list[Pt], closed: bool, spacing: float, pull_comp: float) -> Column:
+    """Satin between two edges the user chose. Both edges are cut into the same number of
+    stations by length, so rungs join matching points; open edges are turned to run the same
+    way, closed loops are turned the same way round and started at the nearest points. Each
+    rung is widened by pull_comp in total (half at each end)."""
+    if closed:
+        left, right = [tuple(p) for p in left], [tuple(p) for p in right]
+        left, right = (left[:-1] if left[0] == left[-1] else left), (right[:-1] if right[0] == right[-1] else right)
+        if (_ring_orientation(left) > 0) != (_ring_orientation(right) > 0):
+            right = right[::-1]
+        k = min(range(len(right)), key=lambda i: math.hypot(right[i][0] - left[0][0], right[i][1] - left[0][1]))
+        right = right[k:] + right[:k]
+        left_line, right_line = LineString(left + left[:1]), LineString(right + right[:1])
+    else:
+        straight = math.dist(left[0], right[0]) + math.dist(left[-1], right[-1])
+        crossed = math.dist(left[0], right[-1]) + math.dist(left[-1], right[0])
+        if crossed < straight:
+            right = right[::-1]
+        left_line, right_line = LineString(left), LineString(right)
+    count = max(2, math.ceil(max(left_line.length, right_line.length) / spacing))
+    fractions = [k / count for k in range(count if closed else count + 1)]
+    column = Column(LineString([(0, 0), (0, 0)]), closed, stations=len(fractions))
+    centers = []
+    for station, t in enumerate(fractions):
+        a, b = _at(left_line, t), _at(right_line, t)
+        width = math.dist(a, b)
+        ux, uy = _unit(a[0] - b[0], a[1] - b[1])
+        half = pull_comp / 2
+        center = ((a[0] + b[0]) / 2, (a[1] + b[1]) / 2)
+        centers.append(center)
+        column.rungs.append(Rung(station, center, (a[0] + ux * half, a[1] + uy * half),
+                                 (b[0] - ux * half, b[1] - uy * half), width, a, b))
+    column.centerline = LineString(centers + (centers[:1] if closed else []))
+    return column
+
+
+def running_path(ring: list[Pt], stitch_length: float) -> list[Pt]:
+    """Needle points along a closed outline, evenly spaced, none further apart than stitch_length.
+    Returns the loop without repeating its first point."""
+    line = LineString(ring)
+    count = max(3, math.ceil(line.length / stitch_length))
+    return [_at(line, k / count) for k in range(count)]

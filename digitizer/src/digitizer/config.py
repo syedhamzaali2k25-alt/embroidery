@@ -47,7 +47,7 @@ PRODUCT: dict[str, dict[str, Any]] = {
         # Satin density: distance along the column's centerline from one needle point to the next
         # (points alternate between the two edges). Smaller = denser.
         "satin_spacing_mm": PLACEHOLDER,
-        # Length of each stitch along a running-stitch outline. (Not used yet.)
+        # Length of each stitch along a running-stitch outline (shapes set to Running in the editor).
         "running_stitch_length_mm": PLACEHOLDER,
         # Longest single stitch the digitizer may emit; longer stitches are split evenly.
         # Note: one DST record can move at most 12.1 mm along each axis.
@@ -118,6 +118,10 @@ PRODUCT: dict[str, dict[str, Any]] = {
         # stitch.fill_row_spacing_mm). Smaller spacing = denser fill = more stitches.
         "fill_row_spacing_min_mm": PLACEHOLDER,
         "fill_row_spacing_max_mm": PLACEHOLDER,
+        # Range the editor's pull compensation control accepts for a satin shape (the default is
+        # stitch.pull_compensation_mm).
+        "pull_compensation_min_mm": PLACEHOLDER,
+        "pull_compensation_max_mm": PLACEHOLDER,
     },
     "output": {
         # Machine formats offered to users (download, landing page). A format may be listed only
@@ -183,6 +187,8 @@ PRODUCT: dict[str, dict[str, Any]] = {
         # Edit points on a traced satin column: its centerline is simplified so that no point of
         # the line is further than this from the simplified version. Bigger = fewer points.
         "edit_point_tolerance_mm": PLACEHOLDER,
+        # Split: a click this close to a shape's edge counts as on the edge (and is moved onto it).
+        "snap_distance_mm": PLACEHOLDER,
     },
     "rate_limits": {
         # Uploads a single user may start per minute.
@@ -233,6 +239,10 @@ TEST_RUN_OVERRIDES: dict[str, Any] = {
     "jobs.redis_timeout_s": 2,
     "jobs.status_timeout_s": 10,
     "editor.edit_point_tolerance_mm": 0.5,
+    "editor.snap_distance_mm": 1.0,
+    "stitch.running_stitch_length_mm": 2.5,
+    "api.pull_compensation_min_mm": 0.0,
+    "api.pull_compensation_max_mm": 1.0,
 }
 
 

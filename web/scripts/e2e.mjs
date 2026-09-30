@@ -10,6 +10,8 @@ import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { extname, join, resolve } from 'node:path';
 
+import { clickAt, crossing } from './editor-helpers.mjs';
+
 const web = resolve(new URL('..', import.meta.url).pathname);
 const repo = resolve(web, '..');
 const python = join(repo, '.venv', 'bin', 'python');
@@ -150,7 +152,7 @@ try {
           await writeFile(join(fixtures, 'upload.json'), JSON.stringify(created, null, 2));
           await writeFile(join(fixtures, 'design.json'), JSON.stringify(await (await fetch(`${API}/designs/${created.id}`)).json(), null, 2));
           await writeFile(join(fixtures, 'preview.json'), JSON.stringify(preview));
-          await writeFile(join(fixtures, 'shapes.json'), JSON.stringify(await (await fetch(`${API}/designs/${created.id}/shapes`)).json()));
+          execFileSync(python, [join(web, 'scripts', 'make-editor-fixture.py')], { cwd: repo, stdio: 'ignore' }); // editor.json
         }
 
         // The editor button opens the editor screen.
@@ -256,6 +258,109 @@ try {
       await page.getByRole('button', { name: 'Retry' }).click();
       await page.locator('[data-state=done]').waitFor({ timeout: 15000 });
       check(await page.locator('.traced__column').count() === columns, 'Redis back: Retry restores the traced result');
+    }
+
+    // ---------- editor tools on the real engine ----------
+    console.log('-- editor tools');
+    {
+      const uploadSample = async (name, width) => {
+        const f = new FormData();
+        f.append('file', new Blob([await readFile(join(repo, 'digitizer', 'samples', name))]), name);
+        f.append('settings', JSON.stringify({ width_mm: width }));
+        return (await (await fetch(`${API}/designs`, { method: 'POST', body: f })).json()).id;
+      };
+      const dst = async (id) => Buffer.from(await (await fetch(`${API}/designs/${id}/download?format=dst`)).arrayBuffer());
+      const footerCount = async () => Number((await page.locator('.stats strong').first().innerText()).replace(/,/g, ''));
+      const saved = () => page.waitForFunction(() => document.querySelector('.file__state')?.textContent === 'Saved', null, { timeout: 60000 });
+      const bird = await uploadSample('bird.png', 90);
+      await page.goto(`${WEB}/editor?design=${bird}`);
+      await page.locator('.stitch-line').first().waitFor({ timeout: 60000 });
+      const bounds = (await (await fetch(`${API}/designs/${bird}/shapes`)).json()).bounds_mm;
+      const plainCount = await footerCount();
+      const plainDst = await dst(bird);
+      await shot('editor-real-open');
+
+      // Stitch type: the stitches, the downloaded file and Preview all change; Undo and Redo work.
+      await page.getByRole('button', { name: /^Shape 1 / }).click();
+      await page.getByRole('radio', { name: 'Running' }).click();
+      await page.getByRole('button', { name: 'Undo: Change a shape to Running' }).waitFor({ timeout: 60000 });
+      const runningCount = await footerCount();
+      const runningDst = await dst(bird);
+      check(runningCount !== plainCount && Buffer.compare(runningDst, plainDst) !== 0,
+        `type Fill -> Running changes the stitches (${plainCount} -> ${runningCount}) and the downloaded DST`);
+      await shot('editor-real-running');
+      await page.getByRole('button', { name: /^Undo:/ }).click();
+      await page.getByRole('button', { name: 'Redo: Change a shape to Running' }).waitFor({ timeout: 60000 });
+      check(await footerCount() === plainCount && Buffer.compare(await dst(bird), plainDst) === 0, 'Undo restores the stitches and the exact DST');
+      await page.getByRole('button', { name: /^Redo:/ }).click();
+      await page.getByRole('button', { name: 'Undo: Change a shape to Running' }).waitFor({ timeout: 60000 });
+      check(await footerCount() === runningCount && Buffer.compare(await dst(bird), runningDst) === 0, 'Redo puts the change back, DST included');
+
+      // Pull compensation on the satin branch.
+      await page.getByRole('button', { name: /^Shape 7 / }).click();
+      await page.locator('#pull').fill('0.8');
+      const beforePull = await dst(bird);
+      await page.getByRole('button', { name: 'Apply' }).click();
+      await page.getByRole('button', { name: /Use the default/ }).waitFor({ timeout: 60000 });
+      check(Buffer.compare(await dst(bird), beforePull) !== 0, 'pull compensation 0.8 mm on the branch changes the DST');
+      await shot('editor-real-pull');
+
+      // Split the branch.
+      const state = await (await fetch(`${API}/designs/${bird}/shapes`)).json();
+      const [a, b] = crossing(state.shapes.find((s) => s.number === 7), -30);
+      const shapesBefore = await page.locator('.layers .layer').count();
+      await page.getByRole('button', { name: /^Split/ }).click();
+      await clickAt(page, bounds, a);
+      await clickAt(page, bounds, b);
+      await page.getByText('Saved: Split a satin shape.').waitFor({ timeout: 60000 });
+      check(await page.locator('.layers .layer').count() === shapesBefore + 1, 'Split: the branch becomes two satin shapes');
+      await shot('editor-real-split');
+
+      // Draw edges: a new satin column between two drawn sides.
+      const columnsText = async () => (await page.locator('.stats').innerText()).match(/(\d+) satin column/)[1];
+      const columnsBefore = Number(await columnsText());
+      await page.getByRole('button', { name: /^Draw edges/ }).first().click();
+      for (const p of [[-40, -27], [-32, -27.5], [-25, -27]]) await clickAt(page, bounds, p);
+      await page.getByRole('button', { name: 'Finish edge' }).click();
+      for (const p of [[-40, -24], [-32, -24.5], [-25, -24]]) await clickAt(page, bounds, p);
+      await page.getByRole('button', { name: 'Finish edge' }).click();
+      await page.getByText('Saved: Satin column from drawn edges.').waitFor({ timeout: 60000 });
+      check(Number(await columnsText()) === columnsBefore + 1, `Draw edges adds a satin column (${columnsBefore} -> ${columnsBefore + 1})`);
+      await shot('editor-real-draw');
+
+      // A failed save: plain message, Retry sends it again.
+      await page.getByRole('button', { name: 'Cancel' }).click();
+      await page.getByRole('button', { name: /^Shape 1 / }).click();
+      await page.route(`${API}/designs/${bird}/edits`, (r) => r.abort());
+      await page.getByRole('radio', { name: 'Satin' }).click();
+      await page.locator('.edit-error').waitFor();
+      check((await page.locator('.edit-error').innerText()).includes("Can't reach the Stitchbook server"), 'no connection: "Not saved" with the reason');
+      await shot('editor-real-error');
+      await page.unroute(`${API}/designs/${bird}/edits`);
+      await page.getByRole('button', { name: 'Retry' }).click();
+      await page.locator('.edit-error').waitFor({ state: 'detached', timeout: 60000 });
+      await saved();
+      check((await page.locator('.segmented[aria-labelledby="stitch-type"] [aria-checked="true"]').innerText()) === 'Satin', 'Retry saves it');
+
+      // Preview and Download reflect every change.
+      const editorCount = await footerCount();
+      await page.goto(`${WEB}/preview/${bird}`);
+      await page.getByRole('heading', { name: 'Summary' }).waitFor({ timeout: 60000 });
+      check((await page.locator('.flow-summary').innerText()).includes(editorCount.toLocaleString('en')),
+        `Preview shows the edited design (${editorCount} stitches)`);
+      await shot('editor-real-preview');
+
+      // Select Satin Columns on a ring: its outline and its hole become one column.
+      const ring = await uploadSample('thin_ring.png', 40);
+      await page.goto(`${WEB}/editor?design=${ring}`);
+      await page.locator('.stitch-line').first().waitFor({ timeout: 60000 });
+      await page.getByRole('button', { name: /^Select Satin Columns/ }).click();
+      await page.getByRole('button', { name: 'Outline of shape 1' }).dispatchEvent('click');
+      await shot('editor-real-columns-pick');
+      await page.getByRole('button', { name: 'Hole 1 of shape 1' }).dispatchEvent('click');
+      await page.getByText('Saved: Satin column from two outlines.').waitFor({ timeout: 60000 });
+      check((await page.locator('.layer__kind').first().innerText()) === 'Satin column', 'Select Satin Columns: the ring is now one satin column');
+      await shot('editor-real-columns');
     }
 
     // ---------- states ----------

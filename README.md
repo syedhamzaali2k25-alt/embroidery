@@ -2,7 +2,7 @@
 
 Browser-based embroidery digitizer: upload a PNG/JPG/SVG logo and get machine-ready embroidery files (DST first, then PES) plus a preview image. Stitchbook is a working name, set in `digitizer/src/digitizer/config.py`.
 
-Status: the digitizer turns a PNG/JPG logo into a DST, a preview and a report. The image is reduced to a few flat colours (k-means in Lab), the background (the colour around the edges, or transparency) is removed, and specks below a minimum area are dropped. Each colour is its own layer, sewn largest area first with a colour change between layers. Where two colours touch, the one sewn first runs `colour.overlap_mm` under the later one, so no fabric shows between them (never into colours it does not touch, never past the design's outer edge); Preview and Editor show the overlap as a darker seam. Wide shapes get fill; narrow shapes get satin columns with edge-walk/zigzag underlay and pull compensation; where satin strokes meet, a small fill patch covers the junction. No lock stitches or fill underlay yet, and thread names/codes are placeholders. The API accepts uploads (validation, quality and speck warnings, detected colours), digitizes small images on request with the colours the user keeps, and serves the DST. The web app's Upload, Preview and Editor screens use the API; Home is still a mock-up.
+Status: the digitizer turns a PNG/JPG logo into a DST, a preview and a report. The image is reduced to a few flat colours (k-means in Lab), the background (the colour around the edges, or transparency) is removed, and specks below a minimum area are dropped. Each colour is its own layer, sewn largest area first with a colour change between layers. Where two colours touch, the one sewn first runs `colour.overlap_mm` under the later one, so no fabric shows between them (never into colours it does not touch, never past the design's outer edge); Preview and Editor show the overlap as a darker seam. Wide shapes get fill; narrow shapes get satin columns with edge-walk/zigzag underlay and pull compensation; where satin strokes meet, a small fill patch covers the junction. No lock stitches or fill underlay yet, and thread names/codes are placeholders. The API accepts uploads (validation, quality and speck warnings, detected colours), digitizes small images on request with the colours the user keeps, and serves the DST. The web app's Upload, Preview and Editor screens use the API; Home is still a mock-up. In the Editor a shape's stitch type can be changed (Running, Satin, Fill), satin gets its own pull compensation, a satin shape can be split between two edge points, and a satin column can be made between two outlines ("Select Satin Columns") or two drawn edges ("Draw edges"). Every change is stored on the server (in image pixels, so it survives a change of width), re-sews the design so Preview and Download match, and can be undone and redone.
 
 ## Layout
 
@@ -37,6 +37,7 @@ Digitizer (inside the venv):
 .venv/bin/python -m digitizer.digitize logo.png --out outdir --test-run-values   # stand-in values, not for sewing
 .venv/bin/python -m digitizer.digitize logo.png --out outdir --width-mm 30        # design width for this job
 .venv/bin/python -m digitizer.digitize logo.png --out outdir --colours "#1E3A6E,#F4A261"   # keep only these detected colours
+.venv/bin/python -m digitizer.digitize logo.png --out outdir --edits edits.json   # editor changes (a design record's "edits")
 .venv/bin/python -m digitizer.readback outdir/out.dst          # stitch count, size, longest stitch (+ report.json beside it)
 .venv/bin/python digitizer/samples/make_samples.py             # regenerate the sample logos
 .venv/bin/python digitizer/samples/run_samples.py              # digitize all samples, print DST readback
@@ -53,6 +54,9 @@ API (see http://localhost:$API_PORT/docs for the full schema):
 | `GET /designs/{id}` | the stored design record |
 | `GET /designs/{id}/shapes` | the design's colour layers and shapes in mm (outline + holes), each shape marked fill or satin: the editor's canvas and Layers |
 | `GET /designs/{id}/download?format=dst` | the DST file |
+| `GET /designs/{id}/editor` | everything the editor shows (shapes, satin columns in sewing order, every stitch, history, defaults) from one run with the changes in effect; also refreshes the DST |
+| `POST /designs/{id}/edits` | one change: `set_type`, `set_pull_compensation`, `split`, `column` (from two outlines or two drawn edges); refused with a plain 422 if it cannot be made |
+| `POST /designs/{id}/edits/undo`, `/redo` | step back or forward through the changes (409 if there is nothing to undo or redo) |
 | `POST /designs/{id}/trace` | starts "Create satin columns" as a background job (RQ); returns the job |
 | `GET /jobs/health` | whether background jobs can run: `{"status":"ok","workers":N}`, or 503 "Background jobs are not running…" when Redis can't be reached (within `jobs.redis_timeout_s`) |
 | `GET /jobs/{id}` | job state: queued, running (progress, server started-at), done (numbered columns + edit points), failed (plain message), cancelled |
@@ -74,8 +78,9 @@ npm start                # Vite dev server, http://localhost:8080
 npm run build            # type-check + production build into web/dist
 npm run check:tokens     # no colour literals outside src/css/tokens.css
 npm run check:ui         # screenshots + contrast/clipping audit → web/screenshots/
-npm run e2e              # real API + Redis + worker + browser: Upload, Preview, editor tracing → web/screenshots/e2e/
+npm run e2e              # real API + Redis + worker + browser: Upload, Preview, editor tracing and tools → web/screenshots/e2e/
 npm run test:trace       # editor "Create satin columns" card: states, polling back-off, hidden tab, cancel (mocked API)
+npm run test:editor      # editor tools: stitch type, pull compensation, Split, Select Satin Columns, Draw edges, undo/redo, errors (mocked API)
 ```
 
 To try the Upload and Preview screens locally: `STITCHBOOK_TEST_RUN_VALUES=1 make api` in one terminal and `make web` in another, then open http://localhost:8080/upload. Tracing in the editor (`/editor?design=<id>`, reached from Preview) also needs Redis and `make worker`.

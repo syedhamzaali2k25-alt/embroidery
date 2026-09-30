@@ -8,13 +8,15 @@ import { createServer } from 'node:http';
 import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import { extname, join, resolve } from 'node:path';
 
+import { clickAt, crossing, editorFixture, mockEditorApi } from './editor-helpers.mjs';
+
 const root = resolve(new URL('..', import.meta.url).pathname);
 const outDir = join(root, 'screenshots');
 const dist = join(root, 'dist');
 // API responses recorded from the real API by `npm run e2e` (scripts/fixtures), so the audit
 // needs no running server. The Upload and Preview screens are audited in every state.
 const fixture = async (name) => JSON.parse(await readFile(join(root, 'scripts', 'fixtures', name), 'utf8'));
-const fx = { config: await fixture('config.json'), upload: await fixture('upload.json'), design: await fixture('design.json'), preview: await fixture('preview.json'), shapes: await fixture('shapes.json') };
+const fx = { config: await fixture('config.json'), upload: await fixture('upload.json'), design: await fixture('design.json'), preview: await fixture('preview.json') };
 const testImage = join(root, '..', 'digitizer', 'samples', 'bird.png'); // the fixtures were recorded from this image
 const traceResult = await fixture('trace-result.json');
 
@@ -37,15 +39,71 @@ async function mockEditor(page, status, estimate = null) {
   const timeout = status === 'timeout' ? 1 : 10;
   await page.route(`${API}/config`, (r) => r.fulfill({ json: { ...fx.config, trace_estimate_minutes: estimate, poll_start_s: 2, poll_max_s: 15, poll_backoff_factor: 2, status_timeout_s: timeout } }));
   await page.route(`${API}/designs/${fx.upload.id}`, (r) => r.fulfill({ json: { ...fx.design, trace_job_id: status === 'idle' ? null : JOB_ID } }));
-  await page.route(`${API}/designs/${fx.upload.id}/shapes`, (r) => r.fulfill({ json: fx.shapes }));
+  const mock = await mockEditorApi(page, API, fx.upload.id); // the editor state recorded from the real API
   await page.route(`${API}/jobs/health`, (r) => {
     if (status === 'unavailable') return r.fulfill({ status: 503, json: { error: QUEUE_DOWN } });
     if (status === 'loading' || status === 'timeout') return; // never answers
     return r.fulfill({ json: { status: 'ok', workers: 1 } });
   });
   await page.route(`${API}/jobs/${JOB_ID}`, (r) => r.fulfill({ json: jobFor(status) }));
+  return mock;
 }
 const editorRoute = `/editor?design=${fx.upload.id}`;
+
+// Editing tools, each in the state a person sees mid-way (mocked answers; the real engine's
+// results are in the e2e screenshots).
+const BOUNDS = editorFixture.shapes.bounds_mm;
+const BRANCH = editorFixture.shapes.shapes.find((s) => s.number === 7);
+const pick = (page, name) => page.getByRole('button', { name: new RegExp(`^${name} `) }).click();
+const drawFirstEdge = async (page) => {
+  await page.getByRole('button', { name: /^Draw edges/ }).first().click();
+  for (const p of [[-40, -27], [-32, -27.5], [-25, -27]]) await clickAt(page, BOUNDS, p);
+  await page.getByRole('button', { name: 'Finish edge' }).click();
+};
+const tools = {
+  'editor-tool-select': async (page) => { await pick(page, 'Shape 7'); },
+  'editor-tool-saving': async (page, mock) => {
+    await pick(page, 'Shape 1'); mock.next = 'hold';
+    await page.getByRole('radio', { name: 'Running' }).click();
+    await page.getByText('Saving: Change shape 1 to Running').first().waitFor();
+  },
+  'editor-tool-saved': async (page) => {
+    await pick(page, 'Shape 1');
+    await page.getByRole('radio', { name: 'Running' }).click();
+    await page.getByRole('button', { name: 'Undo: Change a shape to Running' }).waitFor();
+  },
+  'editor-tool-error': async (page, mock) => {
+    await pick(page, 'Shape 1'); mock.next = 'fail';
+    await page.getByRole('radio', { name: 'Satin' }).click();
+    await page.locator('.edit-error').waitFor();
+  },
+  'editor-tool-split': async (page) => {
+    await page.getByRole('button', { name: /^Split/ }).click();
+    await clickAt(page, BOUNDS, crossing(BRANCH, -30)[0]);
+  },
+  'editor-tool-split-saved': async (page) => {
+    await page.getByRole('button', { name: /^Split/ }).click();
+    const [a, b] = crossing(BRANCH, -30);
+    await clickAt(page, BOUNDS, a);
+    await clickAt(page, BOUNDS, b);
+    await page.getByText('Saved: Split a satin shape.').waitFor();
+  },
+  'editor-tool-columns': async (page) => {
+    await page.getByRole('button', { name: /^Select Satin Columns/ }).click();
+    await page.getByRole('button', { name: 'Outline of shape 1' }).dispatchEvent('click');
+  },
+  'editor-tool-draw': async (page) => {
+    await drawFirstEdge(page);
+    for (const p of [[-40, -24], [-32, -24.5]]) await clickAt(page, BOUNDS, p);
+  },
+  'editor-tool-draw-saved': async (page) => {
+    await drawFirstEdge(page);
+    for (const p of [[-40, -24], [-32, -24.5], [-25, -24]]) await clickAt(page, BOUNDS, p);
+    await page.getByRole('button', { name: 'Finish edge' }).click();
+    await page.getByText('Saved: Satin column from drawn edges.').waitFor();
+  },
+  'editor-view-shapes': async (page) => { await page.getByRole('radio', { name: 'Shapes' }).click(); },
+};
 
 // The app is built with the default API address; only requests to it are mocked (not the
 // app's own /preview page).
@@ -92,6 +150,7 @@ const pages = {
   'editor-trace-done': { route: editorRoute, editor: ['done'], ready: '.traced__column' },
   'editor-trace-failed': { route: editorRoute, editor: ['failed'], ready: '[data-state=failed]' },
   'editor-trace-cancelled': { route: editorRoute, editor: ['cancelled'], ready: '[data-state=cancelled]' },
+  ...Object.fromEntries(Object.entries(tools).map(([name, act]) => [name, { route: editorRoute, editor: ['idle'], ready: '[data-state=idle]', act }])),
 };
 const viewports = [
   { name: 'desktop', width: 1440, height: 900 },
@@ -204,16 +263,19 @@ for (const vp of viewports) {
   for (const [name, spec] of Object.entries(pages)) {
     await page.unrouteAll();
     if (spec.api) await mockApi(page, spec.api);
-    if (spec.editor) await mockEditor(page, ...spec.editor);
+    const mock = spec.editor ? await mockEditor(page, ...spec.editor) : null;
     await page.goto(`${base}${spec.route}`, { waitUntil: spec.ready ? 'load' : 'networkidle' });
     if (spec.file) await page.locator('input[type=file]').setInputFiles(testImage);
     if (spec.ready) await page.locator(spec.ready).first().waitFor();
     if (spec.editor) await page.locator('.design-shape').first().waitFor(); // the design's shapes are drawn
     if (spec.click) for (const el of await page.locator(spec.click).all()) await el.click();
+    if (spec.act) await spec.act(page, mock);
+    if (spec.editor && vp.name === 'desktop') await page.evaluate(() => { window.scrollTo(0, 0); document.querySelector('.panel')?.scrollTo(0, 0); });
     await page.evaluate(() => document.fonts.ready);
     const file = join(outDir, `${name}-${vp.name}.png`);
     await page.screenshot({ path: file, fullPage: !name.startsWith('editor') || vp.name === 'phone' });
     const { issues, fonts } = await page.evaluate(audit);
+    mock?.release?.(); // let a held change finish before the next page
     report.push({ page: name, viewport: vp.name, fonts, issues });
   }
   await page.close();

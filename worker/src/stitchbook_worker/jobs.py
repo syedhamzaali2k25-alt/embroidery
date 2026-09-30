@@ -20,7 +20,7 @@ def _save_meta(**meta: Any) -> None:
 
 
 def trace_design(image: bytes, suffix: str, width_mm: float | None, overrides: dict[str, Any],
-                 colours: list[str] | None = None) -> dict:
+                 colours: list[str] | None = None, edits: list[dict] | None = None) -> dict:
     """Trace a design's satin columns. Progress (0..1) goes to job.meta["progress"]; a failure a
     person can act on goes to job.meta["error"] in plain words before the job fails."""
     config = Config().with_overrides(overrides)
@@ -29,7 +29,7 @@ def trace_design(image: bytes, suffix: str, width_mm: float | None, overrides: d
             source = Path(tmp) / f"original.{suffix}"
             source.write_bytes(image)
             return trace_columns(source, config, width_mm, on_progress=lambda f: _save_meta(progress=round(f, 3)),
-                                 keep_colours=colours)
+                                 keep_colours=colours, edits=edits)
     except PlaceholderValueError as exc:
         _save_meta(error=f"The server is not configured yet: {exc}.")
         raise

@@ -8,7 +8,7 @@ import { StitchCanvas } from "../lib/StitchCanvas";
 import { usePage } from "../lib/usePage";
 import "../css/flow.css";
 
-const LAYER_NAMES = { fill: "Fill", satin: "Satin", "junction patch": "Junction patch" } as const;
+const LAYER_NAMES = { fill: "Fill", satin: "Satin", running: "Running", "junction patch": "Junction patch" } as const;
 
 function message(err: unknown): string {
   return err instanceof ApiError ? err.message : "Something went wrong. Try again.";

@@ -85,10 +85,22 @@ class DetectedColour(BaseModel):
     bounds_px: list[int] = Field(description="[min x, min y, max x, max y] of its shapes, image pixels")
 
 
+class ColumnEdges(BaseModel):
+    left: list[list[float]] = Field(description="Left edge, mm")
+    right: list[list[float]] = Field(description="Right edge, mm")
+    closed: bool = Field(description="True when the edges are an outline and a hole (a ring)")
+
+
 class DesignShape(BaseModel):
     number: int = Field(description="1-based over the whole design, in sewing order")
     colour: int = Field(description="Number of its colour layer")
-    kind: Literal["fill", "satin"] = Field(description="How the shape is sewn: wide shapes fill, narrow ones satin")
+    kind: Literal["fill", "satin", "running", "column"] = Field(
+        description="How the shape is sewn: by width (fill or satin) unless chosen in the editor; "
+                    "column = a satin column made in the editor between two edges")
+    kind_chosen: bool = Field(default=False, description="The stitch type was chosen in the editor")
+    pull_compensation_mm: float | None = Field(default=None, description="Set in the editor; None = the default")
+    notes: list[str] = Field(default=[], description="Plain notes about how this shape will be sewn")
+    edges: ColumnEdges | None = Field(default=None, description="For kind column: the two edges it runs between")
     max_width_mm: float
     area_mm2: float
     bounds_mm: list[float] = Field(description="[min x, min y, max x, max y]")
@@ -107,6 +119,7 @@ class DesignShapes(BaseModel):
     height_mm: float
     shapes_found: int = Field(description="Shapes traced before speck removal")
     specks_removed: int = Field(description="Shapes dropped as specks (smaller than input.min_shape_area_mm2)")
+    skipped_edits: list[str] = Field(default=[], description="Editor changes that no longer fit the design")
 
 
 class TraceResult(BaseModel):
@@ -203,6 +216,10 @@ class DesignRecord(BaseModel):
     report: DigitizeReport | None = None
     downloads: list[Literal["dst"]] = []
     trace_job_id: str | None = None  # latest "Create satin columns" job, so the editor can resume it
+    # Editor changes, stored in image pixels (digitizer.edits). The first edits_applied are in
+    # effect; the rest can be redone. A new change drops the ones that could be redone.
+    edits: list[dict] = []
+    edits_applied: int = 0
 
 
 class DesignCreated(BaseModel):
@@ -227,7 +244,7 @@ class StitchPoint(BaseModel):
 
 class Layer(BaseModel):
     number: int = Field(description="1-based, in sewing order")
-    type: Literal["fill", "satin", "junction patch"]
+    type: Literal["fill", "satin", "running", "junction patch"]
     stitch_count: int
     colour: int = Field(description="Number of the colour layer it belongs to")
 
@@ -252,3 +269,82 @@ class PreviewResponse(BaseModel):
 
 class DownloadQuery(BaseModel):
     format: Literal["dst"] = Field(default="dst", description="Only DST is available so far.")
+
+
+# ---------- editor ----------
+
+PointMm = Annotated[list[float], Field(min_length=2, max_length=2, description="[x, y] in mm")]
+
+
+class OutlineRef(BaseModel):
+    """One outline of a shape: ring 0 is its outside, 1.. its holes (in the order /editor lists them)."""
+    model_config = ConfigDict(extra="forbid")
+    shape: int = Field(ge=1)
+    ring: int = Field(default=0, ge=0)
+
+
+class DrawnEdge(BaseModel):
+    """An edge drawn with the pen, in mm."""
+    model_config = ConfigDict(extra="forbid")
+    points: list[PointMm] = Field(min_length=2)
+
+
+class SetTypeEdit(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    op: Literal["set_type"]
+    shape: int = Field(ge=1, description="Shape number, as /editor lists it now")
+    kind: Literal["running", "satin", "fill"]
+
+
+class PullCompensationEdit(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    op: Literal["set_pull_compensation"]
+    shape: int = Field(ge=1)
+    mm: float | None = Field(description="Total widening of each satin stitch; null = back to the default")
+
+
+class SplitEdit(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    op: Literal["split"]
+    a: PointMm = Field(description="A point on one edge of a satin shape")
+    b: PointMm = Field(description="A point on the opposite edge")
+
+
+class ColumnEdit(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    op: Literal["column"]
+    left: OutlineRef | DrawnEdge
+    right: OutlineRef | DrawnEdge
+    colour: int | None = Field(default=None, ge=1, description="Colour layer for drawn edges (default: 1)")
+
+
+EditRequest = Annotated[SetTypeEdit | PullCompensationEdit | SplitEdit | ColumnEdit, Field(discriminator="op")]
+
+
+class History(BaseModel):
+    applied: int = Field(description="Changes in effect")
+    total: int = Field(description="Changes stored, including ones that can be redone")
+    undo: str | None = Field(description="What Undo would take back; null = nothing")
+    redo: str | None = Field(description="What Redo would put back; null = nothing")
+
+
+class EditorDefaults(BaseModel):
+    """Values from config.py the editor shows as defaults and limits."""
+    pull_compensation_mm: float
+    pull_compensation_min_mm: float
+    pull_compensation_max_mm: float
+    satin_max_width_mm: float
+
+
+class EditorState(BaseModel):
+    """Everything the editor shows, from one run of the digitizer with the changes in effect.
+    The stitch file is written by the same run, so Preview and Download match it."""
+    id: str
+    shapes: DesignShapes
+    columns: list[TraceColumn] = Field(description="Satin columns, numbered in sewing order")
+    colours: list[ColourLayerOut]
+    layers: list[Layer]
+    stats: StitchStats
+    stitches: list[StitchPoint]
+    history: History
+    defaults: EditorDefaults
