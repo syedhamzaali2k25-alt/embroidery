@@ -293,7 +293,8 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
         return record, result, stitches, width, result.fill_row_spacing_mm
 
     def layers_and_colours(result):
-        layers = [Layer(number=i, type=t, stitch_count=n, colour=c) for i, (t, n, c) in enumerate(result.layers, start=1)]
+        layers = [Layer(number=i, type=t, stitch_count=n, colour=c, shape=shape)
+                  for i, ((t, n, c), shape) in enumerate(zip(result.layers, result.layer_shapes), start=1)]
         colours = [ColourLayerOut(number=i, hex=c.hex, shape_count=c.shapes, area_mm2=c.area_mm2,
                                   stitch_count=c.stitches, thread=thread_placeholder())
                    for i, c in enumerate(result.colours, start=1)]

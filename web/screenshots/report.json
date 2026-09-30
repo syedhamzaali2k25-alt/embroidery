@@ -279,6 +279,15 @@
     "issues": []
   },
   {
+    "page": "editor-view-stitches-hidden",
+    "viewport": "desktop",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
     "page": "editor-tool-no-satin",
     "viewport": "desktop",
     "fonts": {
@@ -577,6 +586,15 @@
   },
   {
     "page": "editor-view-shapes",
+    "viewport": "phone",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "editor-view-stitches-hidden",
     "viewport": "phone",
     "fonts": {
       "sans": true,

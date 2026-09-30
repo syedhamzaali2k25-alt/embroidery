@@ -284,7 +284,7 @@ export default function DesignEditor({ designId }: { designId: string }) {
                 <g className="design" style={zoom === 100 ? undefined : { transform: `scale(${zoom / 100})` }}>
                   <DesignShapesLayer shapes={data.shapes} fit={fit} hidden={hidden} selected={selected} traced={!!traced}
                                      faint={view === "stitches"} onSelect={tool === "select" ? selectShape : undefined} />
-                  {view === "stitches" && <StitchLines stitches={data.stitches} layers={data.layers} colours={data.colours} fit={fit} />}
+                  {view === "stitches" && <StitchLines stitches={data.stitches} layers={data.layers} colours={data.colours} fit={fit} hidden={hidden} />}
                   {view === "stitches" && !traced && <OverlapSeams shapes={data.shapes} fit={fit} hidden={hidden} />}
                   {traced && <TracedColumns result={traced} fit={fit} hidden={hidden} />}
                   {tool === "columns" && <RingPicker shapes={data.shapes} fit={fit} hidden={hidden} picked={picks} onPick={onPick} />}

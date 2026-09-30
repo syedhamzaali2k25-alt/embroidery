@@ -1,4 +1,5 @@
-// Browser tests for the editor's tools with a mocked API: stitch type, pull compensation, fabric preset, Split,
+// Browser tests for the editor's tools with a mocked API: stitch type, pull compensation, fabric preset, the
+// Layers eye in the Stitches view, Split,
 // Select Satin Columns, Draw edges, Undo and Redo. Each checks the exact change sent to the API,
 // that nothing is shown as done before the server answers, and that a failure shows a plain
 // message with Retry that sends the same change again. (The real engine: npm run e2e.)
@@ -142,6 +143,37 @@ try {
         && (await page.locator('#fabric-help').innerText()) === 'No preset has values yet, so none can be chosen.',
         `${tag} presets without values (the product config today): listed, not choosable, says so`);
       check(await page.locator('.fabric__status').isVisible(), `${tag} ...and still marked Unverified`);
+      await page.close();
+    }
+
+    console.log(`-- the Layers eye in the Stitches view (${viewport.width}px)`);
+    {
+      const { page, mock } = await open(browser, viewport);
+      // Stitch segments drawn per thread colour (data-colour), and every request the page sends from here on.
+      const drawn = () => page.$$eval('.stitch-line', (ps) => Object.fromEntries(ps.map((p) => [p.dataset.colour, (p.getAttribute('d').match(/M/g) || []).length])));
+      const sent = [];
+      page.on('request', (r) => { if (r.url().startsWith(API)) sent.push(`${r.method()} ${r.url()}`); });
+      check((await page.getByRole('radio', { name: 'Stitches' }).getAttribute('aria-checked')) === 'true', `${tag} the editor opens in the Stitches view`);
+      const download = await page.getByRole('link', { name: 'Download DST' }).getAttribute('href');
+      const before = await drawn();
+      const others = (after, except) => Object.keys(before).every((c) => c === except || after[c] === before[c]);
+
+      await page.getByRole('button', { name: 'Hide Shape 7', exact: true }).click(); // the branch: all of colour 5
+      const noBranch = await drawn();
+      check(before['5'] > 0 && !('5' in noBranch) && others(noBranch, '5'),
+        `${tag} hiding shape 7 removes all its ${before['5']} stitch segments from the Stitches view; every other colour unchanged`);
+      await page.getByRole('button', { name: 'Hide Shape 4', exact: true }).click(); // one of three shapes in colour 4
+      const noLeaf = await drawn();
+      check(noLeaf['4'] > 0 && noLeaf['4'] < before['4'] && ['1', '2', '3', '6', '7'].every((c) => noLeaf[c] === before[c]),
+        `${tag} hiding shape 4 removes only its stitches from colour 4 (${before['4']} -> ${noLeaf['4']} segments)`);
+      await page.getByRole('button', { name: 'Show Shape 7', exact: true }).click();
+      await page.getByRole('button', { name: 'Show Shape 4', exact: true }).click();
+      check(JSON.stringify(await drawn()) === JSON.stringify(before), `${tag} showing them again draws exactly the same stitches as before`);
+
+      check(sent.length === 0 && mock.bodies.length === 0, `${tag} hiding and showing sends nothing to the server (a view setting only)`);
+      check((await page.getByRole('link', { name: 'Download DST' }).getAttribute('href')) === download
+        && (await page.locator('.stats').innerText()).includes(editorFixture.stats.stitch_count.toLocaleString('en')),
+        `${tag} Download link and stitch count unchanged`);
       await page.close();
     }
 

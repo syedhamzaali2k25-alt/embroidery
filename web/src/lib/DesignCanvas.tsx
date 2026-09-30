@@ -105,16 +105,23 @@ export function OverlapSeams({ shapes, fit, hidden }: { shapes: DesignShapes; fi
   );
 }
 
-type StitchProps ={ stitches: StitchPoint[]; layers: Layer[]; colours: ColourLayer[]; fit: Fit };
+type StitchProps = { stitches: StitchPoint[]; layers: Layer[]; colours: ColourLayer[]; fit: Fit; hidden?: Set<number> };
 
-/** Every stitch from the stitch file, in its thread colour (one path per colour; jumps break it). */
-export function StitchLines({ stitches, layers, colours, fit }: StitchProps) {
+/**
+ * Every stitch from the stitch file, in its thread colour (one path per colour; jumps break it).
+ * Stitches of `hidden` shapes are left out of the drawing, and so is the stitch that travels out
+ * of one; the stitch file itself is not touched (hiding is a view setting only).
+ */
+export function StitchLines({ stitches, layers, colours, fit, hidden }: StitchProps) {
   const hexOfColour = new Map(colours.map((c) => [c.number, c.hex]));
   const colourOfLayer = new Map(layers.map((l) => [l.number, l.colour]));
+  const shapeOfLayer = new Map(layers.map((l) => [l.number, l.shape ?? null]));
+  const isHidden = (p: StitchPoint) => !!hidden?.size && p.layer !== null && hidden.has(shapeOfLayer.get(p.layer) ?? -1);
   const paths = new Map<number, string[]>();
   let prev: StitchPoint | null = null;
   for (const s of stitches) {
-    if (s.command === "stitch" && s.layer !== null && prev && (prev.command === "stitch" || prev.command === "jump")) {
+    if (s.command === "stitch" && s.layer !== null && prev && (prev.command === "stitch" || prev.command === "jump")
+        && !isHidden(s) && !(prev.command === "stitch" && isHidden(prev))) {
       const colour = colourOfLayer.get(s.layer) ?? 1;
       const [x0, y0] = fit([prev.x_mm, prev.y_mm]);
       const [x1, y1] = fit([s.x_mm, s.y_mm]);

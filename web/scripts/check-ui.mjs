@@ -103,6 +103,8 @@ const tools = {
     await page.getByText('Saved: Satin column from drawn edges.').waitFor();
   },
   'editor-view-shapes': async (page) => { await page.getByRole('radio', { name: 'Shapes' }).click(); },
+  // Stitches view with the branch (shape 7) hidden from the Layers eye: its stitches are not drawn.
+  'editor-view-stitches-hidden': async (page) => { await page.getByRole('button', { name: 'Hide Shape 7', exact: true }).click(); },
 };
 
 // The app is built with the default API address; only requests to it are mocked (not the

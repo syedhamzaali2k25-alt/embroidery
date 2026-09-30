@@ -108,7 +108,11 @@ export type DesignRecord = DesignCreated & {
 };
 
 export type StitchPoint = { x_mm: number; y_mm: number; command: "stitch" | "jump" | "trim" | "end"; layer: number | null };
-export type Layer = { number: number; type: "fill" | "satin" | "running" | "junction patch"; stitch_count: number; colour: number };
+export type Layer = {
+  number: number; type: "fill" | "satin" | "running" | "junction patch"; stitch_count: number; colour: number;
+  /** The shape this layer sews (as numbered in shapes). */
+  shape?: number | null;
+};
 
 export type Preview = {
   id: string;

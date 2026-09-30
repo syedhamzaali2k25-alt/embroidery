@@ -694,6 +694,7 @@ class Result:
     # type is fill/satin/junction patch.
     layers: tuple[tuple[str, int, int], ...] = ()
     stitch_layers: tuple[int, ...] = ()  # 1-based layer number for every STITCH record in the file
+    layer_shapes: tuple[int, ...] = ()  # shape number (as in shapes) of each layer, in the order of `layers`
     colours: tuple[ColourSummary, ...] = ()  # colour layers in sewing order
     shapes_found: int = 0  # shapes traced before speck removal
     specks_removed: int = 0  # shapes dropped as specks
@@ -802,6 +803,7 @@ def digitize(image_path: str | Path, out_dir: str | Path, config: Config | None 
                     patches, skipped, trimmed,
                     tuple((kinds[n][0], counts[n], kinds[n][1]) for n in sorted(counts)),
                     tuple(layer_of[s] for s in built.sources),
+                    tuple(pieces[s].shape for s, _n in sorted(layer_of.items(), key=lambda kv: kv[1])),
                     tuple(ColourSummary(layer.hex, len(layer.shapes), colour_stitches[layer.number],
                                         sum(s.poly.area for s in layer.shapes)) for layer in traced.layers),
                     traced.shapes_found, traced.specks_removed, traced.holes_filled,

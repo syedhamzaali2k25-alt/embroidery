@@ -248,6 +248,7 @@ class Layer(BaseModel):
     type: Literal["fill", "satin", "running", "junction patch"]
     stitch_count: int
     colour: int = Field(description="Number of the colour layer it belongs to")
+    shape: int | None = Field(default=None, description="Number of the shape it sews (as in shapes)")
 
 
 class SettingsUsed(BaseModel):

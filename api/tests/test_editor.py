@@ -56,6 +56,10 @@ def test_editor_state_has_shapes_columns_stitches_and_defaults(client):
     assert state["history"] == {"applied": 0, "total": 0, "undo": None, "redo": None}
     assert state["defaults"]["pull_compensation_mm"] == CONFIG.get("stitch.pull_compensation_mm")
     assert [c["number"] for c in state["columns"]] == list(range(1, len(state["columns"]) + 1))
+    # Every piece layer names the shape it sews, so the editor can hide a shape's stitches.
+    numbers = {s["number"]: s["colour"] for s in state["shapes"]["shapes"]}
+    assert all(numbers[layer["shape"]] == layer["colour"] for layer in state["layers"])
+    assert set(numbers) == {layer["shape"] for layer in state["layers"]}
     assert download(client, design_id)  # opening the editor writes the stitch file
 
 
