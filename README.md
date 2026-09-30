@@ -81,6 +81,7 @@ npm run check:ui         # screenshots + contrast/clipping audit → web/screens
 npm run e2e              # real API + Redis + worker + browser: Upload, Preview, editor tracing and tools → web/screenshots/e2e/
 npm run test:trace       # editor "Create satin columns" card: states, polling back-off, hidden tab, cancel (mocked API)
 npm run test:editor      # editor tools: stitch type, pull compensation, Split, Select Satin Columns, Draw edges, undo/redo, errors (mocked API)
+npm run test:once        # dev server (React StrictMode): one preview / editor load per design at a time (mocked API)
 ```
 
 To try the Upload and Preview screens locally: `STITCHBOOK_TEST_RUN_VALUES=1 make api` in one terminal and `make web` in another, then open http://localhost:8080/upload. Tracing in the editor (`/editor?design=<id>`, reached from Preview) also needs Redis and `make worker`.

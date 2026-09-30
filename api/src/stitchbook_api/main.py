@@ -10,8 +10,10 @@ Design records are JSON files in Storage for now (a database comes with Supabase
 
 from __future__ import annotations
 
+import functools
 import re
 import tempfile
+import threading
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -95,7 +97,26 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
                settings: Settings | None = None) -> FastAPI:
     settings = settings or load_settings()
     config = config or (load_test_run_config() if settings.test_run_values else load_config())
-    storage = storage or LocalDiskStorage(settings.storage_dir)
+    storage = storage or LocalDiskStorage(settings.storage_dir, config.get("storage.replace_attempts"),
+                                          config.get("storage.replace_retry_s"))
+    # One lock per design: requests that sew a design and write its files (preview, editor,
+    # changes, undo, redo) run one after the other for the same design, never at the same time.
+    # This covers one API process; several processes would need a shared lock (not built).
+    locks: dict[str, threading.Lock] = {}
+    locks_guard = threading.Lock()
+
+    def design_lock(design_id: str) -> threading.Lock:
+        with locks_guard:
+            return locks.setdefault(design_id, threading.Lock())
+
+    def one_at_a_time(endpoint):
+        """Run the endpoint while holding its design's lock (FastAPI still sees its signature)."""
+        @functools.wraps(endpoint)
+        def locked(design_id: str, *args, **kwargs):
+            with design_lock(design_id):
+                return endpoint(design_id, *args, **kwargs)
+        return locked
+
     jobs = Jobs(settings.redis_url, settings.rq_queue, settings.trace_job, storage,
                 redis_timeout_s=lambda: config.get("jobs.redis_timeout_s"))
 
@@ -276,6 +297,7 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
         return layers, colours
 
     @app.post("/designs/{design_id}/preview", response_model=PreviewResponse, responses=ERRORS)
+    @one_at_a_time
     def preview(design_id: DesignId, body: PreviewRequest | None = None) -> PreviewResponse:
         """Digitize with the design's settings (optionally changed here) and every editor change
         in effect. Stores the DST for download."""
@@ -330,6 +352,7 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
                            stats=record.stats, stitches=stitches, history=history, defaults=defaults)
 
     @app.get("/designs/{design_id}/editor", response_model=EditorState, responses=ERRORS)
+    @one_at_a_time
     def get_editor(design_id: DesignId) -> EditorState:
         """The editor's view of the design: shapes, satin columns and every stitch, from one run
         of the digitizer with the changes in effect (which also refreshes the DST for download)."""
@@ -338,6 +361,7 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
         return editor_state(record)
 
     @app.post("/designs/{design_id}/edits", response_model=EditorState, responses=ERRORS)
+    @one_at_a_time
     def add_edit(design_id: DesignId, body: Annotated[EditRequest, Body()]) -> EditorState:
         """Make one change (stitch type, pull compensation, split, satin column from two edges).
         It is checked against the design as it is now; a change that cannot be made is refused
@@ -364,6 +388,7 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
         return editor_state(record.model_copy(update={"edits": edits, "edits_applied": len(edits)}))
 
     @app.post("/designs/{design_id}/edits/undo", response_model=EditorState, responses=ERRORS)
+    @one_at_a_time
     def undo(design_id: DesignId) -> EditorState:
         record = load_record(design_id)
         if record.edits_applied == 0:
@@ -372,6 +397,7 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
         return editor_state(record.model_copy(update={"edits_applied": record.edits_applied - 1}))
 
     @app.post("/designs/{design_id}/edits/redo", response_model=EditorState, responses=ERRORS)
+    @one_at_a_time
     def redo(design_id: DesignId) -> EditorState:
         record = load_record(design_id)
         if record.edits_applied >= len(record.edits):

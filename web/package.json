@@ -12,7 +12,8 @@
     "check": "npm run check:tokens && npm run check:ui",
     "e2e": "node scripts/e2e.mjs",
     "test:trace": "npm run build && node scripts/trace-card-tests.mjs",
-    "test:editor": "npm run build && node scripts/editor-tools-tests.mjs"
+    "test:editor": "npm run build && node scripts/editor-tools-tests.mjs",
+    "test:once": "node scripts/single-request-tests.mjs"
   },
   "devDependencies": {
     "@types/react": "^19.3.0",

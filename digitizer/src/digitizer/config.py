@@ -190,6 +190,14 @@ PRODUCT: dict[str, dict[str, Any]] = {
         # Split: a click this close to a shape's edge counts as on the edge (and is moved onto it).
         "snap_distance_mm": PLACEHOLDER,
     },
+    "storage": {
+        # Saving a file: on Windows, moving the finished file over one that another program has
+        # open (a virus scanner, the search indexer, a viewer) fails with WinError 32. The move
+        # is tried this many times in all...
+        "replace_attempts": 5,
+        # ...waiting this many seconds between tries.
+        "replace_retry_s": 0.05,
+    },
     "rate_limits": {
         # Uploads a single user may start per minute.
         "uploads_per_minute": PLACEHOLDER,

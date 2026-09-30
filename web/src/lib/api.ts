@@ -193,6 +193,23 @@ const post = (body?: unknown): RequestInit => ({
   body: body === undefined ? undefined : JSON.stringify(body),
 });
 
+/**
+ * At most one request of a kind per design at a time. The same request while one is running
+ * (React StrictMode runs effects twice in development) shares the running one; a different one
+ * (say, new settings) waits for it and then goes. The server also sews one design at a time,
+ * but this saves it digitizing twice.
+ */
+const running = new Map<string, { same: string; promise: Promise<unknown> }>();
+function oneAtATime<T>(slot: string, same: string, send: () => Promise<T>): Promise<T> {
+  const current = running.get(slot);
+  if (current && current.same === same) return current.promise as Promise<T>;
+  const promise: Promise<T> = (current ? current.promise.catch(() => undefined).then(send) : send()).finally(() => {
+    if (running.get(slot)?.promise === promise) running.delete(slot);
+  });
+  running.set(slot, { same, promise });
+  return promise;
+}
+
 export const api = {
   site: () => request<SiteInfo>("/site"),
   config: () => request<ClientConfig>("/config"),
@@ -204,16 +221,12 @@ export const api = {
   },
   design: (id: string) => request<DesignRecord>(`/designs/${id}`),
   shapes: (id: string) => request<DesignShapes>(`/designs/${id}/shapes`),
-  editor: (id: string) => request<EditorState>(`/designs/${id}/editor`),
+  editor: (id: string) => oneAtATime(`editor:${id}`, "", () => request<EditorState>(`/designs/${id}/editor`)),
   edit: (id: string, edit: Edit) => request<EditorState>(`/designs/${id}/edits`, post(edit)),
   undo: (id: string) => request<EditorState>(`/designs/${id}/edits/undo`, post()),
   redo: (id: string) => request<EditorState>(`/designs/${id}/edits/redo`, post()),
   preview: (id: string, settings: DesignSettings = {}) =>
-    request<Preview>(`/designs/${id}/preview`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(settings),
-    }),
+    oneAtATime(`preview:${id}`, JSON.stringify(settings), () => request<Preview>(`/designs/${id}/preview`, post(settings))),
   downloadUrl: (id: string) => `${API_URL}/designs/${id}/download?format=dst`,
   trace: (designId: string) => request<Job>(`/designs/${designId}/trace`, { method: "POST" }),
   jobsHealth: (timeoutS?: number) => request<JobsHealth>("/jobs/health", { timeoutS }),
