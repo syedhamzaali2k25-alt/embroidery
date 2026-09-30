@@ -9,6 +9,8 @@ __pycache__/
 
 # Local API file storage (STORAGE_DIR)
 data/
+# ...but not the digitizer's package data (the round-trip check design used by digitizer.formats)
+!digitizer/src/digitizer/data/
 
 # Local environment (copy .env.example to .env)
 .env
