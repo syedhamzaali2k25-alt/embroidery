@@ -364,7 +364,8 @@ try {
         for (const p of st.stitches) if (p.command === 'stitch') (out[shapeOf[p.layer]] ??= []).push(`${p.x_mm},${p.y_mm}`);
         return out;
       };
-      await page.getByRole('button', { name: /^Shape 1 / }).click();
+      const shape1 = page.getByRole('button', { name: /^Shape 1 / });
+      if ((await shape1.getAttribute('aria-pressed')) !== 'true') await shape1.click(); // the Layers row toggles
       await page.getByRole('button', { name: '+ Sublayer' }).click();
       const [bx, by] = BODY_INSIDE;
       for (const p of [[bx - 2.5, by - 2.5], [bx + 2.5, by - 2.5], [bx + 2.5, by + 2.5], [bx - 2.5, by + 2.5]]) await clickAt(page, bounds, p);
