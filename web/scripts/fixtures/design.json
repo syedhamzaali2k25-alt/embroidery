@@ -1,5 +1,5 @@
 {
-  "id": "1867f3996dce439696264893caced1e6",
+  "id": "d7518b52a5a042c5a9ecb78347afeec0",
   "filename": "cafe-luna.jpg",
   "type": "jpg",
   "bytes": 26305,
@@ -13,7 +13,7 @@
   },
   "warnings": [],
   "status": "digitized",
-  "created_at": "2026-09-30T11:03:09.622061Z",
+  "created_at": "2026-09-30T11:30:37.277634Z",
   "stats": {
     "stitch_count": 1455,
     "jump_count": 31,
@@ -35,5 +35,6 @@
   },
   "downloads": [
     "dst"
-  ]
+  ],
+  "trace_job_id": null
 }

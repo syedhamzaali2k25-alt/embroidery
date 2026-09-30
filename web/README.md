@@ -52,3 +52,11 @@ The spec's green serif accent word (`#2ED47A`) on white measures **1.94:1**. Tha
 - `check:ui` audits both screens in every state (empty, checked, error, loading) using API responses recorded by `npm run e2e` in `scripts/fixtures/`.
 - `scripts/test-images/` holds the three test logos (made by `scripts/make-test-images.mjs`).
 - Not wired yet, and labelled as such on screen: **Remove background** (always on) and **Colours to keep** (one thread colour for now). The editor is still a mock-up and does not load the design.
+
+### Editor: Create satin columns (Beta)
+
+- Open with `/editor?design=<id>` (the Preview's "Fix stitches in the editor" does this). Without a design the editor is the original mock-up.
+- The card starts `POST /designs/{id}/trace` and follows `GET /jobs/{id}`: idle, queued, running (progress, "Time elapsed" from the server's started-at time), done (card collapses to "Traced", numbered columns with edit points on the canvas), failed (the API's message + Retry), cancelled. "Cancel job" calls `POST /jobs/{id}/cancel`.
+- Polling starts at `jobs.poll_start_s`, multiplies by `jobs.poll_backoff_factor` up to `jobs.poll_max_s`, and stops while the tab is hidden. An estimate is shown only if `jobs.trace_estimate_minutes` is set, labelled as an estimate.
+- The job runs on the server; reopening the design restores the card from `trace_job_id`.
+- "Or start manually editing": Split and Select Satin Columns activate those tools (their canvas behaviour is not built yet).

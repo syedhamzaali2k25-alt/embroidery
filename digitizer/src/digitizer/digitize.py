@@ -22,6 +22,7 @@ import json
 import math
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Callable
 
 import cv2
 import numpy as np
@@ -246,13 +247,16 @@ class Pieces:
 
 
 def build_pieces(mask: np.ndarray, polygons_px: list[Polygon], polygons: list[Polygon], tf: PxToMm,
-                 config: Config) -> Pieces:
+                 config: Config, on_shape_done: Callable[[int, int], None] | None = None) -> Pieces:
+    """on_shape_done(done, total) is called after each shape, for progress reporting."""
     max_width = config.get("satin.max_width_mm")
     min_len = config.get("stitch.min_stitch_length_mm")
     tolerance = tf.mm_per_px  # traced outlines are pixel staircases: allow one source pixel
     result = Pieces([])
     pieces = result.pieces
-    for poly_px, poly in zip(polygons_px, polygons):
+    for shape_index, (poly_px, poly) in enumerate(zip(polygons_px, polygons)):
+        if on_shape_done:
+            on_shape_done(shape_index, len(polygons))
         shape_mask = satin.polygon_mask(poly_px, mask.shape)
         dist = satin.distance_map(shape_mask)
         area = poly.buffer(tolerance)
@@ -521,6 +525,43 @@ def digitize(image_path: str | Path, out_dir: str | Path, config: Config | None 
     # The DST format has no room for these; keep them next to it for the readback report.
     (out_dir / "report.json").write_text(json.dumps(result.to_json(), indent=2) + "\n")
     return result
+
+
+def trace_columns(image_path: str | Path, config: Config, width_mm: float | None = None,
+                  on_progress: Callable[[float], None] | None = None) -> dict:
+    """Satin columns for the editor: each column's two edges and a few edit points along its
+    centerline, in mm (same coordinates as the DST). on_progress gets 0..1 as shapes are done."""
+    report = on_progress or (lambda _f: None)
+    report(0.0)
+    mask = load_mask(image_path, config.get("image.min_speck_area_px"))
+    polygons_px = mask_to_polygons(mask)
+    polygons, tf = scale_to_width(polygons_px, width_mm or config.get("design.width_mm"))
+    report(0.1)
+    built = build_pieces(mask, polygons_px, polygons, tf, config,
+                         on_shape_done=lambda done, total: report(0.1 + 0.85 * done / max(total, 1)))
+    tolerance = config.get("editor.edit_point_tolerance_mm")
+    columns = []
+    for piece in built.pieces:
+        if piece.kind != "satin":
+            continue
+        column = piece.column
+        edit = column.centerline.simplify(tolerance)
+        columns.append({
+            "number": len(columns) + 1,
+            "left": [list(r.edge_left) for r in column.rungs],
+            "right": [list(r.edge_right) for r in column.rungs],
+            "edit_points": [list(p) for p in edit.coords],
+            "label": list(satin.label_point(column).coords[0]),
+        })
+    min_x, min_y, max_x, max_y = unary_union(polygons).bounds
+    report(1.0)
+    return {
+        "columns": columns,
+        "fill_shapes": sum(p.kind == "fill" and not p.patch for p in built.pieces),
+        "junction_patches": built.patches,
+        "bounds_mm": [min_x, min_y, max_x, max_y],
+        "width_mm": max_x - min_x,
+    }
 
 
 def _layer_type(piece: Piece) -> str:

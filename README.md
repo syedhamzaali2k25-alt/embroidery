@@ -51,6 +51,9 @@ API (see http://localhost:$API_PORT/docs for the full schema):
 | `POST /designs/{id}/preview` | digitizes small PNG/JPG images on the spot, returns stats, report and every stitch as JSON |
 | `GET /designs/{id}` | the stored design record |
 | `GET /designs/{id}/download?format=dst` | the DST file |
+| `POST /designs/{id}/trace` | starts "Create satin columns" as a background job (RQ); returns the job |
+| `GET /jobs/{id}` | job state: queued, running (progress, server started-at), done (numbered columns + edit points), failed (plain message), cancelled |
+| `POST /jobs/{id}/cancel` | cancels a queued job, or stops a running one |
 
 Errors are always `{"error": "<what to fix>"}`. Upload limits and preview size come from `config.py` (still placeholders); `STITCHBOOK_TEST_RUN_VALUES=1 make api` runs with the stand-in values for trying it out. Files are stored through `stitchbook_api.storage.Storage` (local disk now, in `STORAGE_DIR`).
 
@@ -68,10 +71,11 @@ npm start                # Vite dev server, http://localhost:8080
 npm run build            # type-check + production build into web/dist
 npm run check:tokens     # no colour literals outside src/css/tokens.css
 npm run check:ui         # screenshots + contrast/clipping audit → web/screenshots/
-npm run e2e              # real API + browser: three test images through Upload and Preview → web/screenshots/e2e/
+npm run e2e              # real API + Redis + worker + browser: Upload, Preview, editor tracing → web/screenshots/e2e/
+npm run test:trace       # editor "Create satin columns" card: states, polling back-off, hidden tab, cancel (mocked API)
 ```
 
-To try the Upload and Preview screens locally: `STITCHBOOK_TEST_RUN_VALUES=1 make api` in one terminal and `make web` in another, then open http://localhost:8080/upload.
+To try the Upload and Preview screens locally: `STITCHBOOK_TEST_RUN_VALUES=1 make api` in one terminal and `make web` in another, then open http://localhost:8080/upload. Tracing in the editor (`/editor?design=<id>`, reached from Preview) also needs Redis and `make worker`.
 
 ## Config and environment
 

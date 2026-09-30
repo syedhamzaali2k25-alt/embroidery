@@ -1,4 +1,4 @@
-"""Start an RQ worker on the digitize queue. No job functions exist yet."""
+"""Start an RQ worker on the digitize queue. Job functions live in stitchbook_worker.jobs."""
 
 from __future__ import annotations
 

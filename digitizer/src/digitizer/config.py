@@ -150,6 +150,20 @@ PRODUCT: dict[str, dict[str, Any]] = {
         "result_ttl_s": PLACEHOLDER,
         # How many times a failed job is retried automatically.
         "max_retries": PLACEHOLDER,
+        # Typical time for "Create satin columns", shown as "Usually about N minutes (estimate)".
+        # None = no estimate is shown. Never replaced by a guess in the UI.
+        "trace_estimate_minutes": None,
+        # The editor asks for a job's state first after this many seconds...
+        "poll_start_s": 2,
+        # ...then waits longer each time, never more than this many seconds...
+        "poll_max_s": 15,
+        # ...multiplying the wait by this factor after each check.
+        "poll_backoff_factor": PLACEHOLDER,
+    },
+    "editor": {
+        # Edit points on a traced satin column: its centerline is simplified so that no point of
+        # the line is further than this from the simplified version. Bigger = fewer points.
+        "edit_point_tolerance_mm": PLACEHOLDER,
     },
     "rate_limits": {
         # Uploads a single user may start per minute.
@@ -189,6 +203,11 @@ TEST_RUN_OVERRIDES: dict[str, Any] = {
     "api.max_design_width_mm": 300,
     "api.fill_row_spacing_min_mm": 0.3,
     "api.fill_row_spacing_max_mm": 1.0,
+    "jobs.job_timeout_s": 600,
+    "jobs.result_ttl_s": 86400,
+    "jobs.max_retries": 0,
+    "jobs.poll_backoff_factor": 2,
+    "editor.edit_point_tolerance_mm": 0.5,
 }
 
 

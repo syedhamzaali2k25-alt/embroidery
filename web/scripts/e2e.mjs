@@ -29,9 +29,21 @@ const check = (ok, what) => { console.log(`  ${ok ? 'ok  ' : 'FAIL'} ${what}`); 
 
 // ---------- start the API and the built web app ----------
 const storage = await mkdtemp(join(tmpdir(), 'stitchbook-e2e-'));
+// Background jobs: a private Redis, and (started later) a worker. The API runs the test-only slow
+// trace so the queued and running states last long enough to see and cancel.
+const REDIS_PORT = 6391;
+const REDIS_URL = `redis://127.0.0.1:${REDIS_PORT}/0`;
+const redisProc = spawn('redis-server', ['--port', String(REDIS_PORT), '--save', '', '--appendonly', 'no', '--dir', storage], { stdio: 'ignore' });
+let workerProc = null;
+const startWorker = () => {
+  workerProc = spawn(python, ['-m', 'stitchbook_worker.main'], {
+    cwd: repo, env: { ...process.env, REDIS_URL, RQ_QUEUE: 'digitize', LOG_LEVEL: 'warning' }, stdio: 'ignore',
+  });
+};
 const apiProc = spawn(python, ['-m', 'uvicorn', 'stitchbook_api.main:app', '--port', String(API_PORT)], {
   cwd: repo,
-  env: { ...process.env, STITCHBOOK_TEST_RUN_VALUES: '1', STORAGE_DIR: storage, CORS_ORIGIN: WEB },
+  env: { ...process.env, STITCHBOOK_TEST_RUN_VALUES: '1', STORAGE_DIR: storage, CORS_ORIGIN: WEB, REDIS_URL,
+         STITCHBOOK_TRACE_JOB: 'stitchbook_worker.testing.slow_trace_design' },
   stdio: 'ignore',
 });
 execFileSync('npx', ['vite', 'build'], { cwd: web, env: { ...process.env, VITE_API_URL: API }, stdio: 'ignore' });
@@ -147,6 +159,61 @@ try {
     check(await page.getAttribute('video.demo__video', 'src') === 'https://example.com/demo.mp4', 'a configured video URL renders a player with that URL');
     await page.unroute(`${API}/site`);
 
+    // ---------- editor: Create satin columns (real Redis + worker) ----------
+    if (vp.name === 'desktop') {
+      console.log('-- create satin columns');
+      const form = new FormData();
+      form.append('file', new Blob([await readFile(join(web, 'scripts', 'test-images', 'cafe-luna.jpg'))]), 'cafe-luna.jpg');
+      form.append('settings', JSON.stringify({ width_mm: 80 }));
+      const traceDesign = (await (await fetch(`${API}/designs`, { method: 'POST', body: form })).json()).id;
+      const editorUrl = `${WEB}/editor?design=${traceDesign}`;
+      const card = () => page.locator('.trace-card').innerText();
+      await page.goto(editorUrl);
+      await page.locator('[data-state=idle]').waitFor();
+      await page.getByRole('button', { name: 'Trace', exact: true }).click();
+      await page.locator('[data-state=queued]').waitFor();
+      await shot('editor-trace-queued');
+      await page.getByRole('button', { name: 'Cancel job' }).click();
+      await page.locator('[data-state=cancelled]').waitFor();
+      const firstJob = (await (await fetch(`${API}/designs/${traceDesign}`)).json()).trace_job_id;
+      check((await (await fetch(`${API}/jobs/${firstJob}`)).json()).status === 'cancelled', 'cancel while queued: the server job is cancelled');
+
+      startWorker();
+      await page.getByRole('button', { name: 'Trace', exact: true }).click();
+      await page.getByText('Getting your layer ready').waitFor({ timeout: 30000 });
+      await page.waitForTimeout(2200);
+      const elapsedBefore = (await card()).match(/Time elapsed (\d+):(\d+)/);
+      await shot('editor-trace-running');
+      await page.reload();
+      await page.getByText('Getting your layer ready').waitFor({ timeout: 10000 });
+      const elapsedAfter = (await card()).match(/Time elapsed (\d+):(\d+)/);
+      const secs = (m) => m ? Number(m[1]) * 60 + Number(m[2]) : -1;
+      check(secs(elapsedAfter) >= secs(elapsedBefore) && secs(elapsedBefore) >= 2,
+        `reload during a running job resumes the card (elapsed ${elapsedBefore?.[0]} -> ${elapsedAfter?.[0]}, from the server's start time)`);
+      await page.getByRole('button', { name: 'Cancel job' }).click();
+      await page.locator('[data-state=cancelled]').waitFor({ timeout: 20000 });
+      const secondJob = (await (await fetch(`${API}/designs/${traceDesign}`)).json()).trace_job_id;
+      check((await (await fetch(`${API}/jobs/${secondJob}`)).json()).status === 'cancelled', 'cancel while running: the worker stops the job');
+      await shot('editor-trace-cancelled');
+
+      await page.getByRole('button', { name: 'Trace', exact: true }).click();
+      await page.locator('[data-state=done]').waitFor({ timeout: 60000 });
+      const columns = await page.locator('.traced__column').count();
+      check(columns > 0 && (await card()).includes(`${columns} satin columns`), `done: card collapses to "Traced" and ${columns} numbered columns appear`);
+      await shot('editor-trace-done');
+      await page.goto(`${WEB}/`);
+      await page.goto(editorUrl);
+      await page.locator('[data-state=done]').waitFor();
+      check(await page.locator('.traced__column').count() === columns, 'leaving and reopening the design restores "Traced"');
+
+      await page.locator('.manual__row', { hasText: 'Split' }).click();
+      check(await page.locator('.manual__row', { hasText: 'Split' }).getAttribute('aria-pressed') === 'true'
+        && (await page.locator('.stats').innerText()).includes('Split tool on'), 'Split row activates the Split tool');
+      await page.locator('.manual__row', { hasText: 'Select Satin Columns' }).click();
+      check(await page.locator('.manual__row', { hasText: 'Select Satin Columns' }).getAttribute('aria-pressed') === 'true',
+        'Select Satin Columns row activates that tool');
+    }
+
     // ---------- states ----------
     console.log('-- states');
     await page.goto(`${WEB}/upload`);
@@ -203,6 +270,8 @@ try {
   await browser.close();
   server.close();
   apiProc.kill();
+  workerProc?.kill();
+  redisProc.kill();
 }
 
 console.log(`\n${failures.length ? `${failures.length} check(s) failed` : 'all checks passed'}. Screenshots in web/screenshots/e2e/`);

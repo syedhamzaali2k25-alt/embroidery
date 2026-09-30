@@ -24,6 +24,7 @@ from fastapi.responses import JSONResponse, Response
 from pydantic import ValidationError
 
 from stitchbook_api import uploads
+from stitchbook_api.jobs import AlreadyFinished, JobNotFound, Jobs, QueueUnavailable
 from stitchbook_api.models import (
     ClientConfig,
     DesignCreated,
@@ -33,6 +34,7 @@ from stitchbook_api.models import (
     DownloadQuery,
     ErrorResponse,
     HealthResponse,
+    JobOut,
     Layer,
     SiteInfo,
     PreviewRequest,
@@ -46,6 +48,7 @@ from stitchbook_api.settings import Settings, load_settings
 from stitchbook_api.storage import LocalDiskStorage, NotFound, Storage
 
 DesignId = Annotated[str, PathParam(pattern=r"^[0-9a-f]{32}$", description="Design id from POST /designs")]
+JobId = Annotated[str, PathParam(pattern=r"^[0-9a-f]{32}$", description="Job id from POST /designs/{id}/trace")]
 ERRORS = {code: {"model": ErrorResponse} for code in (404, 409, 413, 415, 422, 503)}
 
 
@@ -66,6 +69,7 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
     settings = settings or load_settings()
     config = config or (load_test_run_config() if settings.test_run_values else load_config())
     storage = storage or LocalDiskStorage(settings.storage_dir)
+    jobs = Jobs(settings.redis_url, settings.rq_queue, settings.trace_job, storage)
 
     app = FastAPI(title=f"{config.app_name} API")
     if settings.cors_origin:
@@ -130,6 +134,10 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
             fill_row_spacing_mm=config.get("stitch.fill_row_spacing_mm"),
             fill_row_spacing_min_mm=config.get("api.fill_row_spacing_min_mm"),
             fill_row_spacing_max_mm=config.get("api.fill_row_spacing_max_mm"),
+            trace_estimate_minutes=config.get("jobs.trace_estimate_minutes"),
+            poll_start_s=config.get("jobs.poll_start_s"),
+            poll_max_s=config.get("jobs.poll_max_s"),
+            poll_backoff_factor=config.get("jobs.poll_backoff_factor"),
         )
 
     @app.post("/designs", response_model=DesignCreated, status_code=201, responses=ERRORS)
@@ -226,6 +234,58 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
         filename = f"{stem}.{query.format}"
         return Response(data, media_type="application/octet-stream",
                         headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+
+    # ---------- background jobs ----------
+    QUEUE_DOWN = "The job queue can't be reached right now. Try again in a moment."
+
+    def job_state(job_id: str) -> JobOut:
+        try:
+            return jobs.state(job_id)
+        except JobNotFound:
+            raise HTTPException(404, "This job no longer exists. Start it again from the editor.") from None
+        except QueueUnavailable:
+            raise HTTPException(503, QUEUE_DOWN) from None
+
+    @app.post("/designs/{design_id}/trace", response_model=JobOut, status_code=202, responses=ERRORS)
+    def start_trace(design_id: DesignId) -> JobOut:
+        """Start "Create satin columns" in the background. If one is already queued or running
+        for this design, that job is returned instead of starting a second."""
+        record = load_record(design_id)
+        if record.type == "svg":
+            raise HTTPException(422, "SVG files can't be traced yet. Export the logo as PNG and upload that instead.")
+        if record.trace_job_id:
+            try:
+                current = jobs.state(record.trace_job_id)
+                if current.status in ("queued", "running"):
+                    return current
+            except (JobNotFound, QueueUnavailable):
+                pass
+        image = storage.get(f"designs/{design_id}/original.{record.type}")
+        try:
+            started = jobs.start_trace(
+                design_id, image, record.type, record.settings.width_mm, dict(config.overrides),
+                timeout_s=config.get("jobs.job_timeout_s"), ttl_s=config.get("jobs.result_ttl_s"),
+                retries=config.get("jobs.max_retries"),
+            )
+        except QueueUnavailable:
+            raise HTTPException(503, QUEUE_DOWN) from None
+        save_record(record.model_copy(update={"trace_job_id": started.id}))
+        return started
+
+    @app.get("/jobs/{job_id}", response_model=JobOut, responses=ERRORS)
+    def get_job(job_id: JobId) -> JobOut:
+        return job_state(job_id)
+
+    @app.post("/jobs/{job_id}/cancel", response_model=JobOut, responses=ERRORS)
+    def cancel_job(job_id: JobId) -> JobOut:
+        try:
+            return jobs.cancel(job_id)
+        except AlreadyFinished as exc:
+            raise HTTPException(409, f"This job has already ended ({exc}); there is nothing to cancel.") from None
+        except JobNotFound:
+            raise HTTPException(404, "This job no longer exists. Start it again from the editor.") from None
+        except QueueUnavailable:
+            raise HTTPException(503, QUEUE_DOWN) from None
 
     return app
 

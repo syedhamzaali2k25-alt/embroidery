@@ -41,6 +41,37 @@ class SiteInfo(BaseModel):
     export_formats: list[str] = Field(description="Only formats whose pyembroidery round trip passes")
 
 
+class TraceColumn(BaseModel):
+    number: int
+    left: list[list[float]] = Field(description="Left edge points, mm")
+    right: list[list[float]] = Field(description="Right edge points, mm")
+    edit_points: list[list[float]] = Field(description="Points along the centerline the user can move, mm")
+    label: list[float] = Field(description="Where to draw the column number, mm")
+
+
+class TraceResult(BaseModel):
+    columns: list[TraceColumn]
+    fill_shapes: int
+    junction_patches: int
+    bounds_mm: list[float]
+    width_mm: float
+
+
+class JobOut(BaseModel):
+    id: str
+    design_id: str
+    kind: Literal["trace"]
+    status: Literal["queued", "running", "done", "failed", "cancelled"]
+    progress: float | None = Field(description="0..1 as reported by the worker; None when unknown")
+    created_at: datetime | None
+    started_at: datetime | None = Field(description="Server time the worker started; elapsed time counts from here")
+    finished_at: datetime | None
+    server_time: datetime = Field(description="Server clock now, so the client can count elapsed time without trusting its own clock")
+    cancel_requested: bool = False
+    error: str | None = None
+    result: TraceResult | None = None
+
+
 class ClientConfig(BaseModel):
     """Defaults and limits the web app needs to fill in and check its forms."""
     app_name: str
@@ -52,6 +83,10 @@ class ClientConfig(BaseModel):
     fill_row_spacing_mm: float
     fill_row_spacing_min_mm: float
     fill_row_spacing_max_mm: float
+    trace_estimate_minutes: float | None = Field(description="Shown as an estimate; None = show nothing")
+    poll_start_s: float
+    poll_max_s: float
+    poll_backoff_factor: float
 
 
 class QualityWarningOut(BaseModel):
@@ -99,6 +134,7 @@ class DesignRecord(BaseModel):
     stats: StitchStats | None = None
     report: DigitizeReport | None = None
     downloads: list[Literal["dst"]] = []
+    trace_job_id: str | None = None  # latest "Create satin columns" job, so the editor can resume it
 
 
 class DesignCreated(BaseModel):

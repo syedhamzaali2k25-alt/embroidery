@@ -21,6 +21,28 @@ export type ClientConfig = {
   fill_row_spacing_mm: number;
   fill_row_spacing_min_mm: number;
   fill_row_spacing_max_mm: number;
+  trace_estimate_minutes: number | null;
+  poll_start_s: number;
+  poll_max_s: number;
+  poll_backoff_factor: number;
+};
+
+export type TraceColumn = { number: number; left: number[][]; right: number[][]; edit_points: number[][]; label: number[] };
+export type TraceResult = { columns: TraceColumn[]; fill_shapes: number; junction_patches: number; bounds_mm: number[]; width_mm: number };
+export type JobStatus = "queued" | "running" | "done" | "failed" | "cancelled";
+export type Job = {
+  id: string;
+  design_id: string;
+  kind: "trace";
+  status: JobStatus;
+  progress: number | null;
+  created_at: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+  server_time: string;
+  cancel_requested: boolean;
+  error: string | null;
+  result: TraceResult | null;
 };
 
 export type DesignCreated = {
@@ -40,6 +62,7 @@ export type DesignRecord = DesignCreated & {
   bytes: number;
   settings: DesignSettings;
   status: "uploaded" | "digitized";
+  trace_job_id: string | null;
 };
 
 export type StitchPoint = { x_mm: number; y_mm: number; command: "stitch" | "jump" | "trim" | "end"; layer: number | null };
@@ -105,4 +128,7 @@ export const api = {
       body: JSON.stringify(settings),
     }),
   downloadUrl: (id: string) => `${API_URL}/designs/${id}/download?format=dst`,
+  trace: (designId: string) => request<Job>(`/designs/${designId}/trace`, { method: "POST" }),
+  job: (jobId: string) => request<Job>(`/jobs/${jobId}`),
+  cancelJob: (jobId: string) => request<Job>(`/jobs/${jobId}/cancel`, { method: "POST" }),
 };

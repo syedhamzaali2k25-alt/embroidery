@@ -18,6 +18,7 @@ class Settings:
     storage_dir: str
     test_run_values: bool
     log_level: str
+    trace_job: str = "stitchbook_worker.jobs.trace_design"  # function the worker runs for a trace
 
 
 def load_settings() -> Settings:
@@ -31,4 +32,5 @@ def load_settings() -> Settings:
         storage_dir=os.environ.get("STORAGE_DIR", "data/storage"),
         test_run_values=os.environ.get("STITCHBOOK_TEST_RUN_VALUES", "") == "1",
         log_level=os.environ.get("LOG_LEVEL", "info"),
+        trace_job=os.environ.get("STITCHBOOK_TRACE_JOB") or "stitchbook_worker.jobs.trace_design",
     )

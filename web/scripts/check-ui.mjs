@@ -16,6 +16,27 @@ const dist = join(root, 'dist');
 const fixture = async (name) => JSON.parse(await readFile(join(root, 'scripts', 'fixtures', name), 'utf8'));
 const fx = { config: await fixture('config.json'), upload: await fixture('upload.json'), design: await fixture('design.json'), preview: await fixture('preview.json') };
 const testImage = join(root, 'scripts', 'test-images', 'cafe-luna.jpg');
+const traceResult = await fixture('trace-result.json');
+
+// Editor "Create satin columns" card: one mocked job per state (the done state uses a real trace).
+const JOB_ID = 'b'.repeat(32);
+function jobFor(status) {
+  const now = new Date();
+  const started = new Date(now.getTime() - 83_000).toISOString();
+  return {
+    id: JOB_ID, design_id: fx.upload.id, kind: 'trace', status, created_at: started,
+    started_at: status === 'queued' ? null : started, finished_at: null, server_time: now.toISOString(),
+    progress: status === 'running' ? 0.42 : status === 'done' ? 1 : null, cancel_requested: false,
+    error: status === 'failed' ? 'The logo could not be traced (no logo found after thresholding and speck removal). Use a dark logo on a plain light background, or a transparent PNG.' : null,
+    result: status === 'done' ? traceResult : null,
+  };
+}
+async function mockEditor(page, status, estimate = null) {
+  await page.route(`${API}/config`, (r) => r.fulfill({ json: { ...fx.config, trace_estimate_minutes: estimate, poll_start_s: 2, poll_max_s: 15, poll_backoff_factor: 2 } }));
+  await page.route(`${API}/designs/${fx.upload.id}`, (r) => r.fulfill({ json: { ...fx.design, trace_job_id: status === 'idle' ? null : JOB_ID } }));
+  await page.route(`${API}/jobs/${JOB_ID}`, (r) => r.fulfill({ json: jobFor(status) }));
+}
+const editorRoute = `/editor?design=${fx.upload.id}`;
 
 // The app is built with the default API address; only requests to it are mocked (not the
 // app's own /preview page).
@@ -51,6 +72,12 @@ const pages = {
   'preview-loading': { route: previewRoute, api: { preview: 'loading' }, ready: 'text=Turning your logo into stitches' },
   'preview-error': { route: previewRoute, api: { preview: 'error' }, ready: "text=The preview couldn't be made" },
   'preview-empty': { route: '/preview', api: {}, ready: 'text=No design to preview yet' },
+  'editor-trace-idle': { route: editorRoute, editor: ['idle'], ready: '[data-state=idle]' },
+  'editor-trace-queued': { route: editorRoute, editor: ['queued', 3], ready: '[data-state=queued]' },
+  'editor-trace-running': { route: editorRoute, editor: ['running', 3], ready: 'text=Getting your layer ready' },
+  'editor-trace-done': { route: editorRoute, editor: ['done'], ready: '.traced__column' },
+  'editor-trace-failed': { route: editorRoute, editor: ['failed'], ready: '[data-state=failed]' },
+  'editor-trace-cancelled': { route: editorRoute, editor: ['cancelled'], ready: '[data-state=cancelled]' },
 };
 const viewports = [
   { name: 'desktop', width: 1440, height: 900 },
@@ -163,13 +190,14 @@ for (const vp of viewports) {
   for (const [name, spec] of Object.entries(pages)) {
     await page.unrouteAll();
     if (spec.api) await mockApi(page, spec.api);
+    if (spec.editor) await mockEditor(page, ...spec.editor);
     await page.goto(`${base}${spec.route}`, { waitUntil: spec.ready ? 'load' : 'networkidle' });
     if (spec.file) await page.locator('input[type=file]').setInputFiles(testImage);
     if (spec.ready) await page.locator(spec.ready).first().waitFor();
     if (spec.click) for (const el of await page.locator(spec.click).all()) await el.click();
     await page.evaluate(() => document.fonts.ready);
     const file = join(outDir, `${name}-${vp.name}.png`);
-    await page.screenshot({ path: file, fullPage: name !== 'editor' || vp.name === 'phone' });
+    await page.screenshot({ path: file, fullPage: !name.startsWith('editor') || vp.name === 'phone' });
     const { issues, fonts } = await page.evaluate(audit);
     report.push({ page: name, viewport: vp.name, fonts, issues });
   }
