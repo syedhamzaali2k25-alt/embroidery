@@ -1,10 +1,10 @@
-// Fails if any colour literal appears outside css/tokens.css.
+// Fails if any colour literal appears outside src/css/tokens.css.
 import { readdir, readFile } from 'node:fs/promises';
 import { join, relative, resolve } from 'node:path';
 
 const root = resolve(new URL('..', import.meta.url).pathname);
-const allowed = new Set(['css/tokens.css']);
-const skip = new Set(['node_modules', '.git', 'screenshots', 'scripts']);
+const allowed = new Set(['src/css/tokens.css']);
+const skip = new Set(['node_modules', '.git', 'screenshots', 'scripts', 'dist']);
 const pattern = /#[0-9a-f]{3,8}\b(?![-\w])|\brgba?\(|\bhsla?\(/gi;
 
 async function* files(dir) {
@@ -12,7 +12,7 @@ async function* files(dir) {
     if (skip.has(entry.name)) continue;
     const path = join(dir, entry.name);
     if (entry.isDirectory()) yield* files(path);
-    else if (/\.(css|html|svg|js)$/.test(entry.name)) yield path;
+    else if (/\.(css|html|svg|js|jsx|ts|tsx)$/.test(entry.name)) yield path;
   }
 }
 
@@ -26,5 +26,5 @@ for await (const file of files(root)) {
     for (const m of hits) { bad++; console.log(`${rel}:${i + 1}  ${m[0]}`); }
   });
 }
-console.log(bad ? `\n${bad} hard-coded colour(s) found.` : 'No hard-coded colours outside css/tokens.css.');
+console.log(bad ? `\n${bad} hard-coded colour(s) found.` : 'No hard-coded colours outside src/css/tokens.css.');
 process.exitCode = bad ? 1 : 0;

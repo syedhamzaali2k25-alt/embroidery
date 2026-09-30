@@ -11,7 +11,7 @@ Status: the digitizer turns a single-colour PNG/JPG logo into a DST and a previe
 | `digitizer/` | Importable Python stitch library (`import digitizer`). No web code. |
 | `api/` | FastAPI service (`stitchbook_api`), imports `digitizer`. |
 | `worker/` | RQ job runner (`stitchbook_worker`), imports `digitizer`. |
-| `web/` | Static front end (landing, home, editor) and its screenshot/contrast audit. |
+| `web/` | Vite + React + TypeScript front end and its screenshot/contrast audit. |
 | `digitizer/src/digitizer/config.py` | The single file for every stitch number, limit, timeout and rate limit. |
 | `docs/` | Project documentation. |
 
@@ -27,7 +27,7 @@ make setup               # .venv with digitizer/api/worker (editable) + web npm 
 make test                # pytest + web colour-token lint
 make api                 # FastAPI on http://localhost:$API_PORT (docs at /docs)
 make worker              # RQ worker on $RQ_QUEUE, needs Redis at $REDIS_URL
-make web                 # static front end on http://localhost:$WEB_PORT
+make web                 # React front end (Vite dev server) on http://localhost:$WEB_PORT
 ```
 
 Digitizer (inside the venv):
@@ -63,8 +63,9 @@ From `web/` the original commands still work:
 
 ```sh
 cd web
-npm start                # http://localhost:8080
-npm run check:tokens     # no colour literals outside css/tokens.css
+npm start                # Vite dev server, http://localhost:8080
+npm run build            # type-check + production build into web/dist
+npm run check:tokens     # no colour literals outside src/css/tokens.css
 npm run check:ui         # screenshots + contrast/clipping audit → web/screenshots/
 ```
 

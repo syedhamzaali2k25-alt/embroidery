@@ -3,12 +3,25 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "npx http-server -p 8080 -c-1 .",
+    "dev": "vite",
+    "start": "vite",
+    "build": "tsc -p . && vite build",
+    "preview": "vite preview",
     "check:tokens": "node scripts/check-tokens.mjs",
-    "check:ui": "node scripts/check-ui.mjs",
+    "check:ui": "npm run build && node scripts/check-ui.mjs",
     "check": "npm run check:tokens && npm run check:ui"
   },
   "devDependencies": {
-    "playwright": "1.56.1"
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^5.2.0",
+    "playwright": "1.56.1",
+    "typescript": "^5.9.3",
+    "vite": "^7.3.6"
+  },
+  "dependencies": {
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "react-router-dom": "^7.18.4"
   }
 }

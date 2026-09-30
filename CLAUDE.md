@@ -22,7 +22,7 @@ After building any screen, run the screenshot audit and fix clipped text and con
 - `digitizer/`: importable stitch library (`import digitizer`). All stitch logic lives here. No web code: no FastAPI, no RQ, no HTTP, no HTML.
 - `api/`: FastAPI service (`stitchbook_api`). Imports `digitizer/`; never copies or re-implements its logic.
 - `worker/`: RQ job runner (`stitchbook_worker`). Imports `digitizer/`; never copies or re-implements its logic.
-- `web/`: static front end and its checks (`npm start`, `npm run check:tokens`, `npm run check:ui`). Colour tokens live in `web/css/tokens.css`.
+- `web/`: static front end and its checks (`npm start`, `npm run check:tokens`, `npm run check:ui`). Colour tokens live in `web/src/css/tokens.css`.
 - `docs/`: project documentation.
 - `digitizer/src/digitizer/config.py`: the one config file. All stitch numbers, size limits, timeouts and rate limits live here, each with a comment. Unchosen values stay `"__CHOOSE__"`. Python code reads them only through `digitizer.config`, which refuses to return a placeholder.
 - `.env` / `.env.example`: connection strings and secrets only, never product numbers.

@@ -2,7 +2,7 @@
 //  - text contrast against the effective background (WCAG 2.x ratios)
 //  - the "white text only on ink" rule
 //  - clipped or overflowing text, and horizontal page scroll
-// Usage: npm run check:ui   (serves the folder on a local port)
+// Usage: npm run check:ui   (builds the app, then serves dist/ with a fallback to index.html)
 import { chromium } from 'playwright';
 import { createServer } from 'node:http';
 import { readFile, mkdir, writeFile } from 'node:fs/promises';
@@ -10,7 +10,9 @@ import { extname, join, resolve } from 'node:path';
 
 const root = resolve(new URL('..', import.meta.url).pathname);
 const outDir = join(root, 'screenshots');
-const pages = ['index', 'home', 'editor'];
+const dist = join(root, 'dist');
+// name -> route. Screenshot files keep the names used by the static site.
+const pages = { index: '/', home: '/home', editor: '/editor' };
 const viewports = [
   { name: 'desktop', width: 1440, height: 900 },
   { name: 'phone', width: 390, height: 844 },
@@ -20,11 +22,14 @@ const types = { '.html': 'text/html', '.css': 'text/css', '.js': 'text/javascrip
 const server = createServer(async (req, res) => {
   const path = decodeURIComponent(new URL(req.url, 'http://x').pathname);
   try {
-    const body = await readFile(join(root, path === '/' ? 'index.html' : path));
+    const body = await readFile(join(dist, path));
     res.writeHead(200, { 'content-type': types[extname(path)] || 'application/octet-stream' });
     res.end(body);
   } catch {
-    res.writeHead(404).end();
+    if (extname(path)) return res.writeHead(404).end();
+    // Client-side routes (/home, /preview/<id>) all load the app shell.
+    res.writeHead(200, { 'content-type': 'text/html' });
+    res.end(await readFile(join(dist, 'index.html')));
   }
 });
 await new Promise((r) => server.listen(0, r));
@@ -116,8 +121,8 @@ function audit() {
 
 for (const vp of viewports) {
   const page = await browser.newPage({ viewport: { width: vp.width, height: vp.height }, deviceScaleFactor: 1 });
-  for (const name of pages) {
-    await page.goto(`${base}/${name}.html`, { waitUntil: 'networkidle' });
+  for (const [name, route] of Object.entries(pages)) {
+    await page.goto(`${base}${route}`, { waitUntil: 'networkidle' });
     await page.evaluate(() => document.fonts.ready);
     const file = join(outDir, `${name}-${vp.name}.png`);
     await page.screenshot({ path: file, fullPage: name !== 'editor' || vp.name === 'phone' });

@@ -1,0 +1,3 @@
+/* React mounts into #root; let its children lay out as if they were the body's own
+   children, so the page CSS ported from the static site (body.editor grid etc.) is unchanged. */
+#root { display: contents; }

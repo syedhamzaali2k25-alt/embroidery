@@ -28,5 +28,5 @@ api: ## FastAPI dev server with reload
 worker: ## RQ worker on $$RQ_QUEUE (needs Redis running at $$REDIS_URL)
 	$(BIN)/python -m stitchbook_worker.main
 
-web: ## Static front end
-	cd web && npx http-server -p $(WEB_PORT) -c-1 .
+web: ## Vite dev server for the React front end
+	npm --prefix web run dev -- --port $(WEB_PORT)
