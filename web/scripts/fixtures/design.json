@@ -1,0 +1,39 @@
+{
+  "id": "1faa8b3697f3404c895b0fbdbda4ebd5",
+  "filename": "cafe-luna.jpg",
+  "type": "jpg",
+  "bytes": 26305,
+  "width_px": 900,
+  "height_px": 600,
+  "logo_width_px": 589,
+  "logo_height_px": 432,
+  "settings": {
+    "width_mm": 80,
+    "fill_row_spacing_mm": 0.3
+  },
+  "warnings": [],
+  "status": "digitized",
+  "created_at": "2026-09-30T10:39:57.942030Z",
+  "stats": {
+    "stitch_count": 1455,
+    "jump_count": 31,
+    "trim_count": 9,
+    "width_mm": 79.9,
+    "height_mm": 59,
+    "longest_stitch_mm": 5.141984052872976,
+    "longest_jump_mm": 14.263590010933433,
+    "color_count": 1
+  },
+  "report": {
+    "jumps": 24,
+    "trims": 9,
+    "fill_areas": 0,
+    "satin_columns": 21,
+    "junction_patches": 10,
+    "skipped_rungs": 35,
+    "trimmed_rungs": 48
+  },
+  "downloads": [
+    "dst"
+  ]
+}

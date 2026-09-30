@@ -2,7 +2,7 @@
 
 Browser-based embroidery digitizer: upload a PNG/JPG/SVG logo and get machine-ready embroidery files (DST first, then PES) plus a preview image. Stitchbook is a working name, set in `digitizer/src/digitizer/config.py`.
 
-Status: the digitizer turns a single-colour PNG/JPG logo into a DST and a preview. Wide shapes get fill; narrow shapes get satin columns with edge-walk/zigzag underlay and pull compensation. Where satin strokes meet, the columns stop short and a small fill patch covers the junction. No lock stitches, fill underlay or colours yet. The API accepts uploads (with validation and quality warnings), digitizes small images on request and serves the DST. The web screens are static mock-ups, and the worker does not run jobs yet.
+Status: the digitizer turns a single-colour PNG/JPG logo into a DST and a preview. Wide shapes get fill; narrow shapes get satin columns with edge-walk/zigzag underlay and pull compensation. Where satin strokes meet, the columns stop short and a small fill patch covers the junction. No lock stitches, fill underlay or colours yet. The API accepts uploads (with validation and quality warnings), digitizes small images on request and serves the DST. The web app's Upload and Preview screens use the API; Landing, Home and Editor are still mock-ups, and the worker does not run jobs yet.
 
 ## Layout
 
@@ -67,7 +67,10 @@ npm start                # Vite dev server, http://localhost:8080
 npm run build            # type-check + production build into web/dist
 npm run check:tokens     # no colour literals outside src/css/tokens.css
 npm run check:ui         # screenshots + contrast/clipping audit → web/screenshots/
+npm run e2e              # real API + browser: three test images through Upload and Preview → web/screenshots/e2e/
 ```
+
+To try the Upload and Preview screens locally: `STITCHBOOK_TEST_RUN_VALUES=1 make api` in one terminal and `make web` in another, then open http://localhost:8080/upload.
 
 ## Config and environment
 

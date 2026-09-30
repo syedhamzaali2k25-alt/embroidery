@@ -27,6 +27,69 @@
     "issues": []
   },
   {
+    "page": "upload",
+    "viewport": "desktop",
+    "fonts": {
+      "sans": true,
+      "serif": true
+    },
+    "issues": []
+  },
+  {
+    "page": "upload-checked",
+    "viewport": "desktop",
+    "fonts": {
+      "sans": true,
+      "serif": true
+    },
+    "issues": []
+  },
+  {
+    "page": "upload-error",
+    "viewport": "desktop",
+    "fonts": {
+      "sans": true,
+      "serif": true
+    },
+    "issues": []
+  },
+  {
+    "page": "preview",
+    "viewport": "desktop",
+    "fonts": {
+      "sans": true,
+      "serif": true
+    },
+    "issues": []
+  },
+  {
+    "page": "preview-loading",
+    "viewport": "desktop",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "preview-error",
+    "viewport": "desktop",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "preview-empty",
+    "viewport": "desktop",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
     "page": "index",
     "viewport": "phone",
     "fonts": {
@@ -46,6 +109,69 @@
   },
   {
     "page": "editor",
+    "viewport": "phone",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "upload",
+    "viewport": "phone",
+    "fonts": {
+      "sans": true,
+      "serif": true
+    },
+    "issues": []
+  },
+  {
+    "page": "upload-checked",
+    "viewport": "phone",
+    "fonts": {
+      "sans": true,
+      "serif": true
+    },
+    "issues": []
+  },
+  {
+    "page": "upload-error",
+    "viewport": "phone",
+    "fonts": {
+      "sans": true,
+      "serif": true
+    },
+    "issues": []
+  },
+  {
+    "page": "preview",
+    "viewport": "phone",
+    "fonts": {
+      "sans": true,
+      "serif": true
+    },
+    "issues": []
+  },
+  {
+    "page": "preview-loading",
+    "viewport": "phone",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "preview-error",
+    "viewport": "phone",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "preview-empty",
     "viewport": "phone",
     "fonts": {
       "sans": true,

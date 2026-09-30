@@ -1,0 +1,16 @@
+{
+  "app_name": "Stitchbook",
+  "allowed_types": [
+    "png",
+    "jpg",
+    "jpeg",
+    "svg"
+  ],
+  "max_upload_bytes": 5000000,
+  "max_image_side_px": 4000,
+  "design_width_mm": 60,
+  "max_design_width_mm": 300,
+  "fill_row_spacing_mm": 0.4,
+  "fill_row_spacing_min_mm": 0.3,
+  "fill_row_spacing_max_mm": 1
+}

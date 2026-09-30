@@ -11,8 +11,44 @@ import { extname, join, resolve } from 'node:path';
 const root = resolve(new URL('..', import.meta.url).pathname);
 const outDir = join(root, 'screenshots');
 const dist = join(root, 'dist');
-// name -> route. Screenshot files keep the names used by the static site.
-const pages = { index: '/', home: '/home', editor: '/editor' };
+// API responses recorded from the real API by `npm run e2e` (scripts/fixtures), so the audit
+// needs no running server. The Upload and Preview screens are audited in every state.
+const fixture = async (name) => JSON.parse(await readFile(join(root, 'scripts', 'fixtures', name), 'utf8'));
+const fx = { config: await fixture('config.json'), upload: await fixture('upload.json'), design: await fixture('design.json'), preview: await fixture('preview.json') };
+const testImage = join(root, 'scripts', 'test-images', 'cafe-luna.jpg');
+
+// The app is built with the default API address; only requests to it are mocked (not the
+// app's own /preview page).
+const API = 'http://localhost:8000';
+
+async function mockApi(page, { upload = 'ok', preview = 'ok' } = {}) {
+  await page.route(`${API}/config`, (r) => r.fulfill({ json: fx.config }));
+  await page.route(`${API}/designs`, (r) => upload === 'ok'
+    ? r.fulfill({ status: 201, json: fx.upload })
+    : r.fulfill({ status: 415, json: { error: 'This file is not a PNG, JPG or SVG image. Export your logo in one of those formats and upload it again.' } }));
+  await page.route(new RegExp(`^${API}/designs/[0-9a-f]{32}$`), (r) => r.fulfill({ json: fx.design }));
+  await page.route(`${API}/designs/*/preview`, (r) => {
+    if (preview === 'ok') return r.fulfill({ json: fx.preview });
+    if (preview === 'error') return r.fulfill({ status: 404, json: { error: `No design with id ${fx.upload.id}. Upload the image again with POST /designs.` } });
+    // 'loading': never answer
+  });
+}
+
+// name -> route (+ API mocks, an action, and what to wait for). Screenshot files for the first
+// three keep the names used by the static site.
+const previewRoute = `/preview/${fx.upload.id}?width=80`;
+const pages = {
+  index: { route: '/' },
+  home: { route: '/home' },
+  editor: { route: '/editor' },
+  upload: { route: '/upload', api: {}, ready: 'text=Drop your logo here' },
+  'upload-checked': { route: '/upload', api: {}, file: true, ready: '.flow-swatch' },
+  'upload-error': { route: '/upload', api: { upload: 'error' }, file: true, ready: "text=This file can't be used" },
+  preview: { route: previewRoute, api: {}, ready: 'text=Summary' },
+  'preview-loading': { route: previewRoute, api: { preview: 'loading' }, ready: 'text=Turning your logo into stitches' },
+  'preview-error': { route: previewRoute, api: { preview: 'error' }, ready: "text=The preview couldn't be made" },
+  'preview-empty': { route: '/preview', api: {}, ready: 'text=No design to preview yet' },
+};
 const viewports = [
   { name: 'desktop', width: 1440, height: 900 },
   { name: 'phone', width: 390, height: 844 },
@@ -121,8 +157,12 @@ function audit() {
 
 for (const vp of viewports) {
   const page = await browser.newPage({ viewport: { width: vp.width, height: vp.height }, deviceScaleFactor: 1 });
-  for (const [name, route] of Object.entries(pages)) {
-    await page.goto(`${base}${route}`, { waitUntil: 'networkidle' });
+  for (const [name, spec] of Object.entries(pages)) {
+    await page.unrouteAll();
+    if (spec.api) await mockApi(page, spec.api);
+    await page.goto(`${base}${spec.route}`, { waitUntil: spec.ready ? 'load' : 'networkidle' });
+    if (spec.file) await page.locator('input[type=file]').setInputFiles(testImage);
+    if (spec.ready) await page.locator(spec.ready).first().waitFor();
     await page.evaluate(() => document.fonts.ready);
     const file = join(outDir, `${name}-${vp.name}.png`);
     await page.screenshot({ path: file, fullPage: name !== 'editor' || vp.name === 'phone' });

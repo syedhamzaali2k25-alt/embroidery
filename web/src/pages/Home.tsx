@@ -47,7 +47,7 @@ export default function Home() {
             <input type="search" placeholder="Search designs" />
           </label>
           <div className="topbar__right">
-            <a className="btn btn--ink" href="/editor"><svg aria-hidden="true"><use href="/assets/sprite.svg#i-plus"/></svg>New design</a>
+            <a className="btn btn--ink" href="/upload"><svg aria-hidden="true"><use href="/assets/sprite.svg#i-plus"/></svg>New design</a>
             <span className="avatar" aria-label="Your account">SA</span>
           </div>
         </header>
