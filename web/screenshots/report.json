@@ -189,6 +189,96 @@
     "issues": []
   },
   {
+    "page": "editor-tool-select",
+    "viewport": "desktop",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "editor-tool-saving",
+    "viewport": "desktop",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "editor-tool-saved",
+    "viewport": "desktop",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "editor-tool-error",
+    "viewport": "desktop",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "editor-tool-split",
+    "viewport": "desktop",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "editor-tool-split-saved",
+    "viewport": "desktop",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "editor-tool-columns",
+    "viewport": "desktop",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "editor-tool-draw",
+    "viewport": "desktop",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "editor-tool-draw-saved",
+    "viewport": "desktop",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "editor-view-shapes",
+    "viewport": "desktop",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
     "page": "index",
     "viewport": "phone",
     "fonts": {
@@ -370,6 +460,96 @@
   },
   {
     "page": "editor-trace-cancelled",
+    "viewport": "phone",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "editor-tool-select",
+    "viewport": "phone",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "editor-tool-saving",
+    "viewport": "phone",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "editor-tool-saved",
+    "viewport": "phone",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "editor-tool-error",
+    "viewport": "phone",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "editor-tool-split",
+    "viewport": "phone",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "editor-tool-split-saved",
+    "viewport": "phone",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "editor-tool-columns",
+    "viewport": "phone",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "editor-tool-draw",
+    "viewport": "phone",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "editor-tool-draw-saved",
+    "viewport": "phone",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "editor-view-shapes",
     "viewport": "phone",
     "fonts": {
       "sans": true,
