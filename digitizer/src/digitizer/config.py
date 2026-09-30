@@ -97,6 +97,12 @@ PRODUCT: dict[str, dict[str, Any]] = {
         # POST /designs/{id}/preview digitizes on the spot only for images whose long side is at
         # most this many pixels; bigger ones must wait for background processing (not built yet).
         "sync_preview_max_side_px": PLACEHOLDER,
+        # Largest design width a user may ask for, in mm (also bounds how long a preview can take).
+        "max_design_width_mm": PLACEHOLDER,
+        # Range a user may set the fill row spacing to on the preview screen (the default is
+        # stitch.fill_row_spacing_mm). Smaller spacing = denser fill = more stitches.
+        "fill_row_spacing_min_mm": PLACEHOLDER,
+        "fill_row_spacing_max_mm": PLACEHOLDER,
     },
     "output": {
         # Formats written today, in priority order (DST first, PES second).
@@ -173,6 +179,9 @@ TEST_RUN_OVERRIDES: dict[str, Any] = {
     "quality.min_contrast": 100,
     "quality.min_edge_sharpness": 50,
     "api.sync_preview_max_side_px": 1000,
+    "api.max_design_width_mm": 300,
+    "api.fill_row_spacing_min_mm": 0.3,
+    "api.fill_row_spacing_max_mm": 1.0,
 }
 
 

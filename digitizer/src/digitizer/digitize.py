@@ -60,6 +60,16 @@ def load_mask(path: str | Path, min_speck_area_px: int) -> np.ndarray:
     return mask
 
 
+def logo_bounds(path: str | Path, min_speck_area_px: int) -> tuple[int, int] | None:
+    """Width and height (px) of the logo's bounding box after thresholding, or None if no logo."""
+    try:
+        mask = load_mask(path, min_speck_area_px)
+    except ValueError:
+        return None
+    _, _, w, h = cv2.boundingRect(mask)
+    return w, h
+
+
 def _drop_small_components(mask: np.ndarray, min_area: int) -> np.ndarray:
     count, labels, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
     keep = np.zeros(count, dtype=bool)
@@ -398,6 +408,7 @@ class Built:
     labels: list[tuple[str, int]]  # (role, column number) per STITCH record
     jumps: int  # needle-up moves after the first positioning move
     trims: int
+    sources: list[int] = field(default_factory=list)  # piece index per STITCH record
 
 
 def build_pattern(moves: list[Move], max_stitch_mm: float, trim_threshold_mm: float) -> Built:
@@ -424,6 +435,7 @@ def build_pattern(moves: list[Move], max_stitch_mm: float, trim_threshold_mm: fl
             built.pattern.add_stitch_absolute(pyembroidery.STITCH, *q)
             built.stitches.append(q)
             built.labels.append((move.role, move.piece))
+            built.sources.append(move.source)
             last = q
         pos = move.to
     built.pattern.add_command(pyembroidery.END)
@@ -454,6 +466,9 @@ class Result:
     junction_patches: int  # fill patches where satin columns meet or leave a gap
     skipped_rungs: int  # satin stations with no sensible edge-to-edge line
     trimmed_rungs: int  # rungs removed at junctions or where columns would overlap
+    # Layers are the pieces in sewing order: (type, stitch count), type is fill/satin/junction patch.
+    layers: tuple[tuple[str, int], ...] = ()
+    stitch_layers: tuple[int, ...] = ()  # 1-based layer number for every STITCH record in the file
 
     def summary(self) -> str:
         return (f"{self.stats.summary()}\n  pieces: {self.fill_areas} fill, {self.satin_columns} satin columns, "
@@ -491,12 +506,25 @@ def digitize(image_path: str | Path, out_dir: str | Path, config: Config | None 
         raise RuntimeError("DST read back from disk does not match the stitches that were written")
     render_preview(dst_path, out_dir / "preview.png", config, built.labels,
                    {n: _units(p) for n, p in plan.satin_labels.items()})
+    layer_of: dict[int, int] = {}
+    for source in built.sources:  # number pieces in the order they are sewn
+        layer_of.setdefault(source, len(layer_of) + 1)
+    counts = {n: 0 for n in layer_of.values()}
+    for source in built.sources:
+        counts[layer_of[source]] += 1
+    kinds = {n: _layer_type(pieces[s]) for s, n in layer_of.items()}
     result = Result(dst_stats(dst_path), built.jumps, built.trims,
                     sum(p.kind == "fill" and not p.patch for p in pieces), sum(p.kind == "satin" for p in pieces),
-                    built_pieces.patches, built_pieces.skipped_rungs, built_pieces.trimmed_rungs)
+                    built_pieces.patches, built_pieces.skipped_rungs, built_pieces.trimmed_rungs,
+                    tuple((kinds[n], counts[n]) for n in sorted(counts)),
+                    tuple(layer_of[s] for s in built.sources))
     # The DST format has no room for these; keep them next to it for the readback report.
     (out_dir / "report.json").write_text(json.dumps(result.to_json(), indent=2) + "\n")
     return result
+
+
+def _layer_type(piece: Piece) -> str:
+    return "satin" if piece.kind == "satin" else "junction patch" if piece.patch else "fill"
 
 
 def main() -> None:

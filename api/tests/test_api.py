@@ -60,7 +60,8 @@ def test_upload_valid_png(client):
     assert (body["width_px"], body["height_px"]) == (600, 600)
     assert body["warnings"] == []  # crisp, high-contrast, 600 px
     record = client.get(f"/designs/{body['id']}").json()
-    assert record["status"] == "uploaded" and record["settings"] == {"width_mm": 60.0}
+    assert record["status"] == "uploaded"
+    assert record["settings"] == {"width_mm": 60.0, "fill_row_spacing_mm": None}
     assert record["downloads"] == []
 
 
@@ -207,3 +208,58 @@ def test_local_storage_round_trip_and_rejects_escaping_keys(tmp_path):
     for bad in ("../x", "/etc/passwd", "designs/../../x", "designs//x"):
         with pytest.raises(ValueError):
             storage.put(bad, b"")
+
+
+# ---------- additions for the Upload and Preview screens ----------
+
+def test_config_endpoint_gives_form_defaults(client):
+    body = client.get("/config").json()
+    assert body["design_width_mm"] == CONFIG.get("design.width_mm")
+    assert body["fill_row_spacing_min_mm"] < body["fill_row_spacing_mm"] <= body["fill_row_spacing_max_mm"]
+    assert "png" in body["allowed_types"]
+
+
+def test_upload_reports_logo_bounds(client):
+    body = upload(client, (SAMPLES / "thin_ring.png").read_bytes()).json()
+    # Ring of radius 240 drawn 36 px thick, centred in a 600 px canvas: about 516 px square.
+    assert abs(body["logo_width_px"] - 516) <= 4 and abs(body["logo_height_px"] - 516) <= 4
+
+
+def test_preview_layers_account_for_every_stitch(client):
+    design_id = upload(client, (SAMPLES / "mixed.png").read_bytes(), settings={"width_mm": 50}).json()["id"]
+    body = client.post(f"/designs/{design_id}/preview").json()
+    layers = body["layers"]
+    assert [l["number"] for l in layers] == list(range(1, len(layers) + 1))
+    assert sorted(l["type"] for l in layers) == ["fill", "fill", "satin", "satin"]
+    assert sum(l["stitch_count"] for l in layers) == body["stats"]["stitch_count"]
+    per_layer = {}
+    for s in body["stitches"]:
+        if s["command"] == "stitch":
+            per_layer[s["layer"]] = per_layer.get(s["layer"], 0) + 1
+        else:
+            assert s["layer"] is None
+    assert per_layer == {l["number"]: l["stitch_count"] for l in layers}
+    assert body["stats"]["color_count"] == 1
+    assert body["settings_used"] == {"width_mm": 50.0, "fill_row_spacing_mm": CONFIG.get("stitch.fill_row_spacing_mm")}
+
+
+def test_preview_settings_change_the_stitches_and_are_saved(client):
+    design_id = upload(client, (SAMPLES / "circle.png").read_bytes(), settings={"width_mm": 40}).json()["id"]
+    default = client.post(f"/designs/{design_id}/preview").json()
+    denser = client.post(f"/designs/{design_id}/preview", json={"fill_row_spacing_mm": 0.3}).json()
+    assert denser["stats"]["stitch_count"] > default["stats"]["stitch_count"]
+    wider = client.post(f"/designs/{design_id}/preview", json={"width_mm": 60}).json()
+    assert abs(wider["stats"]["width_mm"] - 60) < 1
+    assert client.get(f"/designs/{design_id}").json()["settings"] == {"width_mm": 60.0, "fill_row_spacing_mm": 0.3}
+
+
+@pytest.mark.parametrize("body,phrase", [
+    ({"fill_row_spacing_mm": 5}, "Fill density (row spacing) must be between 0.3 and 1 mm."),
+    ({"width_mm": 5000}, "Design width must be at most 300 mm. Enter a smaller width."),
+    ({"width_mm": 0}, "width_mm: Input should be greater than 0"),
+    ({"colour": "red"}, "colour: Extra inputs are not permitted"),
+])
+def test_preview_rejects_bad_settings_plainly(client, body, phrase):
+    design_id = upload(client, (SAMPLES / "circle.png").read_bytes()).json()["id"]
+    response = client.post(f"/designs/{design_id}/preview", json=body)
+    assert response.status_code == 422 and phrase in response.json()["error"]

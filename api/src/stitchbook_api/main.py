@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Annotated
 
 from digitizer.config import Config, PlaceholderValueError, load_config, load_test_run_config
-from digitizer.digitize import digitize
+from digitizer.digitize import digitize, logo_bounds
 from digitizer.readback import records
 from fastapi import FastAPI, File, Form, HTTPException, Path as PathParam, Query, Request, UploadFile
 from fastapi.exceptions import RequestValidationError
@@ -25,6 +25,7 @@ from pydantic import ValidationError
 
 from stitchbook_api import uploads
 from stitchbook_api.models import (
+    ClientConfig,
     DesignCreated,
     DesignRecord,
     DesignSettings,
@@ -32,7 +33,10 @@ from stitchbook_api.models import (
     DownloadQuery,
     ErrorResponse,
     HealthResponse,
+    Layer,
+    PreviewRequest,
     PreviewResponse,
+    SettingsUsed,
     QualityWarningOut,
     StitchPoint,
     StitchStats,
@@ -92,12 +96,35 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
             raise HTTPException(404, f"No design with id {design_id}. Upload the image again with POST /designs.") \
                 from None
 
+    def check_settings(s: DesignSettings) -> None:
+        """Plain messages for values outside the limits in config.py."""
+        if s.width_mm is not None and s.width_mm > (limit := config.get("api.max_design_width_mm")):
+            raise HTTPException(422, f"Design width must be at most {limit:g} mm. Enter a smaller width.")
+        if s.fill_row_spacing_mm is not None:
+            lo, hi = config.get("api.fill_row_spacing_min_mm"), config.get("api.fill_row_spacing_max_mm")
+            if not lo <= s.fill_row_spacing_mm <= hi:
+                raise HTTPException(422, f"Fill density (row spacing) must be between {lo:g} and {hi:g} mm.")
+
     def save_record(record: DesignRecord) -> None:
         storage.put(f"designs/{record.id}/design.json", record.model_dump_json(indent=2).encode())
 
     @app.get("/health", response_model=HealthResponse)
     def health() -> HealthResponse:
         return HealthResponse(status="ok", app=config.app_name)
+
+    @app.get("/config", response_model=ClientConfig, responses=ERRORS)
+    def client_config() -> ClientConfig:
+        return ClientConfig(
+            app_name=config.app_name,
+            allowed_types=config.get("input.allowed_types"),
+            max_upload_bytes=config.get("input.max_upload_bytes"),
+            max_image_side_px=config.get("input.max_image_side_px"),
+            design_width_mm=config.get("design.width_mm"),
+            max_design_width_mm=config.get("api.max_design_width_mm"),
+            fill_row_spacing_mm=config.get("stitch.fill_row_spacing_mm"),
+            fill_row_spacing_min_mm=config.get("api.fill_row_spacing_min_mm"),
+            fill_row_spacing_max_mm=config.get("api.fill_row_spacing_max_mm"),
+        )
 
     @app.post("/designs", response_model=DesignCreated, status_code=201, responses=ERRORS)
     async def create_design(
@@ -108,6 +135,7 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
             design_settings = DesignSettings.model_validate_json(settings_json or "{}")
         except ValidationError as exc:
             raise HTTPException(422, "settings: " + _plain_validation_message(exc)) from None
+        check_settings(design_settings)
         # Read one byte past the limit so an oversized file is detected without reading it all.
         data = await file.read(config.get("input.max_upload_bytes") + 1)
         try:
@@ -117,18 +145,34 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
 
         design_id = uuid.uuid4().hex
         storage.put(f"designs/{design_id}/original.{upload.type}", data)
+        bounds = None
+        if upload.type != "svg":
+            with tempfile.TemporaryDirectory() as tmp:
+                source = Path(tmp) / f"original.{upload.type}"
+                source.write_bytes(data)
+                bounds = logo_bounds(source, config.get("image.min_speck_area_px"))
         record = DesignRecord(
             id=design_id, filename=Path(file.filename or f"logo.{upload.type}").name, type=upload.type,
-            bytes=len(data), width_px=upload.width_px, height_px=upload.height_px, settings=design_settings,
+            bytes=len(data), width_px=upload.width_px, height_px=upload.height_px,
+            logo_width_px=bounds[0] if bounds else None, logo_height_px=bounds[1] if bounds else None,
+            settings=design_settings,
             warnings=_warnings(upload.warnings), status="uploaded", created_at=datetime.now(timezone.utc),
         )
         save_record(record)
         return DesignCreated(id=design_id, type=record.type, width_px=record.width_px, height_px=record.height_px,
+                             logo_width_px=record.logo_width_px, logo_height_px=record.logo_height_px,
                              warnings=record.warnings)
 
     @app.post("/designs/{design_id}/preview", response_model=PreviewResponse, responses=ERRORS)
-    def preview(design_id: DesignId) -> PreviewResponse:
+    def preview(design_id: DesignId, body: PreviewRequest | None = None) -> PreviewResponse:
         record = load_record(design_id)
+        if body is not None:
+            check_settings(body)
+            changes = body.model_dump(exclude_none=True)
+            record = record.model_copy(update={"settings": record.settings.model_copy(update=changes)})
+        width = record.settings.width_mm or config.get("design.width_mm")
+        spacing = record.settings.fill_row_spacing_mm or config.get("stitch.fill_row_spacing_mm")
+        job_config = config.with_overrides({"stitch.fill_row_spacing_mm": spacing})
         if record.type == "svg":
             raise HTTPException(422, "SVG files can be uploaded but not digitized yet. Export the logo as PNG "
                                      "and upload that instead.")
@@ -142,19 +186,24 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
             source.write_bytes(storage.get(f"designs/{design_id}/original.{record.type}"))
             out = Path(tmp) / "out"
             try:
-                result = digitize(source, out, config, record.settings.width_mm)
+                result = digitize(source, out, job_config, width)
             except ValueError as exc:
                 raise HTTPException(422, f"This image could not be digitized ({exc}). Use a dark logo on a "
                                          "plain light background, or a transparent PNG.") from None
             for name in ("out.dst", "preview.png", "report.json"):
                 storage.put(f"designs/{design_id}/{name}", (out / name).read_bytes())
-            stitches = [StitchPoint(x_mm=x, y_mm=y, command=c) for x, y, c in records(out / "out.dst")]
+            layers_iter = iter(result.stitch_layers)
+            stitches = [StitchPoint(x_mm=x, y_mm=y, command=c, layer=next(layers_iter) if c == "stitch" else None)
+                        for x, y, c in records(out / "out.dst")]
         stats = StitchStats(**vars(result.stats))
         report = DigitizeReport(**result.to_json())
         record = record.model_copy(update={"status": "digitized", "stats": stats, "report": report,
                                            "downloads": ["dst"]})
         save_record(record)
-        return PreviewResponse(id=design_id, stats=stats, report=report, warnings=record.warnings, stitches=stitches)
+        layers = [Layer(number=i, type=t, stitch_count=n) for i, (t, n) in enumerate(result.layers, start=1)]
+        return PreviewResponse(id=design_id, stats=stats, report=report,
+                               settings_used=SettingsUsed(width_mm=width, fill_row_spacing_mm=spacing),
+                               layers=layers, warnings=record.warnings, stitches=stitches)
 
     @app.get("/designs/{design_id}", response_model=DesignRecord, responses=ERRORS)
     def get_design(design_id: DesignId) -> DesignRecord:

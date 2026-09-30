@@ -25,6 +25,26 @@ class DesignSettings(BaseModel):
     width_mm: float | None = Field(
         default=None, gt=0, description="Finished design width in mm. Omit to use design.width_mm from config."
     )
+    fill_row_spacing_mm: float | None = Field(
+        default=None, gt=0, description="Fill density as row spacing in mm (smaller = denser). Omit for the default."
+    )
+
+
+class PreviewRequest(DesignSettings):
+    """Optional body of POST /designs/{id}/preview: settings to change before digitizing again."""
+
+
+class ClientConfig(BaseModel):
+    """Defaults and limits the web app needs to fill in and check its forms."""
+    app_name: str
+    allowed_types: list[str]
+    max_upload_bytes: int
+    max_image_side_px: int
+    design_width_mm: float
+    max_design_width_mm: float
+    fill_row_spacing_mm: float
+    fill_row_spacing_min_mm: float
+    fill_row_spacing_max_mm: float
 
 
 class QualityWarningOut(BaseModel):
@@ -42,6 +62,7 @@ class StitchStats(BaseModel):
     height_mm: float
     longest_stitch_mm: float
     longest_jump_mm: float
+    color_count: int
 
 
 class DigitizeReport(BaseModel):
@@ -62,6 +83,8 @@ class DesignRecord(BaseModel):
     bytes: int
     width_px: int | None
     height_px: int | None
+    logo_width_px: int | None = None  # bounding box of the logo itself, None if none was found
+    logo_height_px: int | None = None
     settings: DesignSettings
     warnings: list[QualityWarningOut]
     status: Literal["uploaded", "digitized"]
@@ -76,6 +99,8 @@ class DesignCreated(BaseModel):
     type: ImageType
     width_px: int | None
     height_px: int | None
+    logo_width_px: int | None = Field(description="Logo bounding box; design height = width_mm x logo_height/logo_width")
+    logo_height_px: int | None
     warnings: list[QualityWarningOut]
 
 
@@ -83,12 +108,26 @@ class StitchPoint(BaseModel):
     x_mm: float
     y_mm: float
     command: Literal["stitch", "jump", "trim", "end"]
+    layer: int | None = Field(default=None, description="Layer number for stitches; None for other commands")
+
+
+class Layer(BaseModel):
+    number: int = Field(description="1-based, in sewing order")
+    type: Literal["fill", "satin", "junction patch"]
+    stitch_count: int
+
+
+class SettingsUsed(BaseModel):
+    width_mm: float
+    fill_row_spacing_mm: float
 
 
 class PreviewResponse(BaseModel):
     id: str
     stats: StitchStats
     report: DigitizeReport
+    settings_used: SettingsUsed
+    layers: list[Layer]
     warnings: list[QualityWarningOut]
     stitches: list[StitchPoint] = Field(description="Every needle command in the DST, in sewing order.")
 

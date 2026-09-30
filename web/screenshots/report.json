@@ -6,36 +6,7 @@
       "sans": true,
       "serif": true
     },
-    "issues": [
-      {
-        "kind": "contrast",
-        "label": "<span.accent> \"stitches\"",
-        "ratio": 1.94,
-        "need": 3,
-        "fontSize": 76
-      },
-      {
-        "kind": "contrast",
-        "label": "<span.accent> \"hoop\"",
-        "ratio": 1.94,
-        "need": 3,
-        "fontSize": 48
-      },
-      {
-        "kind": "contrast",
-        "label": "<span.accent> \"finished\"",
-        "ratio": 1.94,
-        "need": 3,
-        "fontSize": 48
-      },
-      {
-        "kind": "contrast",
-        "label": "<span.accent> \"Stitchbook\"",
-        "ratio": 1.94,
-        "need": 3,
-        "fontSize": 48
-      }
-    ]
+    "issues": []
   },
   {
     "page": "home",
@@ -44,22 +15,7 @@
       "sans": true,
       "serif": true
     },
-    "issues": [
-      {
-        "kind": "contrast",
-        "label": "<span.accent> \"thread\"",
-        "ratio": 1.94,
-        "need": 3,
-        "fontSize": 44
-      },
-      {
-        "kind": "contrast",
-        "label": "<span.accent> \"designs\"",
-        "ratio": 1.94,
-        "need": 3,
-        "fontSize": 34
-      }
-    ]
+    "issues": []
   },
   {
     "page": "editor",
@@ -77,36 +33,7 @@
       "sans": true,
       "serif": true
     },
-    "issues": [
-      {
-        "kind": "contrast",
-        "label": "<span.accent> \"stitches\"",
-        "ratio": 1.94,
-        "need": 3,
-        "fontSize": 40
-      },
-      {
-        "kind": "contrast",
-        "label": "<span.accent> \"hoop\"",
-        "ratio": 1.94,
-        "need": 3,
-        "fontSize": 30
-      },
-      {
-        "kind": "contrast",
-        "label": "<span.accent> \"finished\"",
-        "ratio": 1.94,
-        "need": 3,
-        "fontSize": 30
-      },
-      {
-        "kind": "contrast",
-        "label": "<span.accent> \"Stitchbook\"",
-        "ratio": 1.94,
-        "need": 3,
-        "fontSize": 30
-      }
-    ]
+    "issues": []
   },
   {
     "page": "home",
@@ -115,22 +42,7 @@
       "sans": true,
       "serif": true
     },
-    "issues": [
-      {
-        "kind": "contrast",
-        "label": "<span.accent> \"thread\"",
-        "ratio": 1.94,
-        "need": 3,
-        "fontSize": 30
-      },
-      {
-        "kind": "contrast",
-        "label": "<span.accent> \"designs\"",
-        "ratio": 1.94,
-        "need": 3,
-        "fontSize": 26
-      }
-    ]
+    "issues": []
   },
   {
     "page": "editor",

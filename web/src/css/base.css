@@ -44,12 +44,12 @@ button { font: inherit; color: inherit; }
   white-space: nowrap;
 }
 
-/* One serif accent word per heading, always green */
+/* One serif accent word per heading, in the darker text green */
 .accent {
   font-family: var(--font-serif);
   font-weight: 400;
   font-style: normal;
-  color: var(--accent);
+  color: var(--accent-text);
   letter-spacing: 0;
 }
 

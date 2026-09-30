@@ -12,6 +12,9 @@
   --muted: #8A8A8A;
   --line: #EDEDED;
   --white: #FFFFFF;
+  /* Green for text on white. The brand green is for fills only (1.9:1 on white);
+     this darker green measures 4.6:1, enough for small text (4.5:1) and large (3:1). */
+  --green-text: #1B864C;
 
   /* Page background */
   --page-bg: var(--white);
@@ -22,6 +25,7 @@
   --surface: var(--white);
   --border: var(--line);
   --accent: var(--green);
+  --accent-text: var(--green-text);
   --on-fill: var(--ink);        /* text on green, lavender, lime, pink */
   --on-ink: var(--white);       /* the only place white text is allowed */
 

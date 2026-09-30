@@ -27,6 +27,7 @@ class DstStats:
     height_mm: float
     longest_stitch_mm: float
     longest_jump_mm: float
+    color_count: int = 1  # thread colours in the file (colour changes + 1)
 
     def summary(self) -> str:
         return (
@@ -65,6 +66,7 @@ def dst_stats(path: str | Path) -> DstStats:
         height_mm=(max(ys) - min(ys)) / UNITS_PER_MM,
         longest_stitch_mm=longest[pyembroidery.STITCH] / UNITS_PER_MM,
         longest_jump_mm=longest[pyembroidery.JUMP] / UNITS_PER_MM,
+        color_count=pattern.count_color_changes() + 1,
     )
 
 
