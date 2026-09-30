@@ -115,6 +115,7 @@ class Column:
     skipped_rungs: int = 0  # stations dropped because no sensible edge-to-edge line exists
     stations: int = 0  # how many stations the centerline was cut into
     cover: Polygon | None = None  # cached coverage()
+    spacing: float = 0.0  # satin density it was built with (mm between rungs); 0 = SatinSettings.spacing
 
 
 def _unit(dx: float, dy: float) -> Pt:
@@ -159,7 +160,7 @@ def build_column(centerline: LineString, polygon: Polygon, spacing: float, max_w
     length = centerline.length
     count = max(1, int(length // spacing))
     stations = [k * length / count for k in range(count if closed else count + 1)]
-    column = Column(centerline, closed, stations=len(stations))
+    column = Column(centerline, closed, stations=len(stations), spacing=spacing)
     for station, d in enumerate(stations):
         p = centerline.interpolate(d)
         center = (p.x, p.y)
@@ -249,7 +250,7 @@ def split_runs(column: Column) -> tuple[list[Column], int]:
             dropped += len(run)
             continue
         centerline = LineString([r.center for r in run])
-        out.append(Column(centerline, False, run, 0, column.stations))
+        out.append(Column(centerline, False, run, 0, column.stations, spacing=column.spacing))
     return out, dropped
 
 
@@ -315,7 +316,7 @@ def column_sequence(column: Column, start: int, forward: bool, s: SatinSettings)
         right = _resample([_inset(r, "right", s.edge_inset) for r in along(rungs, not ahead)], s.edge_stitch_length, inside)
         points += [(p, "underlay") for p in left + right]
     if s.zigzag:
-        step = max(1, round(s.underlay_spacing / s.spacing))
+        step = max(1, round(s.underlay_spacing / (column.spacing or s.spacing)))
         seq = along(rungs, ahead)
         sides = ("left", "right")
         i, side = 0, 0
@@ -383,7 +384,7 @@ def column_between(left: list[Pt], right: list[Pt], closed: bool, spacing: float
         left_line, right_line = LineString(left), LineString(right)
     count = max(2, math.ceil(max(left_line.length, right_line.length) / spacing))
     fractions = [k / count for k in range(count if closed else count + 1)]
-    column = Column(LineString([(0, 0), (0, 0)]), closed, stations=len(fractions))
+    column = Column(LineString([(0, 0), (0, 0)]), closed, stations=len(fractions), spacing=spacing)
     centers = []
     for station, t in enumerate(fractions):
         a, b = _at(left_line, t), _at(right_line, t)

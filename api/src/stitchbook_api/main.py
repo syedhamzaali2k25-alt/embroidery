@@ -24,6 +24,7 @@ from digitizer import quality
 from digitizer.digitize import design_shapes, digitize, thread_placeholder, trace_design
 from digitizer.edits import EditError, apply_edit, label as edit_label, to_pixels
 from digitizer.fabric import presets as fabric_presets
+from digitizer.formats import CANDIDATES as FORMAT_LABELS, offered as offered_formats, write as write_format
 from digitizer.readback import records
 from fastapi import Body, FastAPI, File, Form, HTTPException, Path as PathParam, Query, Request, UploadFile
 from fastapi.exceptions import RequestValidationError
@@ -50,6 +51,7 @@ from stitchbook_api.models import (
     ErrorResponse,
     FabricPresetOut,
     FabricState,
+    FormatsOut,
     HealthResponse,
     History,
     JobOut,
@@ -63,6 +65,7 @@ from stitchbook_api.models import (
     StitchPoint,
     StitchStats,
     TraceColumn,
+    UnavailableFormat,
 )
 from stitchbook_api.settings import Settings, load_settings
 from stitchbook_api.storage import LocalDiskStorage, NotFound, Storage
@@ -178,7 +181,16 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
     @app.get("/site", response_model=SiteInfo)
     def site() -> SiteInfo:
         return SiteInfo(app_name=config.app_name, demo_video_url=config.get("site.demo_video_url"),
-                        export_formats=config.get("output.formats"))
+                        export_formats=offered_formats(config)[0])
+
+    @app.get("/formats", response_model=FormatsOut)
+    def formats() -> FormatsOut:
+        """Machine file formats the backend can write AND whose write-then-read round trip with
+        pyembroidery passes; the rest are listed with the reason, for the editor's picker."""
+        available, unavailable = offered_formats(config)
+        return FormatsOut(formats=available, labels=FORMAT_LABELS,
+                          unavailable=[UnavailableFormat(format=f, label=FORMAT_LABELS[f], reason=r)
+                                       for f, r in unavailable.items()])
 
     @app.get("/config", response_model=ClientConfig, responses=ERRORS)
     def client_config() -> ClientConfig:
@@ -282,13 +294,17 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
             except ValueError as exc:
                 raise HTTPException(422, f"This image could not be digitized ({exc}). Use a logo on a plain "
                                          "background, or a transparent PNG.") from None
-            for name in ("out.dst", "preview.png", "report.json"):
+            available, _unavailable = offered_formats(config)
+            for fmt in available:  # every offered format, from the same stitches (checked by a round trip)
+                if fmt != "dst":
+                    write_format(out / "out.dst", out / f"out.{fmt}", fmt)
+            for name in ("preview.png", "report.json", *(f"out.{fmt}" for fmt in available)):
                 storage.put(f"designs/{record.id}/{name}", (out / name).read_bytes())
             layers_iter = iter(result.stitch_layers)
             stitches = [StitchPoint(x_mm=x, y_mm=y, command=c, layer=next(layers_iter) if c == "stitch" else None)
                         for x, y, c in records(out / "out.dst")]
         record = record.model_copy(update={"status": "digitized", "stats": StitchStats(**vars(result.stats)),
-                                           "report": DigitizeReport(**result.to_json()), "downloads": ["dst"]})
+                                           "report": DigitizeReport(**result.to_json()), "downloads": available})
         save_record(record)
         return record, result, stitches, width, result.fill_row_spacing_mm
 
@@ -349,6 +365,12 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
             pull_compensation_mm=result.pull_compensation_mm,
             pull_compensation_min_mm=config.get("api.pull_compensation_min_mm"),
             pull_compensation_max_mm=config.get("api.pull_compensation_max_mm"),
+            fill_row_spacing_mm=result.fill_row_spacing_mm,
+            fill_row_spacing_min_mm=config.get("api.fill_row_spacing_min_mm"),
+            fill_row_spacing_max_mm=config.get("api.fill_row_spacing_max_mm"),
+            satin_spacing_mm=result.satin_spacing_mm,
+            satin_spacing_min_mm=config.get("api.satin_spacing_min_mm"),
+            satin_spacing_max_mm=config.get("api.satin_spacing_max_mm"),
             satin_max_width_mm=config.get("satin.max_width_mm"),
         )
         return EditorState(id=record.id, shapes=DesignShapes(id=record.id, **result.shapes),
@@ -368,6 +390,17 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
         check_sync_size(record, "opened in the editor")
         return editor_state(record)
 
+    def check_density(traced, number: int, mm: float) -> None:
+        """The density slider's range from config.py: fill row spacing or satin spacing."""
+        shape = next((s for s in traced.shapes if s.number == number), None)
+        if shape is None or shape.kind == "running":
+            return  # the engine explains these
+        which = "fill_row_spacing" if shape.kind == "fill" else "satin_spacing"
+        lo, hi = config.get(f"api.{which}_min_mm"), config.get(f"api.{which}_max_mm")
+        if not lo <= mm <= hi:
+            raise HTTPException(422, f"Density for {'fill' if shape.kind == 'fill' else 'satin'} must be between "
+                                     f"{lo:g} and {hi:g} mm.")
+
     @app.post("/designs/{design_id}/edits", response_model=EditorState, responses=ERRORS)
     @one_at_a_time
     def add_edit(design_id: DesignId, body: Annotated[EditRequest, Body()]) -> EditorState:
@@ -386,6 +419,8 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
             source.write_bytes(storage.get(f"designs/{design_id}/original.{record.type}"))
             try:
                 traced = trace_design(source, config, width, record.settings.colours, edits=applied(record))
+                if body.op == "set_density" and body.mm is not None:
+                    check_density(traced, body.shape, body.mm)
                 stored = to_pixels(body.model_dump(), traced)
                 apply_edit(traced, stored, config)
             except EditError as exc:
@@ -420,7 +455,11 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
     @app.get("/designs/{design_id}/download", responses={200: {"content": {"application/octet-stream": {}}}, **ERRORS})
     def download(design_id: DesignId, query: Annotated[DownloadQuery, Query()]) -> Response:
         record = load_record(design_id)
-        if "dst" not in record.downloads:
+        available, unavailable = offered_formats(config)
+        if query.format not in available:
+            reason = unavailable.get(query.format, f"{query.format!r} is not a machine file format this app writes.")
+            raise HTTPException(422, f"{reason} Choose one of: {', '.join(f.upper() for f in available)}.")
+        if query.format not in record.downloads:
             raise HTTPException(409, f"This design has no stitch file yet. Run POST /designs/{design_id}/preview "
                                      "first, then download.")
         data = storage.get(f"designs/{design_id}/out.{query.format}")

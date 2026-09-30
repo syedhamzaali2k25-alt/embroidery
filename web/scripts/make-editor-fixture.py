@@ -1,4 +1,4 @@
-"""Record scripts/fixtures/editor.json (GET /designs/{id}/editor) from the real API for the bird
+"""Record scripts/fixtures/editor.json (GET /designs/{id}/editor) and formats.json (GET /formats) from the real API for the bird
 fixture design, so the screenshot audit and the editor browser tests need no server.
 Run with the repo venv: .venv/bin/python web/scripts/make-editor-fixture.py  (npm run e2e also records it)"""
 
@@ -24,6 +24,8 @@ with tempfile.TemporaryDirectory() as tmp:
     created = client.post("/designs", files={"file": ("bird.png", image, "image/png")},
                           data={"settings": json.dumps({"width_mm": design["settings"]["width_mm"]})}).json()
     state = client.get(f"/designs/{created['id']}/editor").json()
+    formats = client.get("/formats").json()
+(fixtures / "formats.json").write_text(json.dumps(formats, indent=2) + "\n")
 state["id"] = state["shapes"]["id"] = upload["id"]
 (fixtures / "editor.json").write_text(json.dumps(state))
 print(f"wrote {fixtures / 'editor.json'}: {len(state['shapes']['shapes'])} shapes, {len(state['stitches'])} records")

@@ -5,6 +5,7 @@ import { join, resolve } from 'node:path';
 
 const root = resolve(new URL('..', import.meta.url).pathname);
 export const editorFixture = JSON.parse(await readFile(join(root, 'scripts', 'fixtures', 'editor.json'), 'utf8'));
+export const formatsFixture = JSON.parse(await readFile(join(root, 'scripts', 'fixtures', 'formats.json'), 'utf8'));
 const clone = (x) => JSON.parse(JSON.stringify(x));
 
 const KIND = { running: 'Running', satin: 'Satin', fill: 'Fill' };
@@ -12,12 +13,14 @@ function label(edit) {
   if (edit.op === 'set_type') return `Change a shape to ${KIND[edit.kind]}`;
   if (edit.op === 'set_pull_compensation') return edit.mm === null ? 'Reset pull compensation' : `Set pull compensation to ${edit.mm} mm`;
   if (edit.op === 'split') return 'Split a satin shape';
+  if (edit.op === 'sublayer') return 'Add a sublayer';
+  if (edit.op === 'set_density') return edit.mm === null ? 'Reset density' : `Set density to ${edit.mm} mm`;
   if (edit.op === 'fabric') return edit.preset === null ? 'Fabric preset off' : 'Choose a fabric preset';
   return 'points' in edit.left ? 'Satin column from drawn edges' : 'Satin column from two outlines';
 }
 
 /**
- * Mocks /designs/{id}/editor, /edits, /edits/undo and /edits/redo for `designId`. A change is
+ * Mocks /designs/{id}/editor, /edits, /edits/undo, /edits/redo and /formats for `designId`. A change is
  * applied to a copy of the recorded state as far as the page can see (stitch type, pull
  * compensation, history); the real engine is covered by the API tests and npm run e2e.
  * `mock.next` decides the next answer to a change: 'ok' | 'hold' | 'fail' (500) | 'refuse' (422) | 'offline'.
@@ -33,12 +36,19 @@ export async function mockEditorApi(page, api, designId, { transform } = {}) {
       if (edit.op === 'set_type' && shape) { shape.kind = edit.kind; shape.kind_chosen = true; }
       if (edit.op === 'set_pull_compensation' && shape) shape.pull_compensation_mm = edit.mm;
       if (edit.op === 'fabric') s.fabric.preset = s.shapes.fabric = edit.preset;
+      if (edit.op === 'set_density' && shape) shape[shape.kind === 'fill' ? 'fill_spacing_mm' : 'satin_spacing_mm'] = edit.mm;
+      if (edit.op === 'sublayer' && shape) { // as far as the page can see: a child shape listed under its parent
+        const number = Math.max(...s.shapes.shapes.map((x) => x.number)) + 1;
+        s.shapes.shapes.push({ ...clone(shape), number, parent: shape.number, sublayers: [], kind_chosen: false, rings: [edit.points] });
+        shape.sublayers = [...(shape.sublayers ?? []), number];
+      }
     }
     const n = mock.applied, total = mock.history.length;
     s.history = { applied: n, total, undo: n ? label(mock.history[n - 1]) : null, redo: n < total ? label(mock.history[n]) : null };
     return s;
   };
   await page.route(`${api}/designs/${designId}/editor`, (r) => r.fulfill({ json: state() }));
+  await page.route(`${api}/formats`, (r) => r.fulfill({ json: formatsFixture }));
   await page.route(`${api}/designs/${designId}/edits`, (r) => answer(r).catch(() => {
     // a held change released after the page moved on: nothing is waiting for it any more
   }));
@@ -63,6 +73,9 @@ export async function mockEditorApi(page, api, designId, { transform } = {}) {
 export const noPresetValues = (state) => {
   for (const p of state.fabric.presets) { p.ready = false; p.values = null; }
 };
+
+/** A point well inside the bird's body (shape 1, navy), in mm: a sublayer outlined around it stays in the body. */
+export const BODY_INSIDE = [14, -7.5];
 
 /** A design with no satin shapes: every satin shape of the recorded bird sewn as fill. */
 export const allFill = (state) => {

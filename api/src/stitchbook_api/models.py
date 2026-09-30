@@ -99,6 +99,10 @@ class DesignShape(BaseModel):
                     "column = a satin column made in the editor between two edges")
     kind_chosen: bool = Field(default=False, description="The stitch type was chosen in the editor")
     pull_compensation_mm: float | None = Field(default=None, description="Set in the editor; None = the default")
+    fill_spacing_mm: float | None = Field(default=None, description="Fill density set in the editor; None = default")
+    satin_spacing_mm: float | None = Field(default=None, description="Satin density set in the editor; None = default")
+    parent: int | None = Field(default=None, description="For a sublayer: the number of the shape it is part of")
+    sublayers: list[int] = Field(default=[], description="Numbers of this shape's sublayers")
     notes: list[str] = Field(default=[], description="Plain notes about how this shape will be sewn")
     edges: ColumnEdges | None = Field(default=None, description="For kind column: the two edges it runs between")
     max_width_mm: float
@@ -215,7 +219,10 @@ class DesignRecord(BaseModel):
     created_at: datetime
     stats: StitchStats | None = None
     report: DigitizeReport | None = None
-    downloads: list[Literal["dst"]] = []
+    downloads: list[str] = []
+    # Who can see the design. Only "private" exists: there is no sharing yet. There are no accounts
+    # yet either, so the design's address (a random id) is the only thing that keeps it private.
+    visibility: Literal["private"] = "private"
     trace_job_id: str | None = None  # latest "Create satin columns" job, so the editor can resume it
     # Editor changes, stored in image pixels (digitizer.edits). The first edits_applied are in
     # effect; the rest can be redone. A new change drops the ones that could be redone.
@@ -270,7 +277,20 @@ class PreviewResponse(BaseModel):
 
 
 class DownloadQuery(BaseModel):
-    format: Literal["dst"] = Field(default="dst", description="Only DST is available so far.")
+    format: str = Field(default="dst", description="One of GET /formats' formats")
+
+
+class UnavailableFormat(BaseModel):
+    format: str
+    label: str
+    reason: str = Field(description="Why it cannot be exported, in words (shown as the picker's tooltip)")
+
+
+class FormatsOut(BaseModel):
+    """Formats the backend can write AND whose pyembroidery round trip passes (see digitizer.formats)."""
+    formats: list[str]
+    labels: dict[str, str] = Field(description="Name to show for each format, offered or not")
+    unavailable: list[UnavailableFormat]
 
 
 # ---------- editor ----------
@@ -305,6 +325,20 @@ class PullCompensationEdit(BaseModel):
     mm: float | None = Field(description="Total widening of each satin stitch; null = back to the default")
 
 
+class DensityEdit(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    op: Literal["set_density"]
+    shape: int = Field(ge=1)
+    mm: float | None = Field(description="Row spacing (fill) or satin spacing (satin); null = back to the default")
+
+
+class SublayerEdit(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    op: Literal["sublayer"]
+    shape: int = Field(ge=1, description="The shape to take the sublayer out of")
+    points: list[PointMm] = Field(min_length=3, description="Outline of the part that becomes the sublayer, in mm")
+
+
 class SplitEdit(BaseModel):
     model_config = ConfigDict(extra="forbid")
     op: Literal["split"]
@@ -326,7 +360,7 @@ class FabricEdit(BaseModel):
     preset: str | None = Field(description="Fabric preset name from /editor; null = back to the stitch defaults")
 
 
-EditRequest = Annotated[SetTypeEdit | PullCompensationEdit | SplitEdit | ColumnEdit | FabricEdit,
+EditRequest = Annotated[SetTypeEdit | PullCompensationEdit | DensityEdit | SplitEdit | SublayerEdit | ColumnEdit | FabricEdit,
                         Field(discriminator="op")]
 
 
@@ -342,6 +376,12 @@ class EditorDefaults(BaseModel):
     pull_compensation_mm: float = Field(description="For shapes without their own: the fabric preset's, else config's")
     pull_compensation_min_mm: float
     pull_compensation_max_mm: float
+    fill_row_spacing_mm: float = Field(description="Fill density for shapes without their own (preset or preview)")
+    fill_row_spacing_min_mm: float
+    fill_row_spacing_max_mm: float
+    satin_spacing_mm: float = Field(description="Satin density for shapes without their own")
+    satin_spacing_min_mm: float
+    satin_spacing_max_mm: float
     satin_max_width_mm: float
 
 

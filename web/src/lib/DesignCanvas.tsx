@@ -168,13 +168,16 @@ export function RingPicker({ shapes, fit, hidden, picked, onPick }: RingProps) {
 }
 
 /** Points placed by Split, and the edges being drawn with Draw edges (canvas units). */
-export function ToolMarks({ points, edges, current }: { points: number[][]; edges: number[][][]; current: number[][] }) {
+/** Points and lines placed with a tool. `area`: the current points outline an area (a sublayer). */
+export function ToolMarks({ points, edges, current, area = false }: { points: number[][]; edges: number[][][]; current: number[][]; area?: boolean }) {
   const line = (pts: number[][]) => pts.map((p) => p.join(",")).join(" ");
   return (
     <g className="tool-marks" aria-hidden="true">
       {points.length === 2 && <line className="tool-marks__cut" x1={points[0][0]} y1={points[0][1]} x2={points[1][0]} y2={points[1][1]} />}
       {edges.map((e, i) => <polyline key={i} className="tool-marks__edge is-done" points={line(e)} />)}
-      {current.length > 0 && <polyline className="tool-marks__edge" points={line(current)} />}
+      {current.length > 0 && (area && current.length > 2
+        ? <polygon className="tool-marks__area" points={line(current)} />
+        : <polyline className="tool-marks__edge" points={line(current)} />)}
       {[...points, ...edges.flat(), ...current].map((p, i) => (
         <circle key={i} className="tool-marks__point" cx={p[0]} cy={p[1]} r="3.5" />
       ))}

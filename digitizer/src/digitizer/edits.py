@@ -7,7 +7,9 @@ split or added. Operations (stored form):
 
   {"op": "set_type", "at": [x, y], "kind": "running" | "satin" | "fill"}
   {"op": "set_pull_compensation", "at": [x, y], "mm": 0.3}      # mm None = back to the default
+  {"op": "set_density", "at": [x, y], "mm": 0.4}                # row / satin spacing; None = default
   {"op": "split", "a": [x, y], "b": [x, y]}                      # two points on the shape's edge
+  {"op": "sublayer", "at": [x, y], "points": [[x, y], ...]}      # outline of a part of the shape
   {"op": "fabric", "preset": "woven_cotton"}                     # preset None = back to the defaults
   {"op": "column", "left": EDGE, "right": EDGE, "colour": "#RRGGBB"}
       EDGE = {"at": [x, y], "ring": i}  one outline of a shape (0 = outside, 1.. = holes), or
@@ -48,8 +50,13 @@ def label(edit: dict) -> str:
     if op == "set_pull_compensation":
         mm = edit.get("mm")
         return "Reset pull compensation" if mm is None else f"Set pull compensation to {mm:g} mm"
+    if op == "set_density":
+        mm = edit.get("mm")
+        return "Reset density" if mm is None else f"Set density to {mm:g} mm"
     if op == "split":
         return "Split a satin shape"
+    if op == "sublayer":
+        return "Add a sublayer"
     if op == "fabric":
         return "Fabric preset off" if edit.get("preset") is None else "Choose a fabric preset"
     if op == "column":
@@ -96,12 +103,28 @@ def _rings(poly: Polygon) -> list[list[tuple[float, float]]]:
     return [list(ring.coords)[:-1] for ring in (poly.exterior, *poly.interiors)]
 
 
-def _new_shape(traced: Traced, colour: int, poly_px: Polygon, kind: str, config: Config, **extra) -> Shape:
+def _new_shape(traced: Traced, colour: int, poly_px: Polygon, kind: str, config: Config, kind_chosen: bool = True,
+               **extra) -> Shape:
     tf = traced.tf
-    shape = Shape(0, colour, poly_px, tf.geom(poly_px), kind=kind, kind_chosen=True, **extra)
+    shape = Shape(0, colour, poly_px, tf.geom(poly_px), kind=kind, kind_chosen=kind_chosen, **extra)
     _kind, _mask, dist = classify_shape(poly_px, traced.image_shape, tf, config.get("satin.max_width_mm"))
     shape.max_width_mm = shape_max_width_mm(dist, tf)
     return shape
+
+
+def _reshape(traced: Traced, shape: Shape, poly_px: Polygon, config: Config) -> None:
+    """Give `shape` a new outline (pixels), keeping its type and settings."""
+    tf = traced.tf
+    shape.poly_px, shape.poly = poly_px, tf.geom(poly_px)
+    shape.overlap = shape.overlap.intersection(shape.poly)
+    _kind, _mask, dist = classify_shape(poly_px, traced.image_shape, tf, config.get("satin.max_width_mm"))
+    shape.max_width_mm = shape_max_width_mm(dist, tf)
+
+
+def _one_polygon(geometry) -> Polygon | None:
+    """The polygon a shapely result is, or None if it is empty or in several pieces."""
+    parts = [g for g in getattr(geometry, "geoms", [geometry]) if isinstance(g, Polygon) and not g.is_empty]
+    return parts[0] if len(parts) == 1 else None
 
 
 def _renumber(traced: Traced) -> None:
@@ -128,6 +151,56 @@ def _set_pull_compensation(traced: Traced, edit: dict, config: Config) -> None:
     if mm is not None and mm < 0:
         raise EditError("Pull compensation cannot be negative.")
     shape.pull_compensation_mm = mm
+
+
+def _set_density(traced: Traced, edit: dict, config: Config) -> None:
+    shape = _find(traced, edit["at"])
+    if shape.kind == "running":
+        raise EditError("Density does not apply to running stitch. Change this shape to Fill or Satin first.")
+    mm = edit.get("mm")
+    if mm is not None and mm <= 0:
+        raise EditError("Density (spacing) must be more than 0 mm.")
+    if shape.kind == "fill":
+        shape.fill_spacing_mm = mm
+    else:
+        shape.satin_spacing_mm = mm
+
+
+def _sublayer(traced: Traced, edit: dict, config: Config) -> None:
+    """Take the part of a shape inside the drawn outline out of it, as a sublayer: a child shape
+    of the same colour with its own stitch type and settings (copied from the parent to start),
+    sewn right after the parent and its earlier sublayers."""
+    parent = _find(traced, edit["at"])
+    if parent.parent is not None:
+        raise EditError(f"This is already a sublayer of shape {parent.parent.number}. Add the sublayer to that "
+                        "shape instead.")
+    if parent.kind == "column":
+        raise EditError("This column was made from two edges and cannot have sublayers. Undo it first.")
+    points = [tuple(p) for p in edit.get("points", [])]
+    if len(points) < 3:
+        raise EditError("Click at least three points around the part you want as a sublayer.")
+    outline = Polygon(points)
+    if not outline.is_valid:
+        raise EditError("The outline crosses itself. Click the points in order around the part.")
+    min_area = config.get("input.min_shape_area_mm2") / traced.tf.mm_per_px ** 2
+    child_px = _one_polygon(outline.intersection(parent.poly_px))
+    if child_px is None or child_px.area < min_area:
+        raise EditError(f"Draw the outline over a part of shape {parent.number}, in one piece, big enough to sew.")
+    rest = _one_polygon(parent.poly_px.difference(child_px))
+    if rest is None or rest.area < min_area:
+        raise EditError(f"The sublayer would cover all of shape {parent.number} or cut it in two. Draw a smaller "
+                        "part, or use Split to cut the shape.")
+    tf = traced.tf
+    child = _new_shape(traced, parent.colour, child_px, parent.kind, config, kind_chosen=False, parent=parent,
+                       pull_compensation_mm=parent.pull_compensation_mm, fill_spacing_mm=parent.fill_spacing_mm,
+                       satin_spacing_mm=parent.satin_spacing_mm, overlap=parent.overlap.intersection(tf.geom(child_px)))
+    _reshape(traced, parent, rest, config)
+    li, si = _layer_and_index(traced, parent)
+    shapes = traced.layers[li].shapes
+    after = si + 1
+    while after < len(shapes) and shapes[after].parent is parent:
+        after += 1
+    shapes.insert(after, child)
 
 
 def _split(traced: Traced, edit: dict, config: Config) -> None:
@@ -158,8 +231,12 @@ def _split(traced: Traced, edit: dict, config: Config) -> None:
         raise EditError("One side of the cut would be too small to sew. Cut further from the end of the shape.")
     li, si = _layer_and_index(traced, shape)
     pieces = [_new_shape(traced, shape.colour, p, "satin", config, pull_compensation_mm=shape.pull_compensation_mm,
-                         overlap=shape.overlap.intersection(tf.geom(p))) for p in parts]
+                         satin_spacing_mm=shape.satin_spacing_mm, fill_spacing_mm=shape.fill_spacing_mm,
+                         parent=shape.parent, overlap=shape.overlap.intersection(tf.geom(p))) for p in parts]
     traced.layers[li].shapes[si:si + 1] = pieces
+    for child in traced.shapes:  # its sublayers now belong to the piece they touch most
+        if child.parent is shape:
+            child.parent = max(pieces, key=lambda p: p.poly_px.buffer(ON_SHAPE_PX).intersection(child.poly_px).area)
 
 
 def _edge(traced: Traced, ref: dict) -> tuple[list, bool, Shape | None]:
@@ -216,6 +293,9 @@ def _column(traced: Traced, edit: dict, config: Config) -> None:
         li, si = _layer_and_index(traced, replaces)
         column.overlap = replaces.overlap
         traced.layers[li].shapes[si] = column
+        for child in traced.shapes:  # a column has no sublayers: they become shapes of their own
+            if child.parent is replaces:
+                child.parent = None
     else:
         traced.layers[colour - 1].shapes.append(column)
 
@@ -229,8 +309,8 @@ def _fabric(traced: Traced, edit: dict, config: Config) -> None:
     traced.fabric = name
 
 
-_OPS = {"set_type": _set_type, "set_pull_compensation": _set_pull_compensation, "split": _split, "column": _column,
-        "fabric": _fabric}
+_OPS = {"set_type": _set_type, "set_pull_compensation": _set_pull_compensation, "set_density": _set_density,
+        "split": _split, "sublayer": _sublayer, "column": _column, "fabric": _fabric}
 
 
 def apply_edit(traced: Traced, edit: dict, config: Config) -> None:
@@ -264,7 +344,7 @@ def to_pixels(edit: dict, traced: Traced) -> dict:
     def px(p) -> list[float]:
         return list(tf.to_px(p))
 
-    if op in ("set_type", "set_pull_compensation"):
+    if op in ("set_type", "set_pull_compensation", "set_density"):
         out = {k: v for k, v in edit.items() if k != "shape"}
         out["at"] = _anchor(_by_number(traced, edit["shape"]))
         return out
@@ -272,6 +352,9 @@ def to_pixels(edit: dict, traced: Traced) -> dict:
         return {"op": "split", "a": px(edit["a"]), "b": px(edit["b"])}
     if op == "fabric":
         return {"op": "fabric", "preset": edit.get("preset")}
+    if op == "sublayer":
+        return {"op": "sublayer", "at": _anchor(_by_number(traced, edit["shape"])),
+                "points": [px(p) for p in edit.get("points", [])]}
     if op == "column":
         def edge(ref: dict) -> dict:
             if "points" in ref:

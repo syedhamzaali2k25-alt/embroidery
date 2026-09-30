@@ -222,3 +222,44 @@ def test_a_split_changes_only_its_colour_layer_and_undo_restores_the_file(client
 
     client.post(f"/designs/{design_id}/edits/undo")
     assert download(client, design_id) == (tmp_path / "before.dst").read_bytes()
+
+
+# ---------- sublayers, density, visibility ----------
+
+def body_box(state, half=3.0):
+    shape = next(s for s in state["shapes"]["shapes"] if s["number"] == BODY)
+    c = Polygon(shape["rings"][0], shape["rings"][1:]).representative_point()
+    return [[c.x - half, c.y - half], [c.x + half, c.y - half], [c.x + half, c.y + half], [c.x - half, c.y + half]]
+
+
+def test_a_sublayer_is_stored_and_its_own_density_changes_only_its_stitches(client):
+    design_id = bird(client)
+    state = client.get(f"/designs/{design_id}/editor").json()
+    added = client.post(f"/designs/{design_id}/edits", json={"op": "sublayer", "shape": BODY, "points": body_box(state)})
+    assert added.status_code == 200, added.text
+    added = added.json()
+    child = next(s for s in added["shapes"]["shapes"] if s["parent"] == BODY)
+    assert added["shapes"]["shapes"][BODY - 1]["sublayers"] == [child["number"]]
+    assert added["history"]["undo"] == "Add a sublayer"
+
+    def by_shape(s):
+        shape_of = {layer["number"]: layer["shape"] for layer in s["layers"]}
+        out = {}
+        for p in s["stitches"]:
+            if p["command"] == "stitch":
+                out.setdefault(shape_of[p["layer"]], []).append((p["x_mm"], p["y_mm"]))
+        return out
+
+    d = added["defaults"]
+    assert d["fill_row_spacing_min_mm"] < d["fill_row_spacing_max_mm"] and d["satin_spacing_min_mm"] < d["satin_spacing_max_mm"]
+    too_dense = client.post(f"/designs/{design_id}/edits", json={"op": "set_density", "shape": child["number"], "mm": 0.01})
+    assert too_dense.status_code == 422 and "between" in too_dense.json()["error"]
+    denser = client.post(f"/designs/{design_id}/edits",
+                         json={"op": "set_density", "shape": child["number"], "mm": d["fill_row_spacing_max_mm"]}).json()
+    before, after = by_shape(added), by_shape(denser)
+    assert after[child["number"]] != before[child["number"]]
+    assert {k: v for k, v in after.items() if k != child["number"]} == {k: v for k, v in before.items() if k != child["number"]}
+
+
+def test_a_design_is_private_by_default(client):
+    assert client.get(f"/designs/{bird(client)}").json()["visibility"] == "private"

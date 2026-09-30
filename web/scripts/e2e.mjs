@@ -10,7 +10,7 @@ import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { extname, join, resolve } from 'node:path';
 
-import { clickAt, crossing } from './editor-helpers.mjs';
+import { BODY_INSIDE, clickAt, crossing } from './editor-helpers.mjs';
 
 const web = resolve(new URL('..', import.meta.url).pathname);
 const repo = resolve(web, '..');
@@ -338,7 +338,7 @@ try {
       check((await page.locator('.edit-error').innerText()).includes("Can't reach the Stitchbook server"), 'no connection: "Not saved" with the reason');
       await shot('editor-real-error');
       await page.unroute(`${API}/designs/${bird}/edits`);
-      await page.getByRole('button', { name: 'Retry' }).click();
+      await page.locator('.edit-error').getByRole('button', { name: 'Retry' }).click();
       await page.locator('.edit-error').waitFor({ state: 'detached', timeout: 60000 });
       await saved();
       check((await page.locator('.segmented[aria-labelledby="stitch-type"] [aria-checked="true"]').innerText()) === 'Satin', 'Retry saves it');
@@ -356,8 +356,48 @@ try {
       await page.locator('#fabric').scrollIntoViewIfNeeded();
       await shot('editor-real-fabric');
 
+      // Sublayer: outline part of the body; then give the sublayer its own density. Only the
+      // sublayer's stitches may change (read from the real API).
+      const byShape = async () => {
+        const st = await (await fetch(`${API}/designs/${bird}/editor`)).json();
+        const shapeOf = Object.fromEntries(st.layers.map((l) => [l.number, l.shape]));
+        const out = {};
+        for (const p of st.stitches) if (p.command === 'stitch') (out[shapeOf[p.layer]] ??= []).push(`${p.x_mm},${p.y_mm}`);
+        return out;
+      };
+      await page.getByRole('button', { name: /^Shape 1 / }).click();
+      await page.getByRole('button', { name: '+ Sublayer' }).click();
+      const [bx, by] = BODY_INSIDE;
+      for (const p of [[bx - 2.5, by - 2.5], [bx + 2.5, by - 2.5], [bx + 2.5, by + 2.5], [bx - 2.5, by + 2.5]]) await clickAt(page, bounds, p);
+      await page.getByRole('button', { name: 'Finish sublayer' }).click();
+      await page.getByRole('button', { name: 'Undo: Add a sublayer' }).waitFor({ timeout: 60000 });
+      const child = page.locator('.sublayers .sublayer:not(.sublayer--add)');
+      check(await child.count() === 1, 'Sublayer: outlining part of shape 1 adds one sublayer, listed under it');
+      await shot('editor-real-sublayer');
+      const beforeDensity = await byShape();
+      await child.click();
+      const childNumber = Number((await page.locator('.panel__title').first().innerText()).replace(/\D+/g, ''));
+      await page.locator('#density').fill(String(await page.locator('#density').getAttribute('max')));
+      await page.getByRole('button', { name: /^Undo: Set density/ }).waitFor({ timeout: 60000 });
+      const afterDensity = await byShape();
+      const changed = Object.keys(afterDensity).filter((k) => afterDensity[k].join() !== (beforeDensity[k] ?? []).join());
+      check(changed.length === 1 && Number(changed[0]) === childNumber,
+        `sublayer density changes only the sublayer's stitches (changed: shape ${changed.join(', ')})`);
+
+      // Export file: DST, the same bytes as the download address.
+      const exported = page.waitForEvent('download');
+      await page.getByRole('link', { name: 'Export file' }).click();
+      const exportedBytes = await readFile(await (await exported).path());
+      check(Buffer.compare(exportedBytes, await dst(bird)) === 0 && (await exported).suggestedFilename().endsWith('.dst'),
+        'Export file downloads the DST of the design as it is now');
+      check((await (await fetch(`${API}/designs/${bird}/download?format=pes`)).json()).error.includes('round-trip test fails'),
+        'the server refuses PES: its round trip fails');
+
       // Preview and Download reflect every change.
       const editorCount = await footerCount();
+      await page.getByRole('button', { name: 'Close' }).click();
+      await page.waitForURL(/\/home$/, { timeout: 10000 });
+      check(true, 'Close goes Home once everything is saved');
       await page.goto(`${WEB}/preview/${bird}`);
       await page.getByRole('heading', { name: 'Summary' }).waitFor({ timeout: 60000 });
       check((await page.locator('.flow-summary').innerText()).includes(editorCount.toLocaleString('en')),

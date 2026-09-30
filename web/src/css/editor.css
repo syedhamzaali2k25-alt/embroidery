@@ -476,3 +476,137 @@ body.editor {
   font-size: 13px;
   font-weight: 700;
 }
+
+/* ---------- Header chips and Close ---------- */
+.bar__close { flex: none; }
+.chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 4px; }
+.chip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 26px;
+  padding: 2px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.chip svg { width: 14px; height: 14px; flex: none; }
+.chip.file__state.is-failed { border-color: var(--ink); font-weight: 700; }
+.chip--action { border-color: var(--ink); font-weight: 700; cursor: pointer; }
+.chip--action:focus-visible, .chip--private:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+.chip--private { cursor: default; }
+
+/* A tooltip: shown on hover and keyboard focus of its parent. Ink text on white, never white text. */
+.tip {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 6px);
+  left: 0;
+  width: max-content;
+  max-width: min(280px, 80vw);
+  padding: 8px 12px;
+  border: 1px solid var(--ink);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow-float);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.4;
+  white-space: normal;
+  text-align: left;
+  display: none;
+}
+.chip--private:hover .tip, .chip--private:focus .tip,
+.format:hover .tip, .format:focus-within .tip { display: block; }
+/* Anchored to the whole header / the whole row of formats, so they never run off a phone screen. */
+.bar { position: relative; }
+.chip--private { position: static; }
+.chip--private .tip { left: var(--gutter); top: calc(100% - 4px); }
+.formats { position: relative; }
+.format { position: static; }
+.formats .tip { left: 0; right: 0; width: auto; max-width: none; }
+
+/* ---------- In-page Close dialog ---------- */
+.close-dialog {
+  position: fixed;
+  z-index: 30;
+  top: 72px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(440px, calc(100vw - 2 * var(--gutter)));
+  padding: 20px;
+  border: 1px solid var(--ink);
+  border-radius: var(--radius-card-sm);
+  background: var(--surface);
+  box-shadow: var(--shadow-float);
+}
+.close-dialog:focus { outline: none; }
+.close-dialog__title { font-size: 17px; font-weight: 700; margin-bottom: 6px; }
+.close-dialog p { font-size: 14px; }
+.close-dialog__actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+
+/* ---------- Sliders ---------- */
+.slider { margin-top: 16px; }
+.slider .range { margin-bottom: 4px; }
+.slider__ends { display: flex; justify-content: space-between; font-size: 12px; font-weight: 500; }
+.slider .btn { margin-top: 8px; }
+
+/* ---------- Sublayers ---------- */
+.sublayers { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.sublayer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.sublayer:hover { border-color: var(--ink); }
+.sublayer--add { justify-content: center; border: 1.5px dashed var(--ink); font-weight: 700; }
+.sublayer:disabled { cursor: not-allowed; opacity: 0.4; }
+.link-btn { padding: 0; border: 0; background: none; color: var(--ink); font: inherit; font-weight: 700; text-decoration: underline; cursor: pointer; }
+.layer--sub .layer__pick { padding-left: 22px; }
+.layer__sub { font-weight: 400; }
+.tool-marks__area { fill: color-mix(in srgb, var(--green) 25%, transparent); stroke: var(--ink); stroke-width: 2; stroke-linejoin: round; }
+
+/* ---------- Export card ---------- */
+.export-card {
+  margin: 0 16px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card-sm);
+  background: var(--surface);
+}
+.export-card__title { font-size: 15px; font-weight: 700; margin-bottom: 10px; }
+.formats { display: flex; flex-wrap: wrap; gap: 6px; }
+.format__btn {
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.format__btn[aria-checked="true"] { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); }
+.format__btn[aria-disabled="true"] { cursor: not-allowed; border-style: dashed; text-decoration: line-through; }
+.format__btn:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+.export-card__go { margin-top: 12px; }

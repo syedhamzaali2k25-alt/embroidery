@@ -24,7 +24,8 @@ from __future__ import annotations
 import argparse
 import json
 import math
-from dataclasses import dataclass, field
+from collections import OrderedDict
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Callable
 
@@ -98,7 +99,7 @@ def scale_to_width(polygons: list[Polygon], width_mm: float) -> tuple[list[Polyg
 
 # ---------- 1-4. image -> colour layers of classified shapes (shared by every caller) ----------
 
-@dataclass
+@dataclass(eq=False)  # shapes are compared by identity (sublayers point at their parent)
 class Shape:
     number: int  # 1-based over the whole design, in sewing order
     colour: int  # number of its colour layer (1-based, sewing order)
@@ -115,6 +116,13 @@ class Shape:
     kind_chosen: bool = False  # the stitch type was chosen in the editor, not by width
     # kind "column": its two edges in pixels, and whether they are closed loops (outline + hole)
     edges: tuple[list, list, bool] | None = None
+    # Density set in the editor for this shape (None = the default): row spacing when sewn as
+    # fill, satin spacing when sewn as satin. Both are kept, so changing the type keeps each.
+    fill_spacing_mm: float | None = None
+    satin_spacing_mm: float | None = None
+    # A sublayer: a part of `parent` with its own stitch type and settings (digitizer.edits).
+    # Its area is taken out of the parent, and it is sewn right after the parent.
+    parent: Shape | None = field(default=None, repr=False)
 
 
 @dataclass
@@ -412,8 +420,9 @@ def build_pieces(shapes: list[Shape], image_shape: tuple[int, int], tf: PxToMm, 
         area = poly.buffer(tolerance)
         pull_comp = (config.get("stitch.pull_compensation_mm") if shape.pull_compensation_mm is None
                      else shape.pull_compensation_mm)
+        fill_spacing, satin_spacing = shape_spacings(shape, config)
         if shape.kind == "fill":
-            pieces.append(Piece("fill", area, poly, rows=_rows(poly, config), shape=shape_number))
+            pieces.append(Piece("fill", area, poly, rows=_rows(poly, config, fill_spacing), shape=shape_number))
             continue
         if shape.kind == "running":
             # A running stitch along every outline of the shape (outside, then each hole).
@@ -427,7 +436,7 @@ def build_pieces(shapes: list[Shape], image_shape: tuple[int, int], tf: PxToMm, 
             left_px, right_px, closed = shape.edges
             column = satin.column_between([tf.geom(Point(p)).coords[0] for p in left_px],
                                           [tf.geom(Point(p)).coords[0] for p in right_px], closed,
-                                          config.get("stitch.satin_spacing_mm"), pull_comp)
+                                          satin_spacing, pull_comp)
             cover = satin.coverage(column)
             pieces.append(Piece("satin", area.union(cover.buffer(tolerance)), cover, column=column, shape=shape_number))
             continue
@@ -452,7 +461,7 @@ def build_pieces(shapes: list[Shape], image_shape: tuple[int, int], tf: PxToMm, 
                     line, degree[line_px.coords[0]] == 1, degree[line_px.coords[-1]] == 1, poly, max_width, radius_mm
                 )
             column = satin.build_column(
-                line, poly, config.get("stitch.satin_spacing_mm"), max_width,
+                line, poly, satin_spacing, max_width,
                 pull_comp, min_len, radius_mm,
             )
             result.skipped_rungs += column.skipped_rungs
@@ -498,9 +507,57 @@ def satin_gaps(rest, min_len: float) -> list[Polygon]:
     return [p for p in parts if isinstance(p, Polygon) and not p.buffer(-min_len / 2).is_empty]
 
 
-def _rows(poly: Polygon, config: Config) -> list[Row]:
-    return fill_rows(poly, config.get("stitch.fill_angle_deg"), config.get("stitch.fill_row_spacing_mm"),
+def _rows(poly: Polygon, config: Config, spacing: float | None = None) -> list[Row]:
+    return fill_rows(poly, config.get("stitch.fill_angle_deg"), spacing or config.get("stitch.fill_row_spacing_mm"),
                      config.get("stitch.min_stitch_length_mm"))
+
+
+def shape_spacings(shape: Shape, config: Config) -> tuple[float, float]:
+    """(fill row spacing, satin spacing) this shape is sewn with: its own, else the defaults."""
+    return (shape.fill_spacing_mm or config.get("stitch.fill_row_spacing_mm"),
+            shape.satin_spacing_mm or config.get("stitch.satin_spacing_mm"))
+
+
+# Everything in the config that build_pieces() reads: part of the piece cache key.
+_PIECE_SETTINGS = ("satin.max_width_mm", "stitch.min_stitch_length_mm", "stitch.pull_compensation_mm",
+                   "stitch.running_stitch_length_mm", "satin.spur_prune_factor", "stitch.fill_angle_deg",
+                   "stitch.fill_row_spacing_mm", "stitch.satin_spacing_mm")
+
+
+class PieceCache:
+    """Stitch pieces of one shape, kept between runs (in this process), so an edit rebuilds
+    only the shapes it changed: the key is everything build_pieces() reads for the shape. The
+    shape's number is not part of it (pieces are renumbered on the way out). `builds` counts
+    shapes actually rebuilt, for tests."""
+
+    def __init__(self) -> None:
+        self._items: OrderedDict[tuple, Pieces] = OrderedDict()
+        self.builds = 0
+
+    @staticmethod
+    def key(shape: Shape, image_shape: tuple[int, int], tf: PxToMm, config: Config) -> tuple:
+        edges = None
+        if shape.edges:
+            left, right, closed = shape.edges
+            edges = (tuple(map(tuple, left)), tuple(map(tuple, right)), closed)
+        return (shape.poly_px.wkb, shape.kind, edges, shape.pull_compensation_mm, shape_spacings(shape, config),
+                tuple(image_shape), (tf.cx, tf.cy, tf.mm_per_px), tuple(config.get(k) for k in _PIECE_SETTINGS))
+
+    def pieces(self, shape: Shape, image_shape: tuple[int, int], tf: PxToMm, config: Config) -> Pieces:
+        key = self.key(shape, image_shape, tf, config)
+        found = self._items.get(key)
+        if found is None:
+            self.builds += 1
+            found = build_pieces([shape], image_shape, tf, config)
+            self._items[key] = found
+            while len(self._items) > config.get("engine.piece_cache_shapes"):
+                self._items.popitem(last=False)
+        else:
+            self._items.move_to_end(key)
+        return Pieces([replace(p, shape=shape.number) for p in found.pieces], found.skipped_rungs, found.trimmed_rungs)
+
+
+PIECE_CACHE = PieceCache()
 
 
 def satin_settings(config: Config) -> satin.SatinSettings:
@@ -707,6 +764,7 @@ class Result:
     fabric: str | None = None  # fabric preset sewn with (digitizer.fabric), None = the defaults
     fill_row_spacing_mm: float = 0.0  # fill density sewn with (default, preset or set by hand)
     pull_compensation_mm: float = 0.0  # satin pull compensation for shapes without their own
+    satin_spacing_mm: float = 0.0  # satin density for shapes without their own
 
     def summary(self) -> str:
         colours = ", ".join(f"{c.hex} ({c.shapes} shapes, {c.stitches} stitches)" for c in self.colours)
@@ -756,25 +814,27 @@ def digitize(image_path: str | Path, out_dir: str | Path, config: Config | None 
     skipped = trimmed = patches = done = 0
     total = max(len(traced.shapes), 1)
     for layer in traced.layers:
-        built_pieces = build_pieces(layer.shapes, traced.image_shape, tf, config,
-                                    on_shape_done=lambda d, _t, base=done: report(0.1 + 0.8 * (base + d) / total))
-        done += len(layer.shapes)
-        skipped += built_pieces.skipped_rungs
-        trimmed += built_pieces.trimmed_rungs
-        patches += built_pieces.patches
         # Travel stitches must stay inside this colour's own shapes (anything else would show).
         logo = unary_union([s.poly for s in layer.shapes]).buffer(tf.mm_per_px)
         if moves:
             moves.append(Move("change", moves[-1].to))
-        # Each colour starts from its own shapes (top-left entry), not from where the previous
-        # colour ended, so a change to one colour never moves the stitches of another.
-        plan = plan_pieces(built_pieces.pieces, logo, settings, config.get("stitch.jump_threshold_mm"), tf.mm_per_px,
-                           first_number=len(labels) + 1, source_offset=len(pieces))
-        moves.extend(plan.moves)
-        labels.update(plan.satin_labels)
-        column_pieces.update(plan.satin_pieces)
-        pieces.extend(built_pieces.pieces)
-        piece_colour.extend([layer.number] * len(built_pieces.pieces))
+        # Each shape is sewn completely, in order, starting from its own top-left entry: not from
+        # where the previous shape or colour ended. So a change to one shape (or sublayer) moves
+        # no stitch of any other, and only the shapes an edit changed are rebuilt (PIECE_CACHE).
+        for shape in layer.shapes:
+            report(0.1 + 0.8 * done / total)
+            done += 1
+            built_pieces = PIECE_CACHE.pieces(shape, traced.image_shape, tf, config)
+            skipped += built_pieces.skipped_rungs
+            trimmed += built_pieces.trimmed_rungs
+            patches += built_pieces.patches
+            plan = plan_pieces(built_pieces.pieces, logo, settings, config.get("stitch.jump_threshold_mm"),
+                               tf.mm_per_px, first_number=len(labels) + 1, source_offset=len(pieces))
+            moves.extend(plan.moves)
+            labels.update(plan.satin_labels)
+            column_pieces.update(plan.satin_pieces)
+            pieces.extend(built_pieces.pieces)
+            piece_colour.extend([layer.number] * len(built_pieces.pieces))
 
     built = build_pattern(moves, config.get("stitch.max_stitch_length_mm"), config.get("stitch.trim_threshold_mm"),
                           [layer.hex for layer in traced.layers])
@@ -809,7 +869,8 @@ def digitize(image_path: str | Path, out_dir: str | Path, config: Config | None 
                     traced.shapes_found, traced.specks_removed, traced.holes_filled,
                     tuple(ring for s in traced.shapes for ring in polygons_json(s.overlap)),
                     columns, shapes_json(traced, config), tuple(traced.skipped_edits), traced.fabric,
-                    config.get("stitch.fill_row_spacing_mm"), config.get("stitch.pull_compensation_mm"))
+                    config.get("stitch.fill_row_spacing_mm"), config.get("stitch.pull_compensation_mm"),
+                    config.get("stitch.satin_spacing_mm"))
     # The DST format has no room for these; keep them next to it for the readback report.
     (out_dir / "report.json").write_text(json.dumps(result.to_json(), indent=2) + "\n")
     report(1.0)
@@ -897,6 +958,10 @@ def shapes_json(traced: Traced, config: Config) -> dict:
             "kind": shape.kind,
             "kind_chosen": shape.kind_chosen,
             "pull_compensation_mm": shape.pull_compensation_mm,
+            "fill_spacing_mm": shape.fill_spacing_mm,
+            "satin_spacing_mm": shape.satin_spacing_mm,
+            "parent": shape.parent.number if any(shape.parent is t for t in traced.shapes) else None,
+            "sublayers": [c.number for c in traced.shapes if c.parent is shape],
             "max_width_mm": shape.max_width_mm,
             "area_mm2": shape.poly.area,
             "bounds_mm": list(shape.poly.bounds),

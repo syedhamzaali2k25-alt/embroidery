@@ -1,0 +1,34 @@
+{
+  "formats": [
+    "dst"
+  ],
+  "labels": {
+    "dst": "DST (Tajima)",
+    "pes": "PES (Brother)",
+    "jef": "JEF (Janome)",
+    "vp3": "VP3 (Husqvarna Viking / Pfaff)",
+    "exp": "EXP (Melco)"
+  },
+  "unavailable": [
+    {
+      "format": "pes",
+      "label": "PES (Brother)",
+      "reason": "PES (Brother) is not offered: its round-trip test fails (stitch positions changed when it was read back)."
+    },
+    {
+      "format": "jef",
+      "label": "JEF (Janome)",
+      "reason": "JEF (Janome) is not offered: its round-trip test fails (jumps, trims or colour changes changed when it was read back)."
+    },
+    {
+      "format": "vp3",
+      "label": "VP3 (Husqvarna Viking / Pfaff)",
+      "reason": "VP3 (Husqvarna Viking / Pfaff) is not offered: its round-trip test fails (jumps, trims or colour changes changed when it was read back)."
+    },
+    {
+      "format": "exp",
+      "label": "EXP (Melco)",
+      "reason": "EXP (Melco) is not offered: its round-trip test fails (jumps, trims or colour changes changed when it was read back)."
+    }
+  ]
+}

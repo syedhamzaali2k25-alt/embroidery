@@ -8,7 +8,7 @@ import { createServer } from 'node:http';
 import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import { extname, join, resolve } from 'node:path';
 
-import { allFill, clickAt, crossing, editorFixture, mockEditorApi, noPresetValues } from './editor-helpers.mjs';
+import { allFill, BODY_INSIDE, clickAt, crossing, editorFixture, mockEditorApi, noPresetValues } from './editor-helpers.mjs';
 
 const root = resolve(new URL('..', import.meta.url).pathname);
 const outDir = join(root, 'screenshots');
@@ -65,7 +65,7 @@ const tools = {
   'editor-tool-saving': async (page, mock) => {
     await pick(page, 'Shape 1'); mock.next = 'hold';
     await page.getByRole('radio', { name: 'Running' }).click();
-    await page.getByText('Saving: Change shape 1 to Running').first().waitFor();
+    await page.locator('.file__state[title="Saving: Change shape 1 to Running"]').waitFor();
   },
   'editor-tool-saved': async (page) => {
     await pick(page, 'Shape 1');
@@ -160,6 +160,29 @@ const pages = {
     await page.locator('#fabric').selectOption('knit_jersey');
     await page.waitForFunction(() => document.querySelector('.file__state')?.textContent === 'Saved');
     await page.locator('#fabric').scrollIntoViewIfNeeded();
+  } },
+  // Step 11: sliders and Sublayers for a shape, a sublayer being outlined, the Export card with a
+  // refused format's tooltip, and Close waiting for a save.
+  'editor-sliders-sublayers': { route: editorRoute, editor: ['idle'], ready: '[data-state=idle]', keepScroll: true, act: async (page) => {
+    await pick(page, 'Shape 7');
+    await page.locator('#sublayers-title').scrollIntoViewIfNeeded();
+  } },
+  'editor-sublayer-drawing': { route: editorRoute, editor: ['idle'], ready: '[data-state=idle]', act: async (page) => {
+    await pick(page, 'Shape 1');
+    await page.getByRole('button', { name: '+ Sublayer' }).click();
+    const [cx, cy] = BODY_INSIDE;
+    for (const p of [[cx - 2.5, cy - 2.5], [cx + 2.5, cy - 2.5], [cx + 2.5, cy + 2.5], [cx - 2.5, cy + 2.5]]) await clickAt(page, BOUNDS, p);
+  } },
+  'editor-export-refused': { route: editorRoute, editor: ['idle'], ready: '[data-state=idle]', keepScroll: true, act: async (page) => {
+    await page.locator('.export-card').scrollIntoViewIfNeeded();
+    await page.locator('.export-card').getByRole('radio', { name: 'PES' }).hover();
+  } },
+  'editor-close-waiting': { route: editorRoute, editor: ['idle'], ready: '[data-state=idle]', act: async (page, mock) => {
+    await pick(page, 'Shape 1'); mock.next = 'hold';
+    await page.getByRole('radio', { name: 'Running' }).click();
+    await page.locator('.file__state[title="Saving: Change shape 1 to Running"]').waitFor();
+    await page.getByRole('button', { name: 'Close' }).click();
+    await page.getByRole('alertdialog').waitFor();
   } },
   'editor-fabric-no-values': { route: editorRoute, editor: ['idle', null, { transform: noPresetValues }], ready: '[data-state=idle]',
     keepScroll: true, act: (page) => page.locator('#fabric').scrollIntoViewIfNeeded() },

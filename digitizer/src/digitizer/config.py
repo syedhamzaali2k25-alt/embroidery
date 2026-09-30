@@ -169,6 +169,11 @@ PRODUCT: dict[str, dict[str, Any]] = {
         # stitch.pull_compensation_mm).
         "pull_compensation_min_mm": PLACEHOLDER,
         "pull_compensation_max_mm": PLACEHOLDER,
+        # Range the editor's density slider accepts for a shape sewn as satin (satin spacing; the
+        # default is stitch.satin_spacing_mm). A fill shape's density slider uses
+        # fill_row_spacing_min_mm / fill_row_spacing_max_mm above.
+        "satin_spacing_min_mm": PLACEHOLDER,
+        "satin_spacing_max_mm": PLACEHOLDER,
     },
     "output": {
         # Machine formats offered to users (download, landing page). A format may be listed only
@@ -237,6 +242,11 @@ PRODUCT: dict[str, dict[str, Any]] = {
         # Split: a click this close to a shape's edge counts as on the edge (and is moved onto it).
         "snap_distance_mm": PLACEHOLDER,
     },
+    "engine": {
+        # How many shapes' stitch pieces the digitizer keeps in memory between runs, so an editor
+        # change rebuilds only the shapes it changed. Only speed depends on it, never the stitches.
+        "piece_cache_shapes": PLACEHOLDER,
+    },
     "storage": {
         # Saving a file: on Windows, moving the finished file over one that another program has
         # open (a virus scanner, the search indexer, a viewer) fails with WinError 32. The move
@@ -298,6 +308,9 @@ TEST_RUN_OVERRIDES: dict[str, Any] = {
     "stitch.running_stitch_length_mm": 2.5,
     "api.pull_compensation_min_mm": 0.0,
     "api.pull_compensation_max_mm": 1.0,
+    "api.satin_spacing_min_mm": 0.25,
+    "api.satin_spacing_max_mm": 0.8,
+    "engine.piece_cache_shapes": 256,
     # Fabric presets: made-up values that only differ from each other so the tests can see a
     # preset re-sew the design. Not for sewing.
     "fabric.woven_cotton.fill_row_spacing_mm": 0.4,

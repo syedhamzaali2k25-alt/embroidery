@@ -47,6 +47,13 @@ export type DesignShape = {
   kind_chosen?: boolean;
   /** Set in the editor; null = the default from config. */
   pull_compensation_mm?: number | null;
+  /** Density set in the editor (fill row spacing / satin spacing, mm); null = the default. */
+  fill_spacing_mm?: number | null;
+  satin_spacing_mm?: number | null;
+  /** For a sublayer: the number of the shape it is part of. */
+  parent?: number | null;
+  /** Numbers of this shape's sublayers. */
+  sublayers?: number[];
   /** Plain notes about how the shape will be sewn. */
   notes?: string[];
   /** For kind "column": the two edges it runs between (mm). */
@@ -105,6 +112,14 @@ export type DesignRecord = DesignCreated & {
   settings: DesignSettings;
   status: "uploaded" | "digitized";
   trace_job_id: string | null;
+  /** Only "private" exists: there is no sharing yet. */
+  visibility?: "private";
+};
+/** GET /formats: what can be exported (write-then-read round trip passes), and why not for the rest. */
+export type Formats = {
+  formats: string[];
+  labels: Record<string, string>;
+  unavailable: { format: string; label: string; reason: string }[];
 };
 
 export type StitchPoint = { x_mm: number; y_mm: number; command: "stitch" | "jump" | "trim" | "end"; layer: number | null };
@@ -180,7 +195,9 @@ export type Edit =
   | { op: "set_pull_compensation"; shape: number; mm: number | null }
   | { op: "split"; a: number[]; b: number[] }
   | { op: "column"; left: OutlineRef | DrawnEdge; right: OutlineRef | DrawnEdge; colour?: number }
-  | { op: "fabric"; preset: string | null };
+  | { op: "fabric"; preset: string | null }
+  | { op: "set_density"; shape: number; mm: number | null }
+  | { op: "sublayer"; shape: number; points: number[][] };
 /** A fabric preset from config.py. Its values are UNVERIFIED unless `verified` (sewn and checked by the owner). */
 export type FabricPreset = {
   name: string;
@@ -203,7 +220,12 @@ export type EditorState = {
   stats: Preview["stats"];
   stitches: StitchPoint[];
   history: { applied: number; total: number; undo: string | null; redo: string | null };
-  defaults: { pull_compensation_mm: number; pull_compensation_min_mm: number; pull_compensation_max_mm: number; satin_max_width_mm: number };
+  defaults: {
+    pull_compensation_mm: number; pull_compensation_min_mm: number; pull_compensation_max_mm: number;
+    fill_row_spacing_mm: number; fill_row_spacing_min_mm: number; fill_row_spacing_max_mm: number;
+    satin_spacing_mm: number; satin_spacing_min_mm: number; satin_spacing_max_mm: number;
+    satin_max_width_mm: number;
+  };
   /** The fabric preset in effect (null = the stitch defaults) and every preset in config order. */
   fabric: { preset: string | null; presets: FabricPreset[] };
 };
@@ -248,7 +270,8 @@ export const api = {
   redo: (id: string) => request<EditorState>(`/designs/${id}/edits/redo`, post()),
   preview: (id: string, settings: DesignSettings = {}) =>
     oneAtATime(`preview:${id}`, JSON.stringify(settings), () => request<Preview>(`/designs/${id}/preview`, post(settings))),
-  downloadUrl: (id: string) => `${API_URL}/designs/${id}/download?format=dst`,
+  downloadUrl: (id: string, format = "dst") => `${API_URL}/designs/${id}/download?format=${encodeURIComponent(format)}`,
+  formats: () => request<Formats>("/formats"),
   trace: (designId: string) => request<Job>(`/designs/${designId}/trace`, { method: "POST" }),
   jobsHealth: (timeoutS?: number) => request<JobsHealth>("/jobs/health", { timeoutS }),
   job: (jobId: string, timeoutS?: number) => request<Job>(`/jobs/${jobId}`, { timeoutS }),

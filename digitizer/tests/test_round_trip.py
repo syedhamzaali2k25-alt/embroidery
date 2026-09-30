@@ -14,34 +14,10 @@ import pytest
 
 from digitizer.config import load_test_run_config
 from digitizer.digitize import digitize
+from digitizer.formats import CANDIDATES, CHECK_DESIGN, needle_path, offered, round_trip_problem
 
 SAMPLES = Path(__file__).resolve().parents[1] / "samples"
 CONFIG = load_test_run_config()
-KEEP = {pyembroidery.STITCH, pyembroidery.JUMP, pyembroidery.TRIM, pyembroidery.COLOR_CHANGE}
-
-
-def needle_path(pattern) -> list[tuple[int, int, int]]:
-    """Stitches, jumps and trims in order. Consecutive jumps are merged into one move, because
-    formats may split or join long jumps without changing where the needle goes."""
-    out: list[tuple[int, int, int]] = []
-    for x, y, cmd in pattern.stitches:
-        cmd &= pyembroidery.COMMAND_MASK
-        if cmd not in KEEP:
-            continue
-        if cmd == pyembroidery.COLOR_CHANGE:
-            out.append((0, 0, cmd))
-            continue
-        if cmd == pyembroidery.TRIM:
-            if not out or out[-1][2] != pyembroidery.TRIM:
-                out.append((0, 0, cmd))
-            continue
-        if cmd == pyembroidery.JUMP and out and out[-1][2] == pyembroidery.JUMP:
-            out[-1] = (round(x), round(y), cmd)
-            continue
-        out.append((round(x), round(y), cmd))
-    return out
-
-
 SAMPLE_CASES = [("mixed", 50), ("bold_r", 18)]
 OFFERED_CASES = SAMPLE_CASES + [("bird", 90)]  # multi-colour: colour changes must survive too
 
@@ -69,11 +45,37 @@ def test_offered_formats_round_trip(fmt, sample, width, tmp_path):
     assert again == original, f"{fmt.upper()} changed the jump/trim/colour-change sequence"
 
 
-# PES is not offered yet. Found so far: every jump comes back with a trim added, and on bold_r
-# one jump comes back with an extra stitch in the middle of it. strict=True: the day PES starts
-# passing, this test fails and says so, and 'pes' can be added to output.formats.
-@pytest.mark.xfail(strict=True, reason="PES round trip adds trims at jumps (and a stitch inside a jump on bold_r)")
-@pytest.mark.parametrize("sample,width", SAMPLE_CASES)
-def test_pes_keeps_jumps_and_trims(sample, width, tmp_path):
-    original, again = round_trip("pes", sample, width, tmp_path)
+# Not offered: PES, JEF, VP3 and EXP. Found (sample designs and the runtime check design):
+#   PES  moves stitch positions and adds a trim at every jump (and a stitch inside a jump on bold_r);
+#   JEF  keeps every stitch, but the first jump comes back elsewhere and jumps and trims change;
+#   VP3  keeps every stitch, but the first jump comes back as a stitch and jumps and trims are lost;
+#   EXP  keeps every stitch, but some jumps come back at other positions.
+# strict=True: the day one of them passes, its test fails and says so, and it can be added to
+# output.formats.
+NOT_OFFERED = [f for f in CANDIDATES if f not in CONFIG.get("output.formats")]
+
+
+@pytest.mark.parametrize("fmt", NOT_OFFERED)
+@pytest.mark.parametrize("sample,width", OFFERED_CASES)
+@pytest.mark.xfail(strict=True, reason="its round trip changes the needle path (see the comment above)")
+def test_formats_not_offered_still_fail_their_round_trip(fmt, sample, width, tmp_path):
+    original, again = round_trip(fmt, sample, width, tmp_path)
     assert again == original
+
+
+def test_only_formats_that_pass_are_offered_and_the_rest_say_why():
+    available, unavailable = offered(CONFIG)
+    assert available == ["dst"]
+    assert set(unavailable) == {"pes", "jef", "vp3", "exp"}
+    assert "stitch positions changed" in unavailable["pes"]
+    for fmt in ("jef", "vp3", "exp"):
+        assert "jumps, trims or colour changes changed" in unavailable[fmt]
+    for fmt in available:
+        assert round_trip_problem(CHECK_DESIGN, fmt) is None
+
+
+def test_the_runtime_check_design_is_a_real_multi_colour_design():
+    pattern = pyembroidery.read_dst(str(CHECK_DESIGN))
+    commands = [c & pyembroidery.COMMAND_MASK for _x, _y, c in pattern.stitches]
+    assert commands.count(pyembroidery.COLOR_CHANGE) >= 2
+    assert commands.count(pyembroidery.JUMP) > 10 and commands.count(pyembroidery.STITCH) > 1000

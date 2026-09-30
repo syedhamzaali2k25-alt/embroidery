@@ -163,10 +163,21 @@ def test_preview_returns_stitch_json_and_dst_matches_cli(client, tmp_path):
     assert download.content == (cli_out / "out.dst").read_bytes()
 
 
-def test_download_rejects_other_formats(client):
+def test_download_rejects_formats_that_fail_their_round_trip(client):
     design_id = upload(client, (SAMPLES / "circle.png").read_bytes()).json()["id"]
-    response = client.get(f"/designs/{design_id}/download?format=pes")
-    assert response.status_code == 422 and response.json()["error"].startswith("format: Input should be 'dst'")
+    for fmt in ("pes", "jef", "vp3", "exp", "xyz"):
+        response = client.get(f"/designs/{design_id}/download?format={fmt}")
+        assert response.status_code == 422, fmt
+        assert response.json()["error"].endswith("Choose one of: DST."), response.json()["error"]
+    assert "round-trip test fails" in client.get(f"/designs/{design_id}/download?format=pes").json()["error"]
+
+
+def test_formats_lists_only_what_passes_the_round_trip_and_why_not_for_the_rest(client):
+    body = client.get("/formats").json()
+    assert body["formats"] == ["dst"]
+    assert [u["format"] for u in body["unavailable"]] == ["pes", "jef", "vp3", "exp"]
+    assert all(u["reason"] and u["label"] == body["labels"][u["format"]] for u in body["unavailable"])
+    assert client.get("/site").json()["export_formats"] == ["dst"]
 
 
 def test_large_images_are_not_previewed_synchronously(tmp_path):
