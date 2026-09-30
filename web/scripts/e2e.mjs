@@ -299,10 +299,9 @@ try {
 
       // Pull compensation on the satin branch.
       await page.getByRole('button', { name: /^Shape 7 / }).click();
-      await page.locator('#pull').fill('0.8');
       const beforePull = await dst(bird);
-      await page.getByRole('button', { name: 'Apply' }).click();
-      await page.getByRole('button', { name: /Use the default/ }).waitFor({ timeout: 60000 });
+      await page.locator('#pull').fill('0.8'); // the slider: letting go saves
+      await page.getByRole('button', { name: 'Undo: Set pull compensation to 0.8 mm' }).waitFor({ timeout: 60000 });
       check(Buffer.compare(await dst(bird), beforePull) !== 0, 'pull compensation 0.8 mm on the branch changes the DST');
       await shot('editor-real-pull');
 
