@@ -255,7 +255,9 @@ def split_runs(column: Column) -> tuple[list[Column], int]:
 
 
 def _inset(rung: Rung, side: str, inset: float) -> Pt:
-    edge = rung.left if side == "left" else rung.right
+    # Underlay is inset from the shape's outline, not from the pull-compensated satin edge:
+    # otherwise a large pull compensation would push the underlay out onto the outline.
+    edge = rung.edge_left if side == "left" else rung.edge_right
     half = math.hypot(edge[0] - rung.center[0], edge[1] - rung.center[1])
     if half <= inset:
         return rung.center

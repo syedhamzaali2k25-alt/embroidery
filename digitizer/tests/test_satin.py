@@ -89,6 +89,16 @@ def test_underlay_comes_first_and_follows_the_switches(edge, zigzag):
     assert all(inset - 1e-9 <= p[1] <= 3 - inset + 1e-9 for p in underlay)  # stays inside the edges
 
 
+@pytest.mark.parametrize("pull_comp", [0.0, 0.8])
+def test_underlay_is_inset_from_the_outline_whatever_the_pull_compensation(pull_comp):
+    seq = satin.column_sequence(_bar_column(pull_comp), 0, True, _settings(True, True))
+    inset = min(CONFIG.get("satin.underlay_edge_inset_mm"), CONFIG.get("satin.underlay_zigzag_inset_mm"))
+    underlay = [p for p, role in seq if role == "underlay"]
+    assert underlay and all(inset - 1e-9 <= p[1] <= 3 - inset + 1e-9 for p in underlay)  # the bar is 3 mm wide
+    satin_ys = [p[1] for p, role in seq if role == "satin"]
+    assert min(satin_ys) == pytest.approx(-pull_comp / 2) and max(satin_ys) == pytest.approx(3 + pull_comp / 2)
+
+
 def test_ring_needs_no_jumps_and_labels_match_the_file(tmp_path):
     result = digitize(SAMPLES / "thin_ring.png", tmp_path, CONFIG, 40)  # raises if DST != written stitches
     assert result.satin_columns == 1 and result.jumps == 0

@@ -237,7 +237,7 @@ try {
 
       await page.locator('.manual__row', { hasText: 'Split' }).click();
       check(await page.locator('.manual__row', { hasText: 'Split' }).getAttribute('aria-pressed') === 'true'
-        && (await page.locator('.stats').innerText()).includes('Split tool on'), 'Split row activates the Split tool');
+        && (await page.locator('.tool-hint').innerText()).includes('Split: click a point on one edge'), 'Split row activates the Split tool');
       await page.locator('.manual__row', { hasText: 'Select Satin Columns' }).click();
       check(await page.locator('.manual__row', { hasText: 'Select Satin Columns' }).getAttribute('aria-pressed') === 'true',
         'Select Satin Columns row activates that tool');
@@ -257,6 +257,7 @@ try {
       }
       await page.getByRole('button', { name: 'Retry' }).click();
       await page.locator('[data-state=done]').waitFor({ timeout: 15000 });
+      await page.locator('.traced__column').first().waitFor({ timeout: 60000 }); // drawn once the editor state has loaded
       check(await page.locator('.traced__column').count() === columns, 'Redis back: Retry restores the traced result');
     }
 
