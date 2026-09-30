@@ -41,6 +41,10 @@ export function DesignShapesLayer({ shapes, fit, hidden, selected, traced, onSel
               style={traced ? undefined : { fill: hexOf.get(s.colour) }} data-colour={s.colour}
               data-shape={s.number} data-kind={s.kind} onClick={() => onSelect(s.number)} />
       ))}
+      {!traced && visible.flatMap((s) => (s.overlap ?? []).map((poly, i) => (
+        // Where this colour runs under the next one it touches: a thin darker seam.
+        <path key={`o${s.number}-${i}`} className="design-overlap" d={path(poly, fit)} fillRule="evenodd" />
+      )))}
       {chosen && <path className="design-shape__selected" d={path(chosen.rings, fit)} fillRule="evenodd" />}
     </g>
   );

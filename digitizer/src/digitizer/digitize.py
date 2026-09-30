@@ -106,6 +106,9 @@ class Shape:
     poly: Polygon  # in mm, design coordinates
     kind: str = ""  # "fill" or "satin"; "" when the caller did not ask for classification
     max_width_mm: float = 0.0  # widest point (largest circle that fits inside)
+    # The part added by colour overlap (under later, touching colours), in mm; empty if none.
+    # poly and poly_px already include it.
+    overlap: Polygon | MultiPolygon = field(default_factory=Polygon)
 
 
 @dataclass
@@ -154,6 +157,10 @@ def trace_design(image_path: str | Path, config: Config, width_mm: float | None 
        the kept shapes are scaled to the width.
     4. Classify each shape fill or satin by its widest point (satin.max_width_mm).
 
+    5. Colour overlap (the one rule): a shape that touches a shape of a colour sewn later grows by
+       colour.overlap_mm into that shape, so it runs under the later colour and no fabric shows
+       between them (see grow_under_later_colours). Classification uses the grown shape.
+
     Sewing order (the one rule): colour layers are sewn largest total shape area first, smallest
     last, so big areas go down first and small details are sewn on top; equal areas keep palette
     order. Within a layer, shapes keep the order they were traced in.
@@ -191,19 +198,57 @@ def trace_design(image_path: str | Path, config: Config, width_mm: float | None 
 
     cleaned.sort(key=lambda item: (-sum(p.area for p in item[1]), item[0].index))
     _, tf = scale_to_width([p for _, polys in cleaned for p in polys], width)
+    grown = grow_under_later_colours([(n, p) for n, (_, polys) in enumerate(cleaned) for p in polys],
+                                     config.get("colour.overlap_mm") / tf.mm_per_px)
     max_width = config.get("satin.max_width_mm") if classify else None
     layers, number = [], 0
     for layer_number, (colour, polys) in enumerate(cleaned, start=1):
         shapes = []
-        for p in polys:
+        for _ in polys:
+            poly_px, added = grown[number]
             number += 1
-            shape = Shape(number, layer_number, p, tf.geom(p))
+            shape = Shape(number, layer_number, poly_px, tf.geom(poly_px), overlap=tf.geom(added))
             if classify:
-                shape.kind, _mask, dist = classify_shape(p, q.shape, tf, max_width)
+                shape.kind, _mask, dist = classify_shape(poly_px, q.shape, tf, max_width)
                 shape.max_width_mm = shape_max_width_mm(dist, tf)
             shapes.append(shape)
         layers.append(ColourLayer(layer_number, colour, shapes))
     return Traced(layers, tf, q.shape, q.colours, q.background, found, found - kept_count, holes_filled)
+
+
+# Traced outlines run through the centres of each region's edge pixels, so two colour regions
+# that touch are 1 px apart (sqrt(2) diagonally). Within this distance they count as neighbours.
+# A property of the tracing (pixel units), not a product setting.
+NEIGHBOUR_PX = 1.5
+
+
+def grow_under_later_colours(shapes: list[tuple[int, Polygon]], distance_px: float):
+    """Colour overlap. shapes are (layer index in sewing order, outline in pixels). Returns, per
+    shape, (grown outline, the part that was added).
+
+    A shape grows only where it touches a shape of a LATER layer (outlines within NEIGHBOUR_PX):
+    by distance_px, and only into that later shape plus the seam between the two. So it never
+    reaches a colour it does not touch, never grows past the design's outer edge (the seam is
+    the only place outside both shapes it may cover), and the later colour, sewn on top, hides
+    the overlap. The last colour never grows."""
+    out = []
+    for i, (layer, shape) in enumerate(shapes):
+        reach = shape.buffer(distance_px)
+        near = shape.buffer(NEIGHBOUR_PX)
+        parts = []
+        for j, (other_layer, other) in enumerate(shapes):
+            if other_layer <= layer or distance_px <= 0 or shape.distance(other) > NEIGHBOUR_PX:
+                continue
+            seam = near.intersection(other.buffer(NEIGHBOUR_PX))
+            parts.append(reach.intersection(unary_union([other, seam])))
+        if not parts:
+            out.append((shape, Polygon()))
+            continue
+        grown = unary_union([shape, *parts]).buffer(0)
+        if isinstance(grown, MultiPolygon):  # drop crumbs that do not join the shape
+            grown = max(grown.geoms, key=lambda g: g.intersection(shape).area)
+        out.append((grown, grown.difference(shape)))
+    return out
 
 
 # ---------- 5a. fill rows ----------
@@ -605,6 +650,8 @@ class Result:
     shapes_found: int = 0  # shapes traced before speck removal
     specks_removed: int = 0  # shapes dropped as specks
     holes_filled: int = 0  # holes smaller than the minimum shape area, filled
+    # Colour overlap: where a colour runs under a later, touching colour (polygons as rings, mm).
+    overlaps: tuple = ()
 
     def summary(self) -> str:
         colours = ", ".join(f"{c.hex} ({c.shapes} shapes, {c.stitches} stitches)" for c in self.colours)
@@ -686,7 +733,8 @@ def digitize(image_path: str | Path, out_dir: str | Path, config: Config | None 
                     tuple(layer_of[s] for s in built.sources),
                     tuple(ColourSummary(layer.hex, len(layer.shapes), colour_stitches[layer.number],
                                         sum(s.poly.area for s in layer.shapes)) for layer in traced.layers),
-                    traced.shapes_found, traced.specks_removed, traced.holes_filled)
+                    traced.shapes_found, traced.specks_removed, traced.holes_filled,
+                    tuple(ring for s in traced.shapes for ring in polygons_json(s.overlap)))
     # The DST format has no room for these; keep them next to it for the readback report.
     (out_dir / "report.json").write_text(json.dumps(result.to_json(), indent=2) + "\n")
     return result
@@ -736,6 +784,12 @@ def trace_columns(image_path: str | Path, config: Config, width_mm: float | None
     }
 
 
+def polygons_json(geometry) -> list[list[list[list[float]]]]:
+    """Polygon or MultiPolygon -> [polygon: [ring: [[x, y], ...], ...], ...] (outline first, then holes)."""
+    return [[[list(p) for p in ring.coords] for ring in (poly.exterior, *poly.interiors)]
+            for poly in _polygons(geometry)]
+
+
 def thread_placeholder() -> dict:
     """Thread names and codes are not chosen yet: a labelled placeholder, never an invented code."""
     return {"name": "[Thread name]", "code": "[Thread code]", "placeholder": True}
@@ -769,6 +823,7 @@ def design_shapes(image_path: str | Path, config: Config, width_mm: float | None
             "area_mm2": shape.poly.area,
             "bounds_mm": list(shape.poly.bounds),
             "rings": [[list(p) for p in ring.coords] for ring in (outline.exterior, *outline.interiors)],
+            "overlap": polygons_json(shape.overlap),
         })
     min_x, min_y, max_x, max_y = traced.bounds_mm
     return {

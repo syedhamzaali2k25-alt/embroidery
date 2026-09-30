@@ -92,7 +92,10 @@ class DesignShape(BaseModel):
     max_width_mm: float
     area_mm2: float
     bounds_mm: list[float] = Field(description="[min x, min y, max x, max y]")
-    rings: list[list[list[float]]] = Field(description="Outline first, then holes; points in mm")
+    rings: list[list[list[float]]] = Field(description="Outline first, then holes; points in mm (includes the overlap)")
+    overlap: list[list[list[list[float]]]] = Field(
+        default=[], description="Where this shape runs under a later colour it touches (colour.overlap_mm): "
+                                "polygons, each outline then holes, in mm")
 
 
 class DesignShapes(BaseModel):
@@ -240,6 +243,8 @@ class PreviewResponse(BaseModel):
     report: DigitizeReport
     settings_used: SettingsUsed
     colours: list[ColourLayerOut] = Field(description="Colour layers in sewing order, one colour change between each")
+    overlaps: list[list[list[list[float]]]] = Field(
+        default=[], description="Where one colour runs under a later colour it touches: polygons (rings) in mm")
     layers: list[Layer]
     warnings: list[QualityWarningOut]
     stitches: list[StitchPoint] = Field(description="Every needle command in the DST, in sewing order.")

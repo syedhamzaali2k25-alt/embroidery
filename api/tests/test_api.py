@@ -360,3 +360,13 @@ def test_bad_colour_choices_are_rejected_plainly(client, body, phrase):
     design_id = upload(client, (SAMPLES / "bird.png").read_bytes()).json()["id"]
     response = client.post(f"/designs/{design_id}/preview", json=body)
     assert response.status_code == 422 and phrase in response.json()["error"]
+
+
+def test_preview_and_shapes_show_where_colours_overlap(client):
+    design_id = upload(client, (SAMPLES / "bird.png").read_bytes(), settings={"width_mm": 90}).json()["id"]
+    preview = client.post(f"/designs/{design_id}/preview").json()
+    shapes = client.get(f"/designs/{design_id}/shapes").json()
+    per_shape = [poly for s in shapes["shapes"] for poly in s["overlap"]]
+    assert preview["overlaps"] and preview["overlaps"] == per_shape
+    last = len(shapes["colours"])
+    assert all(not s["overlap"] for s in shapes["shapes"] if s["colour"] == last)

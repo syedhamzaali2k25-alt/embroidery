@@ -163,7 +163,7 @@ export default function Preview() {
             </div>
           )}
           <div className="flow-stage">
-            <StitchCanvas stitches={data.stitches} colourOf={colourOf} selected={selected?.layers ?? null}
+            <StitchCanvas stitches={data.stitches} colourOf={colourOf} selected={selected?.layers ?? null} overlaps={data.overlaps}
                           label={`Stitch preview: ${stats.stitch_count} stitches, ${mm(stats.width_mm)} by ${mm(stats.height_mm)} mm`} />
             {busy && (
               <div className="flow-stage__busy" role="status"><div className="flow-spinner" aria-hidden="true" />Updating stitches…</div>
@@ -171,6 +171,7 @@ export default function Preview() {
             <div className="flow-stage__legend" aria-hidden="true">
               <span className="flow-legend"><span className="flow-legend__line" />Stitches, in each layer's colour</span>
               <span className="flow-legend"><span className="flow-legend__line flow-legend__line--jump" />Jumps</span>
+              {data.overlaps.length > 0 && <span className="flow-legend"><span className="flow-legend__line flow-legend__line--seam" />Colour overlap</span>}
               <span className="flow-legend"><span className="flow-legend__line flow-legend__line--faded" />Not selected</span>
             </div>
           </div>

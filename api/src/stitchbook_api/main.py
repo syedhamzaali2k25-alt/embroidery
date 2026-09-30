@@ -263,7 +263,8 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
                    for i, c in enumerate(result.colours, start=1)]
         return PreviewResponse(id=design_id, stats=stats, report=report,
                                settings_used=SettingsUsed(width_mm=width, fill_row_spacing_mm=spacing),
-                               colours=colours, layers=layers, warnings=record.warnings, stitches=stitches)
+                               colours=colours, overlaps=list(result.overlaps), layers=layers,
+                               warnings=record.warnings, stitches=stitches)
 
     @app.get("/designs/{design_id}/shapes", response_model=DesignShapes, responses=ERRORS)
     def shapes(design_id: DesignId) -> DesignShapes:

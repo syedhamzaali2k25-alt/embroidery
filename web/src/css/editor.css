@@ -360,6 +360,7 @@ body.editor {
 /* ---------- The uploaded design on the canvas ---------- */
 .design-canvas__bg { fill: transparent; }
 .design-shape { fill: var(--ink); stroke: var(--muted); stroke-width: 0.5; cursor: pointer; } /* the outline keeps pale thread colours visible on white */
+.design-overlap { fill: var(--ink); opacity: 0.45; pointer-events: none; }
 .design-shapes.is-under .design-shape { fill: none; stroke: var(--muted); stroke-width: 1; }
 .design-shape__selected { fill: none; stroke: var(--green); stroke-width: 2; stroke-dasharray: 5 4; pointer-events: none; }
 .stage__message { display: grid; justify-items: center; gap: 12px; max-width: 360px; text-align: center; font-size: 14px; }

@@ -9,7 +9,7 @@ Drawing coordinates here describe test pictures, not stitch settings.
   mixed.png     a wide disc (fill), a thin swoosh arc (satin), a sharp chevron (satin, tight
                 corner) and a lollipop: a disc joined to a thin stick (one shape, wide + narrow)
   junctions.png thin strokes meeting as a T, an X and a Y (satin junctions only)
-  two_colour.png   a red disc and a blue bar on white (two thread colours)
+  two_colour.png   a red disc and a blue bar that cuts into it, on white (two touching colours)
   three_colour.png a green square with an orange disc overlapping it and a navy bar: colours that
                    touch, so the anti-aliased border between them must not become a third shape
   gradient.png     a disc filled with a smooth top-to-bottom gradient (no flat colours at all)
@@ -121,7 +121,7 @@ def junctions() -> np.ndarray:
 def two_colour() -> np.ndarray:
     img = blank_colour()
     cv2.circle(img, (210, 300), 150, bgr("#D62828"), -1, lineType=cv2.LINE_AA)
-    cv2.rectangle(img, (420, 120), (520, 480), bgr("#1D4ED8"), -1, lineType=cv2.LINE_AA)
+    cv2.rectangle(img, (330, 120), (430, 480), bgr("#1D4ED8"), -1, lineType=cv2.LINE_AA)  # overlaps the disc
     return img
 
 

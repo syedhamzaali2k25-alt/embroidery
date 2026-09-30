@@ -11,8 +11,8 @@
 | `thin_ring` | 40 mm | one closed satin loop |
 | `mixed` | 50 mm | wide disc (fill), swoosh and chevron (satin), a lollipop (one shape, wide + narrow, so fill) |
 | `junctions` | 50 mm | thin strokes meeting as a T, an X and a Y: satin junctions and their fill patches |
-| `two_colour` | 60 mm | two thread colours on white: two layers, one colour change |
-| `three_colour` | 60 mm | three colours, two of them touching: the blend along their border must not become a shape |
+| `two_colour` | 60 mm | a red disc and a blue bar that cuts into it: two touching colours, one colour change, colour overlap |
+| `three_colour` | 60 mm | three colours, two of them touching: the blend along their border must not become a shape; the bar touches nothing, so it gets no overlap |
 | `gradient` | 60 mm | a smoothly shaded disc: reduced to at most `colour.max_colours` flat bands |
 | `noisy_specks` | 60 mm | a star with dark specks, grain and JPEG artefacts: speck removal and the "many specks" warning |
 | `bird` | 90 mm | an original seven-colour bird on a branch (drawn by `make_samples.py`, a stand-in for a customer logo) |

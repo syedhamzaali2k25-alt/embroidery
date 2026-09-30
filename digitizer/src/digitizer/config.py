@@ -28,6 +28,12 @@ PRODUCT: dict[str, dict[str, Any]] = {
         # count as the same thread colour. Also decides which pixels are "flat" (all neighbours
         # within this distance) and therefore used to find the colours; edge blends are not.
         "same_colour_delta_e": PLACEHOLDER,
+        # Overlap between touching colours, so no fabric shows between them. Where a shape touches
+        # a shape of a colour sewn LATER, the earlier shape is grown this far outward, but only
+        # into that later shape (and the thin seam between them): it runs under the later
+        # colour, which is sewn on top. Never into colours it does not touch, never past the
+        # design's outer edge. Measured from the traced outline, in mm.
+        "overlap_mm": PLACEHOLDER,
     },
     "design": {
         # Width of the finished design; the logo is scaled so its bounding box has this width.
@@ -192,6 +198,7 @@ PRODUCT: dict[str, dict[str, Any]] = {
 TEST_RUN_OVERRIDES: dict[str, Any] = {
     "colour.max_colours": 8,
     "colour.same_colour_delta_e": 10,
+    "colour.overlap_mm": 0.4,
     "input.min_shape_area_mm2": 1.0,
     "quality.max_specks": 10,
     "design.width_mm": 60,

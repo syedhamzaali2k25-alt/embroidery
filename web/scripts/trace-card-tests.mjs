@@ -193,6 +193,14 @@ try {
     await page.close();
   }
   {
+    const { page } = await open(browser, { traceJob: null });
+    await page.locator('.design-shape').first().waitFor();
+    const expected = shapes.shapes.reduce((n, s) => n + (s.overlap?.length ?? 0), 0);
+    check(expected > 0 && await page.locator('.design-overlap').count() === expected,
+      `colour overlap drawn as a seam: ${expected} overlap regions from the API`);
+    await page.close();
+  }
+  {
     const page = await browser.newPage();
     await page.goto(`${base}/editor`);
     await page.locator('.hoop-canvas').waitFor();

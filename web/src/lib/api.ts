@@ -41,8 +41,10 @@ export type ColourLayer = {
 export type DetectedColour = { hex: string; share: number; shape_count: number; bounds_px: number[] };
 export type DesignShape = {
   number: number; colour: number; kind: "fill" | "satin"; max_width_mm: number; area_mm2: number; bounds_mm: number[];
-  /** Outline first, then holes; points in mm. */
+  /** Outline first, then holes; points in mm (includes the overlap). */
   rings: number[][][];
+  /** Where this shape runs under a later colour it touches: polygons (outline, then holes), mm. */
+  overlap?: number[][][][];
 };
 export type DesignShapes = {
   id: string; colours: ColourLayer[]; shapes: DesignShape[]; bounds_mm: number[]; width_mm: number; height_mm: number;
@@ -107,6 +109,8 @@ export type Preview = {
   };
   settings_used: { width_mm: number; fill_row_spacing_mm: number };
   colours: ColourLayer[];
+  /** Where one colour runs under a later colour it touches: polygons (outline, then holes), mm. */
+  overlaps: number[][][][];
   layers: Layer[];
   warnings: QualityWarning[];
   stitches: StitchPoint[];

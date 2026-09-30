@@ -4,6 +4,7 @@ import type { StitchPoint } from "./api";
 
 const PADDING = 24; // css px around the design
 const FADED = 0.18; // opacity of stitches outside the selection, so the selected ones stand out
+const SEAM = 0.45; // opacity of the ink seam drawn over colour overlaps
 const LIGHT = 0.85; // thread colours lighter than this (relative luminance) get a thin outline on the white canvas
 
 function token(name: string): string {
@@ -25,11 +26,13 @@ type Props = {
   colourOf: (layer: number | null) => string;
   /** Layers to highlight; the rest are faded. Null or empty: nothing is faded. */
   selected: Set<number> | null;
+  /** Colour overlap regions (polygons of rings, mm), drawn as a thin darker seam on top. */
+  overlaps?: number[][][][];
   label: string;
 };
 
 /** Draws the real needle path from the API: each stitch in its thread colour, jumps dashed. */
-export function StitchCanvas({ stitches, colourOf, selected, label }: Props) {
+export function StitchCanvas({ stitches, colourOf, selected, overlaps = [], label }: Props) {
   const ref = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -97,13 +100,30 @@ export function StitchCanvas({ stitches, colourOf, selected, label }: Props) {
           prev = s;
         }
       }
+      // Colour overlap: where one colour runs under the next, a thin darker seam.
+      ctx.globalAlpha = 1;
+      ctx.setLineDash([]);
+      for (const polygon of overlaps) {
+        ctx.beginPath();
+        for (const ring of polygon) {
+          ring.forEach(([x, y], i) => {
+            const [cx, cy] = px({ x_mm: x, y_mm: y, command: "stitch", layer: null });
+            if (i === 0) ctx.moveTo(cx, cy);
+            else ctx.lineTo(cx, cy);
+          });
+          ctx.closePath();
+        }
+        ctx.globalAlpha = focus ? FADED * SEAM : SEAM;
+        ctx.fillStyle = token("--ink");
+        ctx.fill("evenodd");
+      }
       ctx.globalAlpha = 1;
     };
     draw();
     const observer = new ResizeObserver(draw);
     observer.observe(canvas);
     return () => observer.disconnect();
-  }, [stitches, colourOf, selected]);
+  }, [stitches, colourOf, selected, overlaps]);
 
   return <canvas ref={ref} role="img" aria-label={label} />;
 }
