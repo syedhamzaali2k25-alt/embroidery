@@ -451,3 +451,28 @@ body.editor {
 .pull__input input { flex: 1; min-width: 0; height: 38px; padding: 0 10px; border: 0; outline: 0; background: transparent; font: inherit; font-size: 16px; color: var(--ink); }
 .pull__input .unit { padding: 0 10px; font-size: 14px; font-weight: 500; }
 .panel__note--error { font-weight: 700; }
+
+/* Fabric preset picker, with the Unverified mark right next to it. */
+.fabric { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.fabric__select {
+  flex: 1 1 160px;
+  min-width: 0;
+  min-height: 40px;
+  padding: 0 10px;
+  border: 1px solid var(--muted);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 500;
+}
+.fabric__select:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
+.fabric__status {
+  padding: 4px 12px;
+  border-radius: var(--radius-pill);
+  background: var(--line);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 700;
+}

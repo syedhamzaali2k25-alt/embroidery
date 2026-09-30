@@ -153,3 +153,68 @@ def test_bad_edit_bodies_get_plain_messages(client):
         assert response.status_code == 422 and response.json()["error"].endswith("Fix the request and send it again.")
     missing = client.post(f"/designs/{design_id}/edits", json={"op": "set_type", "shape": 99, "kind": "fill"})
     assert missing.status_code == 422 and "There is no shape 99" in missing.json()["error"]
+
+
+# ---------- fabric presets ----------
+
+def test_fabric_presets_are_listed_unverified_and_re_sew_through_the_edit_path(client, tmp_path):
+    design_id = bird(client)
+    before = client.get(f"/designs/{design_id}/editor").json()
+    dst_before = download(client, design_id)
+    assert before["fabric"]["preset"] is None
+    presets = before["fabric"]["presets"]
+    assert [p["name"] for p in presets] == CONFIG.get("fabric.presets")
+    assert all(p["verified"] is False and p["ready"] for p in presets)  # test values; none tested on a machine
+
+    knit = next(p for p in presets if p["name"] == "knit_jersey")
+    after = client.post(f"/designs/{design_id}/edits", json={"op": "fabric", "preset": "knit_jersey"}).json()
+    assert after["fabric"]["preset"] == "knit_jersey" and after["shapes"]["fabric"] == "knit_jersey"
+    assert after["history"]["undo"] == "Choose a fabric preset"
+    assert after["defaults"]["pull_compensation_mm"] == knit["values"]["pull_compensation_mm"]
+    assert after["stats"]["stitch_count"] != before["stats"]["stitch_count"]
+    dst_after = download(client, design_id)
+    assert dst_after != dst_before
+
+    preview = client.post(f"/designs/{design_id}/preview").json()  # Preview sews the same file
+    assert preview["stats"] == after["stats"] and download(client, design_id) == dst_after
+    assert preview["settings_used"]["fill_row_spacing_mm"] == knit["values"]["fill_row_spacing_mm"]
+
+    # The fill density set by hand on the preview screen wins over the preset's.
+    by_hand = client.post(f"/designs/{design_id}/preview", json={"fill_row_spacing_mm": 0.6}).json()
+    assert by_hand["settings_used"]["fill_row_spacing_mm"] == 0.6
+
+    undone = client.post(f"/designs/{design_id}/edits/undo").json()
+    assert undone["fabric"]["preset"] is None
+
+
+def test_a_preset_that_does_not_exist_is_refused_and_nothing_is_stored(client):
+    design_id = bird(client)
+    response = client.post(f"/designs/{design_id}/edits", json={"op": "fabric", "preset": "velvet"})
+    assert response.status_code == 422 and "not in the list" in response.json()["error"]
+    assert client.get(f"/designs/{design_id}").json()["edits_applied"] == 0
+
+
+# ---------- layer isolation ----------
+
+def test_a_split_changes_only_its_colour_layer_and_undo_restores_the_file(client, tmp_path):
+    from digitizer.readback import colour_layer_bytes, colour_layer_stitches
+
+    design_id = bird(client)
+    state = client.get(f"/designs/{design_id}/editor").json()
+    (tmp_path / "before.dst").write_bytes(download(client, design_id))
+    branch_colour = state["shapes"]["shapes"][BRANCH - 1]["colour"]
+    a, b = branch_cut(state, -20)
+    split = client.post(f"/designs/{design_id}/edits", json={"op": "split", "a": a, "b": b})
+    assert split.status_code == 200, split.text
+    (tmp_path / "after.dst").write_bytes(download(client, design_id))
+
+    before, after = colour_layer_bytes(tmp_path / "before.dst"), colour_layer_bytes(tmp_path / "after.dst")
+    stitches_before = colour_layer_stitches(tmp_path / "before.dst")
+    stitches_after = colour_layer_stitches(tmp_path / "after.dst")
+    assert len(before) == len(after) == len(state["colours"]) >= 3
+    for layer in range(1, len(before) + 1):
+        same = before[layer - 1] == after[layer - 1] and stitches_before[layer - 1] == stitches_after[layer - 1]
+        assert same == (layer != branch_colour), f"colour layer {layer}"
+
+    client.post(f"/designs/{design_id}/edits/undo")
+    assert download(client, design_id) == (tmp_path / "before.dst").read_bytes()

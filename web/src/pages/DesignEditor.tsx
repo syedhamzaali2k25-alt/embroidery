@@ -2,7 +2,8 @@ import { useCallback, useEffect, useRef, useState, type CSSProperties, type Mous
 import { Link } from "react-router-dom";
 
 import {
-  api, ApiError, type ClientConfig, type DesignRecord, type DesignShape, type EditorState, type ShapeKind, type TraceResult,
+  api, ApiError, type ClientConfig, type DesignRecord, type DesignShape, type EditorState, type FabricPreset, type ShapeKind,
+  type TraceResult,
 } from "../lib/api";
 import {
   DesignShapesLayer, fitTo, OverlapSeams, RingPicker, StitchLines, ToolMarks, TracedColumns, unfitFrom, type RingPick,
@@ -442,7 +443,7 @@ function ShapePanel({ data, failed, shape, editor, onSelect, hidden, onToggle }:
               </div>
               <p className={pullOk ? "panel__note" : "panel__note panel__note--error"} id="pull-help">
                 {pullOk
-                  ? `Widens each satin stitch by this much in total, to make up for the fabric pulling in. Default ${defaults.pull_compensation_mm} mm.`
+                  ? `Widens each satin stitch by this much in total, to make up for the fabric pulling in. Default ${defaults.pull_compensation_mm} mm${data.fabric.preset ? " (from the fabric preset)" : ""}.`
                   : `Enter ${defaults.pull_compensation_min_mm} to ${defaults.pull_compensation_max_mm} mm.`}
               </p>
               {shape.pull_compensation_mm !== null && shape.pull_compensation_mm !== undefined && (
@@ -455,6 +456,8 @@ function ShapePanel({ data, failed, shape, editor, onSelect, hidden, onToggle }:
           )}
         </section>
       )}
+
+      <FabricSection fabric={data.fabric} editor={editor} />
 
       {shapes.skipped_edits && shapes.skipped_edits.length > 0 && (
         <section className="panel__section" role="alert">
@@ -514,5 +517,52 @@ function ShapePanel({ data, failed, shape, editor, onSelect, hidden, onToggle }:
         </div>
       </section>
     </>
+  );
+}
+
+function presetValues(v: NonNullable<FabricPreset["values"]>): string {
+  return `Fill spacing ${v.fill_row_spacing_mm} mm · satin spacing ${v.satin_spacing_mm} mm · ` +
+    `underlay spacing ${v.underlay_spacing_mm} mm · edge walk ${v.underlay_edge_walk ? "on" : "off"} · ` +
+    `zigzag underlay ${v.underlay_zigzag ? "on" : "off"} · pull compensation ${v.pull_compensation_mm} mm`;
+}
+
+/**
+ * Fabric preset: density, underlay and pull compensation for a kind of fabric, from config.py.
+ * Choosing one is a change like any other (undo, redo, Preview and Download follow it). A preset
+ * not yet sewn and checked on a machine is always marked Unverified.
+ */
+function FabricSection({ fabric, editor }: { fabric: EditorState["fabric"]; editor: EditorHook }) {
+  const chosen = fabric.presets.find((p) => p.name === fabric.preset) ?? null;
+  const unverified = chosen ? !chosen.verified : fabric.presets.some((p) => !p.verified);
+  const noneReady = !fabric.presets.some((p) => p.ready);
+  return (
+    <section className="panel__section">
+      <label className="label" htmlFor="fabric">Fabric preset</label>
+      <div className="fabric">
+        <select id="fabric" className="fabric__select" value={fabric.preset ?? ""} aria-describedby="fabric-status fabric-help"
+                disabled={!!editor.saving || (noneReady && !fabric.preset)}
+                onChange={(e) => {
+                  const name = e.target.value || null;
+                  const label = fabric.presets.find((p) => p.name === name)?.label;
+                  void editor.edit({ op: "fabric", preset: name }, label ? `Choose the ${label} preset` : "Turn the fabric preset off");
+                }}>
+          <option value="">None (stitch defaults)</option>
+          {fabric.presets.map((p) => (
+            <option key={p.name} value={p.name} disabled={!p.ready}>{p.label}{p.ready ? "" : " (no values yet)"}</option>
+          ))}
+        </select>
+        {unverified && <span className="fabric__status" id="fabric-status">Unverified: not yet tested on a machine</span>}
+      </div>
+      <p className="panel__note" id="fabric-help">
+        {noneReady
+          ? "No preset has values yet, so none can be chosen."
+          : chosen?.values
+            ? presetValues(chosen.values)
+            : "Sets fill and satin density, underlay and pull compensation for a kind of fabric."}
+      </p>
+      {chosen && (
+        <p className="panel__note">The fill density set on the preview screen and a shape's own pull compensation still apply.</p>
+      )}
+    </section>
   );
 }

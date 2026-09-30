@@ -120,6 +120,7 @@ class DesignShapes(BaseModel):
     shapes_found: int = Field(description="Shapes traced before speck removal")
     specks_removed: int = Field(description="Shapes dropped as specks (smaller than input.min_shape_area_mm2)")
     skipped_edits: list[str] = Field(default=[], description="Editor changes that no longer fit the design")
+    fabric: str | None = Field(default=None, description="Fabric preset in effect; null = the stitch defaults")
 
 
 class TraceResult(BaseModel):
@@ -318,7 +319,14 @@ class ColumnEdit(BaseModel):
     colour: int | None = Field(default=None, ge=1, description="Colour layer for drawn edges (default: 1)")
 
 
-EditRequest = Annotated[SetTypeEdit | PullCompensationEdit | SplitEdit | ColumnEdit, Field(discriminator="op")]
+class FabricEdit(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    op: Literal["fabric"]
+    preset: str | None = Field(description="Fabric preset name from /editor; null = back to the stitch defaults")
+
+
+EditRequest = Annotated[SetTypeEdit | PullCompensationEdit | SplitEdit | ColumnEdit | FabricEdit,
+                        Field(discriminator="op")]
 
 
 class History(BaseModel):
@@ -330,10 +338,23 @@ class History(BaseModel):
 
 class EditorDefaults(BaseModel):
     """Values from config.py the editor shows as defaults and limits."""
-    pull_compensation_mm: float
+    pull_compensation_mm: float = Field(description="For shapes without their own: the fabric preset's, else config's")
     pull_compensation_min_mm: float
     pull_compensation_max_mm: float
     satin_max_width_mm: float
+
+
+class FabricPresetOut(BaseModel):
+    name: str
+    label: str
+    verified: bool = Field(description="Sewn on a machine and checked by the owner. False: show it as unverified")
+    ready: bool = Field(description="All its values are chosen in config.py; false = it cannot be chosen yet")
+    values: dict[str, float | bool] | None = Field(description="Its values (UNVERIFIED unless verified); null if not chosen")
+
+
+class FabricState(BaseModel):
+    preset: str | None = Field(description="Preset in effect; null = the stitch defaults")
+    presets: list[FabricPresetOut]
 
 
 class EditorState(BaseModel):
@@ -348,3 +369,4 @@ class EditorState(BaseModel):
     stitches: list[StitchPoint]
     history: History
     defaults: EditorDefaults
+    fabric: FabricState

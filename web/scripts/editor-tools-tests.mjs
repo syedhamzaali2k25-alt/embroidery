@@ -1,4 +1,4 @@
-// Browser tests for the editor's tools with a mocked API: stitch type, pull compensation, Split,
+// Browser tests for the editor's tools with a mocked API: stitch type, pull compensation, fabric preset, Split,
 // Select Satin Columns, Draw edges, Undo and Redo. Each checks the exact change sent to the API,
 // that nothing is shown as done before the server answers, and that a failure shows a plain
 // message with Retry that sends the same change again. (The real engine: npm run e2e.)
@@ -8,7 +8,7 @@ import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { extname, join, resolve } from 'node:path';
 
-import { allFill, clickAt, crossing, editorFixture, mockEditorApi } from './editor-helpers.mjs';
+import { allFill, clickAt, crossing, editorFixture, mockEditorApi, noPresetValues } from './editor-helpers.mjs';
 
 const root = resolve(new URL('..', import.meta.url).pathname);
 const dist = join(root, 'dist');
@@ -102,6 +102,46 @@ try {
       check(mock.bodies.at(-1).mm === null, `${tag} "Use the default" sends mm: null`);
       await page.getByRole('button', { name: /^Shape 1 / }).click();
       check(await page.locator('#pull').count() === 0, `${tag} fill shape: no pull compensation control`);
+      await page.close();
+    }
+
+    console.log(`-- fabric preset (${viewport.width}px)`);
+    {
+      const { page, mock } = await open(browser, viewport);
+      const picker = page.locator('#fabric');
+      const note = page.locator('.fabric .fabric__status');
+      check((await picker.inputValue()) === '' && (await note.innerText()) === 'Unverified: not yet tested on a machine',
+        `${tag} picker starts on None, with "Unverified: not yet tested on a machine" next to it`);
+      const box = async (l) => (await l.boundingBox());
+      const [pb, nb] = [await box(picker), await box(note)];
+      check(nb.y < pb.y + pb.height + 40, `${tag} the Unverified note sits right by the picker`);
+      mock.next = 'hold';
+      await picker.selectOption('knit_jersey');
+      await page.getByText('Saving: Choose the Knit / jersey preset').first().waitFor();
+      check((await picker.inputValue()) === '', `${tag} while saving, the picker still shows None (nothing shown as done early)`);
+      check(JSON.stringify(mock.bodies.at(-1)) === JSON.stringify({ op: 'fabric', preset: 'knit_jersey' }),
+        `${tag} sends {op: fabric, preset: knit_jersey} through the same edit path`);
+      mock.release();
+      await page.waitForFunction(() => document.querySelector('.file__state')?.textContent === 'Saved');
+      const help = await page.locator('#fabric-help').innerText();
+      check((await picker.inputValue()) === 'knit_jersey' && (await note.isVisible()) && help.startsWith('Fill spacing'),
+        `${tag} after the server answers: Knit / jersey chosen, its values listed, still marked Unverified`);
+      const rest = (await page.locator('.panel').innerText()).replaceAll('Unverified: not yet tested on a machine', '');
+      check(!/tested|verified/i.test(rest), `${tag} nothing else on the panel calls a preset tested or verified`);
+      check(await page.getByRole('button', { name: 'Undo: Choose a fabric preset' }).isEnabled(), `${tag} Undo names the preset change`);
+      mock.next = 'ok';
+      await picker.selectOption('');
+      await page.getByRole('button', { name: 'Undo: Fabric preset off' }).waitFor();
+      check(mock.bodies.at(-1).preset === null && (await picker.inputValue()) === '', `${tag} None sends preset: null`);
+      await page.close();
+    }
+    {
+      const { page } = await open(browser, viewport, { transform: noPresetValues });
+      const disabled = await page.locator('#fabric option:disabled').allInnerTexts();
+      check((await page.locator('#fabric').isDisabled()) && disabled.length === 3 && disabled.every((t) => t.endsWith('(no values yet)'))
+        && (await page.locator('#fabric-help').innerText()) === 'No preset has values yet, so none can be chosen.',
+        `${tag} presets without values (the product config today): listed, not choosable, says so`);
+      check(await page.locator('.fabric__status').isVisible(), `${tag} ...and still marked Unverified`);
       await page.close();
     }
 

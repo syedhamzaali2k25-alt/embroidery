@@ -61,6 +61,8 @@ export type DesignShapes = {
   shapes_found: number; specks_removed: number;
   /** Editor changes that no longer fit the design (e.g. their colour was left out), in words. */
   skipped_edits?: string[];
+  /** Fabric preset in effect; null = the stitch defaults. */
+  fabric?: string | null;
 };
 export type JobsHealth = { status: "ok"; workers: number };
 export type TraceResult = { columns: TraceColumn[]; fill_shapes: number; junction_patches: number; bounds_mm: number[]; width_mm: number };
@@ -173,7 +175,20 @@ export type Edit =
   | { op: "set_type"; shape: number; kind: "running" | "satin" | "fill" }
   | { op: "set_pull_compensation"; shape: number; mm: number | null }
   | { op: "split"; a: number[]; b: number[] }
-  | { op: "column"; left: OutlineRef | DrawnEdge; right: OutlineRef | DrawnEdge; colour?: number };
+  | { op: "column"; left: OutlineRef | DrawnEdge; right: OutlineRef | DrawnEdge; colour?: number }
+  | { op: "fabric"; preset: string | null };
+/** A fabric preset from config.py. Its values are UNVERIFIED unless `verified` (sewn and checked by the owner). */
+export type FabricPreset = {
+  name: string;
+  label: string;
+  verified: boolean;
+  /** All its values are chosen in config.py; false = it cannot be chosen yet. */
+  ready: boolean;
+  values: {
+    fill_row_spacing_mm: number; satin_spacing_mm: number; underlay_spacing_mm: number;
+    underlay_edge_walk: boolean; underlay_zigzag: boolean; pull_compensation_mm: number;
+  } | null;
+};
 export type EditorState = {
   id: string;
   shapes: DesignShapes;
@@ -185,6 +200,8 @@ export type EditorState = {
   stitches: StitchPoint[];
   history: { applied: number; total: number; undo: string | null; redo: string | null };
   defaults: { pull_compensation_mm: number; pull_compensation_min_mm: number; pull_compensation_max_mm: number; satin_max_width_mm: number };
+  /** The fabric preset in effect (null = the stitch defaults) and every preset in config order. */
+  fabric: { preset: string | null; presets: FabricPreset[] };
 };
 
 const post = (body?: unknown): RequestInit => ({

@@ -343,6 +343,19 @@ try {
       await saved();
       check((await page.locator('.segmented[aria-labelledby="stitch-type"] [aria-checked="true"]').innerText()) === 'Satin', 'Retry saves it');
 
+      // Fabric preset: re-sews through the same edit path; always marked Unverified.
+      const beforePreset = await dst(bird);
+      const countBeforePreset = await footerCount();
+      check((await page.locator('.fabric__status').innerText()) === 'Unverified: not yet tested on a machine',
+        'fabric preset picker shows "Unverified: not yet tested on a machine"');
+      await page.locator('#fabric').selectOption('cap_twill');
+      await page.getByRole('button', { name: 'Undo: Choose a fabric preset' }).waitFor({ timeout: 60000 });
+      const presetCount = await footerCount();
+      check(presetCount !== countBeforePreset && Buffer.compare(await dst(bird), beforePreset) !== 0,
+        `Cap / twill preset re-sews the design (${countBeforePreset} -> ${presetCount} stitches) and changes the DST`);
+      await page.locator('#fabric').scrollIntoViewIfNeeded();
+      await shot('editor-real-fabric');
+
       // Preview and Download reflect every change.
       const editorCount = await footerCount();
       await page.goto(`${WEB}/preview/${bird}`);

@@ -12,6 +12,7 @@ function label(edit) {
   if (edit.op === 'set_type') return `Change a shape to ${KIND[edit.kind]}`;
   if (edit.op === 'set_pull_compensation') return edit.mm === null ? 'Reset pull compensation' : `Set pull compensation to ${edit.mm} mm`;
   if (edit.op === 'split') return 'Split a satin shape';
+  if (edit.op === 'fabric') return edit.preset === null ? 'Fabric preset off' : 'Choose a fabric preset';
   return 'points' in edit.left ? 'Satin column from drawn edges' : 'Satin column from two outlines';
 }
 
@@ -31,6 +32,7 @@ export async function mockEditorApi(page, api, designId, { transform } = {}) {
       const shape = s.shapes.shapes.find((x) => x.number === edit.shape);
       if (edit.op === 'set_type' && shape) { shape.kind = edit.kind; shape.kind_chosen = true; }
       if (edit.op === 'set_pull_compensation' && shape) shape.pull_compensation_mm = edit.mm;
+      if (edit.op === 'fabric') s.fabric.preset = s.shapes.fabric = edit.preset;
     }
     const n = mock.applied, total = mock.history.length;
     s.history = { applied: n, total, undo: n ? label(mock.history[n - 1]) : null, redo: n < total ? label(mock.history[n]) : null };
@@ -56,6 +58,11 @@ export async function mockEditorApi(page, api, designId, { transform } = {}) {
   await page.route(`${api}/designs/${designId}/edits/redo`, (r) => { mock.redos++; mock.applied++; return r.fulfill({ json: state() }); });
   return mock;
 }
+
+/** The product config as it is today: every fabric preset value still a placeholder. */
+export const noPresetValues = (state) => {
+  for (const p of state.fabric.presets) { p.ready = false; p.values = null; }
+};
 
 /** A design with no satin shapes: every satin shape of the recorded bird sewn as fill. */
 export const allFill = (state) => {

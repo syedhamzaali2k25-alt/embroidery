@@ -23,6 +23,7 @@ from digitizer.config import Config, PlaceholderValueError, load_config, load_te
 from digitizer import quality
 from digitizer.digitize import design_shapes, digitize, thread_placeholder, trace_design
 from digitizer.edits import EditError, apply_edit, label as edit_label, to_pixels
+from digitizer.fabric import presets as fabric_presets
 from digitizer.readback import records
 from fastapi import Body, FastAPI, File, Form, HTTPException, Path as PathParam, Query, Request, UploadFile
 from fastapi.exceptions import RequestValidationError
@@ -47,6 +48,8 @@ from stitchbook_api.models import (
     EditorState,
     EditRequest,
     ErrorResponse,
+    FabricPresetOut,
+    FabricState,
     HealthResponse,
     History,
     JobOut,
@@ -257,10 +260,8 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
                                      f"while you wait. Resize it to at most {limit} px and upload again "
                                      "(background processing for large images is not built yet).")
 
-    def record_config(record: DesignRecord) -> tuple[Config, float, float]:
-        width = record.settings.width_mm or config.get("design.width_mm")
-        spacing = record.settings.fill_row_spacing_mm or config.get("stitch.fill_row_spacing_mm")
-        return config.with_overrides({"stitch.fill_row_spacing_mm": spacing}), width, spacing
+    def record_width(record: DesignRecord) -> float:
+        return record.settings.width_mm or config.get("design.width_mm")
 
     def applied(record: DesignRecord) -> list[dict]:
         return record.edits[:record.edits_applied]
@@ -268,14 +269,16 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
     def sew(record: DesignRecord):
         """Digitize the design with its settings and the changes in effect; store the DST, preview
         and report (so Download matches), and the stats on the record. Returns
-        (record, result, stitches, width, spacing)."""
-        job_config, width, spacing = record_config(record)
+        (record, result, stitches, width, spacing). The fill density set on the preview screen is
+        passed on as set by hand, so it wins over a fabric preset's."""
+        width = record_width(record)
         with tempfile.TemporaryDirectory() as tmp:
             source = Path(tmp) / f"original.{record.type}"
             source.write_bytes(storage.get(f"designs/{record.id}/original.{record.type}"))
             out = Path(tmp) / "out"
             try:
-                result = digitize(source, out, job_config, width, record.settings.colours, applied(record))
+                result = digitize(source, out, config, width, record.settings.colours, applied(record),
+                                  fill_row_spacing_mm=record.settings.fill_row_spacing_mm)
             except ValueError as exc:
                 raise HTTPException(422, f"This image could not be digitized ({exc}). Use a logo on a plain "
                                          "background, or a transparent PNG.") from None
@@ -287,7 +290,7 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
         record = record.model_copy(update={"status": "digitized", "stats": StitchStats(**vars(result.stats)),
                                            "report": DigitizeReport(**result.to_json()), "downloads": ["dst"]})
         save_record(record)
-        return record, result, stitches, width, spacing
+        return record, result, stitches, width, result.fill_row_spacing_mm
 
     def layers_and_colours(result):
         layers = [Layer(number=i, type=t, stitch_count=n, colour=c) for i, (t, n, c) in enumerate(result.layers, start=1)]
@@ -322,12 +325,12 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
         Layers list, with the editor's changes in effect."""
         record = load_record(design_id)
         check_sync_size(record, "opened in the editor")
-        job_config, width, _spacing = record_config(record)
+        width = record_width(record)
         with tempfile.TemporaryDirectory() as tmp:
             source = Path(tmp) / f"original.{record.type}"
             source.write_bytes(storage.get(f"designs/{design_id}/original.{record.type}"))
             try:
-                found = design_shapes(source, job_config, width, record.settings.colours, applied(record))
+                found = design_shapes(source, config, width, record.settings.colours, applied(record))
             except ValueError as exc:
                 raise HTTPException(422, f"No shapes could be traced from this image ({exc}). Use a logo on a plain "
                                          "background, or a transparent PNG.") from None
@@ -342,14 +345,18 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
         history = History(applied=n, total=total, undo=edit_label(record.edits[n - 1]) if n else None,
                           redo=edit_label(record.edits[n]) if n < total else None)
         defaults = EditorDefaults(
-            pull_compensation_mm=config.get("stitch.pull_compensation_mm"),
+            pull_compensation_mm=result.pull_compensation_mm,
             pull_compensation_min_mm=config.get("api.pull_compensation_min_mm"),
             pull_compensation_max_mm=config.get("api.pull_compensation_max_mm"),
             satin_max_width_mm=config.get("satin.max_width_mm"),
         )
         return EditorState(id=record.id, shapes=DesignShapes(id=record.id, **result.shapes),
                            columns=[TraceColumn(**c) for c in result.columns], colours=colours, layers=layers,
-                           stats=record.stats, stitches=stitches, history=history, defaults=defaults)
+                           stats=record.stats, stitches=stitches, history=history, defaults=defaults,
+                           fabric=FabricState(preset=result.fabric, presets=[
+                               FabricPresetOut(name=p.name, label=p.label, verified=p.verified,
+                                               ready=p.values is not None, values=p.values)
+                               for p in fabric_presets(config)]))
 
     @app.get("/designs/{design_id}/editor", response_model=EditorState, responses=ERRORS)
     @one_at_a_time
@@ -372,14 +379,14 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
             lo, hi = config.get("api.pull_compensation_min_mm"), config.get("api.pull_compensation_max_mm")
             if not lo <= body.mm <= hi:
                 raise HTTPException(422, f"Pull compensation must be between {lo:g} and {hi:g} mm.")
-        job_config, width, _spacing = record_config(record)
+        width = record_width(record)
         with tempfile.TemporaryDirectory() as tmp:
             source = Path(tmp) / f"original.{record.type}"
             source.write_bytes(storage.get(f"designs/{design_id}/original.{record.type}"))
             try:
-                traced = trace_design(source, job_config, width, record.settings.colours, edits=applied(record))
+                traced = trace_design(source, config, width, record.settings.colours, edits=applied(record))
                 stored = to_pixels(body.model_dump(), traced)
-                apply_edit(traced, stored, job_config)
+                apply_edit(traced, stored, config)
             except EditError as exc:
                 raise HTTPException(422, str(exc)) from None
             except ValueError as exc:

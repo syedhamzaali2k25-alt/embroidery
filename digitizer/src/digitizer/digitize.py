@@ -35,7 +35,7 @@ from shapely import affinity
 from shapely.geometry import LineString, MultiPolygon, Point, Polygon
 from shapely.ops import unary_union
 
-from digitizer import colours, satin
+from digitizer import colours, fabric, satin
 from digitizer.config import Config, load_config, load_test_run_config
 from digitizer.readback import DstStats, dst_stats, render_preview, stitch_points
 
@@ -139,6 +139,7 @@ class Traced:
     specks_removed: int  # shapes dropped as specks (smaller than input.min_shape_area_mm2)
     holes_filled: int  # holes filled because they were smaller than input.min_shape_area_mm2
     skipped_edits: list[str] = field(default_factory=list)  # editor changes that no longer apply
+    fabric: str | None = None  # fabric preset chosen in the editor (digitizer.fabric), None = defaults
 
     @property
     def shapes(self) -> list[Shape]:
@@ -529,8 +530,9 @@ def plan_pieces(pieces: list[Piece], logo: Polygon, settings: satin.SatinSetting
     entries reachable by a short stitch that stays inside the logo and does not run over
     stitching that is already sewn (it would show on top); otherwise jump.
 
-    For a new colour layer, start_pos is where the previous colour ended: the first piece is
-    the nearest one and is always reached by a jump (the thread has just been changed).
+    Without start_pos (how digitize() plans every colour layer) the first piece is the one with
+    the top-most, then left-most entry. With start_pos the first piece is the nearest one to it.
+    Either way the first piece is reached by a jump.
     Satin columns are numbered from first_number; Move.source is source_offset + piece index."""
     remaining = list(range(len(pieces)))
     moves: list[Move] = []
@@ -701,6 +703,9 @@ class Result:
     columns: tuple = ()  # satin columns for the editor, numbered in sewing order (column_json)
     shapes: dict | None = None  # the shapes as sewn, for the editor (shapes_json)
     skipped_edits: tuple[str, ...] = ()  # editor changes that no longer fit the design
+    fabric: str | None = None  # fabric preset sewn with (digitizer.fabric), None = the defaults
+    fill_row_spacing_mm: float = 0.0  # fill density sewn with (default, preset or set by hand)
+    pull_compensation_mm: float = 0.0  # satin pull compensation for shapes without their own
 
     def summary(self) -> str:
         colours = ", ".join(f"{c.hex} ({c.shapes} shapes, {c.stitches} stitches)" for c in self.colours)
@@ -724,10 +729,13 @@ class Result:
 
 def digitize(image_path: str | Path, out_dir: str | Path, config: Config | None = None,
              width_mm: float | None = None, keep_colours: list[str] | None = None,
-             edits: list[dict] | None = None, on_progress: Callable[[float], None] | None = None) -> Result:
+             edits: list[dict] | None = None, on_progress: Callable[[float], None] | None = None,
+             fill_row_spacing_mm: float | None = None) -> Result:
     """Write out.dst, preview.png and report.json into out_dir. width_mm overrides design.width_mm
     for this job; keep_colours ("#RRGGBB") leaves the other detected colours out; edits are the
-    editor's changes (stored form, see digitizer.edits). on_progress gets 0..1 as shapes are done."""
+    editor's changes (stored form, see digitizer.edits), including a fabric preset, whose values
+    replace the stitch defaults; fill_row_spacing_mm is the fill density set by hand, which wins
+    over the default and the preset. on_progress gets 0..1 as shapes are done."""
     config = config or load_config()
     report = on_progress or (lambda _f: None)
     report(0.0)
@@ -735,6 +743,7 @@ def digitize(image_path: str | Path, out_dir: str | Path, config: Config | None 
     out_dir.mkdir(parents=True, exist_ok=True)
 
     traced = trace_design(image_path, config, width_mm, keep_colours, edits=edits)
+    config = fabric.sewing_config(config, traced.fabric, fill_row_spacing_mm)
     report(0.1)
     tf = traced.tf
     settings = satin_settings(config)
@@ -754,11 +763,12 @@ def digitize(image_path: str | Path, out_dir: str | Path, config: Config | None 
         patches += built_pieces.patches
         # Travel stitches must stay inside this colour's own shapes (anything else would show).
         logo = unary_union([s.poly for s in layer.shapes]).buffer(tf.mm_per_px)
-        start = moves[-1].to if moves else None
         if moves:
-            moves.append(Move("change", start))
+            moves.append(Move("change", moves[-1].to))
+        # Each colour starts from its own shapes (top-left entry), not from where the previous
+        # colour ended, so a change to one colour never moves the stitches of another.
         plan = plan_pieces(built_pieces.pieces, logo, settings, config.get("stitch.jump_threshold_mm"), tf.mm_per_px,
-                           start_pos=start, first_number=len(labels) + 1, source_offset=len(pieces))
+                           first_number=len(labels) + 1, source_offset=len(pieces))
         moves.extend(plan.moves)
         labels.update(plan.satin_labels)
         column_pieces.update(plan.satin_pieces)
@@ -796,7 +806,8 @@ def digitize(image_path: str | Path, out_dir: str | Path, config: Config | None 
                                         sum(s.poly.area for s in layer.shapes)) for layer in traced.layers),
                     traced.shapes_found, traced.specks_removed, traced.holes_filled,
                     tuple(ring for s in traced.shapes for ring in polygons_json(s.overlap)),
-                    columns, shapes_json(traced, config), tuple(traced.skipped_edits))
+                    columns, shapes_json(traced, config), tuple(traced.skipped_edits), traced.fabric,
+                    config.get("stitch.fill_row_spacing_mm"), config.get("stitch.pull_compensation_mm"))
     # The DST format has no room for these; keep them next to it for the readback report.
     (out_dir / "report.json").write_text(json.dumps(result.to_json(), indent=2) + "\n")
     report(1.0)
@@ -906,6 +917,7 @@ def shapes_json(traced: Traced, config: Config) -> dict:
         "shapes_found": traced.shapes_found,
         "specks_removed": traced.specks_removed,
         "skipped_edits": list(traced.skipped_edits),
+        "fabric": traced.fabric,
     }
 
 

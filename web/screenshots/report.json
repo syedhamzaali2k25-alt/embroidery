@@ -288,6 +288,24 @@
     "issues": []
   },
   {
+    "page": "editor-fabric-chosen",
+    "viewport": "desktop",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "editor-fabric-no-values",
+    "viewport": "desktop",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
     "page": "index",
     "viewport": "phone",
     "fonts": {
@@ -568,6 +586,24 @@
   },
   {
     "page": "editor-tool-no-satin",
+    "viewport": "phone",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "editor-fabric-chosen",
+    "viewport": "phone",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "editor-fabric-no-values",
     "viewport": "phone",
     "fonts": {
       "sans": true,

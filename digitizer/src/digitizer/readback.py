@@ -96,6 +96,45 @@ def stitch_points(path: str | Path) -> list[tuple[int, int]]:
     return [(x, y) for x, y, c in pattern.stitches if c & pyembroidery.COMMAND_MASK == pyembroidery.STITCH]
 
 
+def colour_layer_stitches(path: str | Path) -> list[list[tuple[int, int]]]:
+    """The STITCH records of each colour layer (split at colour changes), in file units."""
+    pattern = pyembroidery.read_dst(str(path))
+    layers: list[list[tuple[int, int]]] = [[]]
+    for x, y, cmd in pattern.stitches:
+        cmd &= pyembroidery.COMMAND_MASK
+        if cmd == pyembroidery.COLOR_CHANGE:
+            layers.append([])
+        elif cmd == pyembroidery.STITCH:
+            layers[-1].append((x, y))
+    return layers
+
+
+# DST body: 3-byte records after a 512-byte header. The flags in the third byte (bits 0 and 1
+# are always set) say what a record is.
+DST_HEADER_BYTES = 512
+_DST_END, _DST_COLOUR_CHANGE, _DST_JUMP = 0xF3, 0xC3, 0x83
+
+
+def colour_layer_bytes(path: str | Path) -> list[bytes]:
+    """The raw DST records of each colour layer, from its first stitch to its last (so the travel
+    into the layer, which starts wherever the previous colour ended, is left out)."""
+    body = Path(path).read_bytes()[DST_HEADER_BYTES:]
+    layers: list[list[bytes]] = [[]]
+    for i in range(0, len(body) - 2, 3):
+        record, flags = body[i:i + 3], body[i + 2]
+        if flags & _DST_END == _DST_END:
+            break
+        if flags & _DST_COLOUR_CHANGE == _DST_COLOUR_CHANGE:
+            layers.append([])
+        else:
+            layers[-1].append(record)
+    out = []
+    for records_ in layers:
+        stitches = [n for n, r in enumerate(records_) if r[2] & _DST_JUMP != _DST_JUMP]
+        out.append(b"".join(records_[stitches[0]:stitches[-1] + 1]) if stitches else b"")
+    return out
+
+
 def render_preview(dst_path: str | Path, png_path: str | Path, config: Config,
                    labels: list[tuple[str, int]] | None = None,
                    column_labels: dict[int, tuple[int, int]] | None = None,

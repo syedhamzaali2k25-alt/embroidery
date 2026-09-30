@@ -85,6 +85,53 @@ PRODUCT: dict[str, dict[str, Any]] = {
         # How far inside each edge the zigzag underlay turns.
         "underlay_zigzag_inset_mm": PLACEHOLDER,
     },
+    "fabric": {
+        # Fabric presets offered in the editor, in this order. Choosing one re-sews the design with
+        # its values in place of the stitch/satin defaults below (digitizer.fabric). What is set by
+        # hand still wins: the fill density set on the preview screen, and a shape's own pull
+        # compensation set in the editor.
+        # UNVERIFIED: every preset value is a placeholder for the owner to choose; none has been
+        # sewn on a machine. The editor shows "Unverified: not yet tested on a machine" next to
+        # the picker for every preset whose .verified is False.
+        "presets": ["woven_cotton", "knit_jersey", "cap_twill"],
+        # Each preset has:
+        #   .label                name shown in the picker
+        #   .verified             True only after a design sewn with this preset on a real machine
+        #                         has been checked by the owner; False shows the Unverified note
+        #   .fill_row_spacing_mm  replaces stitch.fill_row_spacing_mm (fill density)
+        #   .satin_spacing_mm     replaces stitch.satin_spacing_mm (satin density)
+        #   .underlay_spacing_mm  replaces stitch.underlay_spacing_mm (zigzag underlay density)
+        #   .underlay_edge_walk   replaces satin.underlay_edge_walk (true/false)
+        #   .underlay_zigzag      replaces satin.underlay_zigzag (true/false)
+        #   .pull_compensation_mm replaces stitch.pull_compensation_mm (satin pull compensation)
+        # Woven cotton (UNVERIFIED)
+        "woven_cotton.label": "Woven cotton",
+        "woven_cotton.verified": False,
+        "woven_cotton.fill_row_spacing_mm": PLACEHOLDER,
+        "woven_cotton.satin_spacing_mm": PLACEHOLDER,
+        "woven_cotton.underlay_spacing_mm": PLACEHOLDER,
+        "woven_cotton.underlay_edge_walk": PLACEHOLDER,
+        "woven_cotton.underlay_zigzag": PLACEHOLDER,
+        "woven_cotton.pull_compensation_mm": PLACEHOLDER,
+        # Knit / jersey (UNVERIFIED)
+        "knit_jersey.label": "Knit / jersey",
+        "knit_jersey.verified": False,
+        "knit_jersey.fill_row_spacing_mm": PLACEHOLDER,
+        "knit_jersey.satin_spacing_mm": PLACEHOLDER,
+        "knit_jersey.underlay_spacing_mm": PLACEHOLDER,
+        "knit_jersey.underlay_edge_walk": PLACEHOLDER,
+        "knit_jersey.underlay_zigzag": PLACEHOLDER,
+        "knit_jersey.pull_compensation_mm": PLACEHOLDER,
+        # Cap / twill (UNVERIFIED)
+        "cap_twill.label": "Cap / twill",
+        "cap_twill.verified": False,
+        "cap_twill.fill_row_spacing_mm": PLACEHOLDER,
+        "cap_twill.satin_spacing_mm": PLACEHOLDER,
+        "cap_twill.underlay_spacing_mm": PLACEHOLDER,
+        "cap_twill.underlay_edge_walk": PLACEHOLDER,
+        "cap_twill.underlay_zigzag": PLACEHOLDER,
+        "cap_twill.pull_compensation_mm": PLACEHOLDER,
+    },
     "input": {
         # Accepted upload types (from the product spec). digitize.py reads PNG/JPG only so far.
         "allowed_types": ["png", "jpg", "jpeg", "svg"],
@@ -251,6 +298,26 @@ TEST_RUN_OVERRIDES: dict[str, Any] = {
     "stitch.running_stitch_length_mm": 2.5,
     "api.pull_compensation_min_mm": 0.0,
     "api.pull_compensation_max_mm": 1.0,
+    # Fabric presets: made-up values that only differ from each other so the tests can see a
+    # preset re-sew the design. Not for sewing.
+    "fabric.woven_cotton.fill_row_spacing_mm": 0.4,
+    "fabric.woven_cotton.satin_spacing_mm": 0.4,
+    "fabric.woven_cotton.underlay_spacing_mm": 2.0,
+    "fabric.woven_cotton.underlay_edge_walk": True,
+    "fabric.woven_cotton.underlay_zigzag": True,
+    "fabric.woven_cotton.pull_compensation_mm": 0.3,
+    "fabric.knit_jersey.fill_row_spacing_mm": 0.35,
+    "fabric.knit_jersey.satin_spacing_mm": 0.35,
+    "fabric.knit_jersey.underlay_spacing_mm": 1.5,
+    "fabric.knit_jersey.underlay_edge_walk": True,
+    "fabric.knit_jersey.underlay_zigzag": True,
+    "fabric.knit_jersey.pull_compensation_mm": 0.5,
+    "fabric.cap_twill.fill_row_spacing_mm": 0.45,
+    "fabric.cap_twill.satin_spacing_mm": 0.45,
+    "fabric.cap_twill.underlay_spacing_mm": 2.5,
+    "fabric.cap_twill.underlay_edge_walk": True,
+    "fabric.cap_twill.underlay_zigzag": False,
+    "fabric.cap_twill.pull_compensation_mm": 0.4,
 }
 
 

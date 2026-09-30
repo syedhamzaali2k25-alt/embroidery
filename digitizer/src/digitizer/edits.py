@@ -8,6 +8,7 @@ split or added. Operations (stored form):
   {"op": "set_type", "at": [x, y], "kind": "running" | "satin" | "fill"}
   {"op": "set_pull_compensation", "at": [x, y], "mm": 0.3}      # mm None = back to the default
   {"op": "split", "a": [x, y], "b": [x, y]}                      # two points on the shape's edge
+  {"op": "fabric", "preset": "woven_cotton"}                     # preset None = back to the defaults
   {"op": "column", "left": EDGE, "right": EDGE, "colour": "#RRGGBB"}
       EDGE = {"at": [x, y], "ring": i}  one outline of a shape (0 = outside, 1.. = holes), or
              {"points": [[x, y], ...]}  an edge drawn with the pen
@@ -24,6 +25,7 @@ from shapely.affinity import scale
 from shapely.geometry import LineString, Point, Polygon
 from shapely.ops import nearest_points, split
 
+from digitizer import fabric
 from digitizer.config import Config
 from digitizer.digitize import Shape, Traced, classify_shape, shape_max_width_mm
 
@@ -48,6 +50,8 @@ def label(edit: dict) -> str:
         return "Reset pull compensation" if mm is None else f"Set pull compensation to {mm:g} mm"
     if op == "split":
         return "Split a satin shape"
+    if op == "fabric":
+        return "Fabric preset off" if edit.get("preset") is None else "Choose a fabric preset"
     if op == "column":
         return ("Satin column from drawn edges" if "points" in edit.get("left", {})
                 else "Satin column from two outlines")
@@ -216,7 +220,17 @@ def _column(traced: Traced, edit: dict, config: Config) -> None:
         traced.layers[colour - 1].shapes.append(column)
 
 
-_OPS = {"set_type": _set_type, "set_pull_compensation": _set_pull_compensation, "split": _split, "column": _column}
+def _fabric(traced: Traced, edit: dict, config: Config) -> None:
+    name = edit.get("preset")
+    try:
+        fabric.check(config, name)
+    except fabric.FabricError as exc:
+        raise EditError(str(exc)) from None
+    traced.fabric = name
+
+
+_OPS = {"set_type": _set_type, "set_pull_compensation": _set_pull_compensation, "split": _split, "column": _column,
+        "fabric": _fabric}
 
 
 def apply_edit(traced: Traced, edit: dict, config: Config) -> None:
@@ -256,6 +270,8 @@ def to_pixels(edit: dict, traced: Traced) -> dict:
         return out
     if op == "split":
         return {"op": "split", "a": px(edit["a"]), "b": px(edit["b"])}
+    if op == "fabric":
+        return {"op": "fabric", "preset": edit.get("preset")}
     if op == "column":
         def edge(ref: dict) -> dict:
             if "points" in ref:

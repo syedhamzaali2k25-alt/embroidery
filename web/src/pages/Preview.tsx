@@ -123,7 +123,7 @@ export default function Preview() {
       <div className="flow-preview">
         <aside className="flow-card" aria-labelledby="settings-title">
           <h2 className="flow-card__title" id="settings-title">Settings</h2>
-          <form onSubmit={(e) => { e.preventDefault(); run({ width_mm: w, fill_row_spacing_mm: s }); }}>
+          <form onSubmit={(e) => { e.preventDefault(); run(s === data.settings_used.fill_row_spacing_mm ? { width_mm: w } : { width_mm: w, fill_row_spacing_mm: s }); }}>
             <div className="flow-field">
               <label htmlFor="pv-width">Design width</label>
               <div className="flow-input">

@@ -8,7 +8,7 @@ import { createServer } from 'node:http';
 import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import { extname, join, resolve } from 'node:path';
 
-import { allFill, clickAt, crossing, editorFixture, mockEditorApi } from './editor-helpers.mjs';
+import { allFill, clickAt, crossing, editorFixture, mockEditorApi, noPresetValues } from './editor-helpers.mjs';
 
 const root = resolve(new URL('..', import.meta.url).pathname);
 const outDir = join(root, 'screenshots');
@@ -153,6 +153,14 @@ const pages = {
   ...Object.fromEntries(Object.entries(tools).map(([name, act]) => [name, { route: editorRoute, editor: ['idle'], ready: '[data-state=idle]', act }])),
   // A design with no satin shapes: Split is off and says why.
   'editor-tool-no-satin': { route: editorRoute, editor: ['idle', null, { transform: allFill }], ready: '[data-state=idle]' },
+  // Fabric preset chosen (test values, marked Unverified), and the product config today (no values).
+  'editor-fabric-chosen': { route: editorRoute, editor: ['idle'], ready: '[data-state=idle]', keepScroll: true, act: async (page) => {
+    await page.locator('#fabric').selectOption('knit_jersey');
+    await page.waitForFunction(() => document.querySelector('.file__state')?.textContent === 'Saved');
+    await page.locator('#fabric').scrollIntoViewIfNeeded();
+  } },
+  'editor-fabric-no-values': { route: editorRoute, editor: ['idle', null, { transform: noPresetValues }], ready: '[data-state=idle]',
+    keepScroll: true, act: (page) => page.locator('#fabric').scrollIntoViewIfNeeded() },
 };
 const viewports = [
   { name: 'desktop', width: 1440, height: 900 },
@@ -272,14 +280,16 @@ for (const vp of viewports) {
     if (spec.editor) await page.locator('.design-shape').first().waitFor(); // the design's shapes are drawn
     if (spec.click) for (const el of await page.locator(spec.click).all()) await el.click();
     if (spec.act) await spec.act(page, mock);
-    if (spec.editor && vp.name === 'desktop') await page.evaluate(() => { window.scrollTo(0, 0); document.querySelector('.panel')?.scrollTo(0, 0); });
+    if (spec.editor && vp.name === 'desktop' && !spec.keepScroll) await page.evaluate(() => { window.scrollTo(0, 0); document.querySelector('.panel')?.scrollTo(0, 0); });
     await page.evaluate(() => document.fonts.ready);
     const file = join(outDir, `${name}-${vp.name}.png`);
     await page.screenshot({ path: file, fullPage: !name.startsWith('editor') || vp.name === 'phone' });
     const { issues, fonts } = await page.evaluate(audit);
     // Claims the product cannot back up today (SVG is not digitized; digitizing runs on the
     // server; the old demo designs and numbers are not real).
-    const claim = (await page.locator('body').innerText()).match(/\bSVG\b|nothing to install|runs in your browser|Petals|Centre|Leaves|Daisy|4,210|Hoop space/i);
+    // Nothing may be called tested except in the note that says it is not.
+    const text = (await page.locator('body').innerText()).replaceAll('Unverified: not yet tested on a machine', '');
+    const claim = text.match(/\bSVG\b|nothing to install|runs in your browser|Petals|Centre|Leaves|Daisy|4,210|Hoop space|\btested\b|\bverified\b/i);
     if (claim) issues.push({ kind: 'unbacked-claim', label: `"${claim[0]}" on the page` });
     mock?.release?.(); // let a held change finish before the next page
     report.push({ page: name, viewport: vp.name, fonts, issues });
