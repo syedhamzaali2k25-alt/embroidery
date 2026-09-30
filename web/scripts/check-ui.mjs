@@ -8,7 +8,7 @@ import { createServer } from 'node:http';
 import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import { extname, join, resolve } from 'node:path';
 
-import { clickAt, crossing, editorFixture, mockEditorApi } from './editor-helpers.mjs';
+import { allFill, clickAt, crossing, editorFixture, mockEditorApi } from './editor-helpers.mjs';
 
 const root = resolve(new URL('..', import.meta.url).pathname);
 const outDir = join(root, 'screenshots');
@@ -35,11 +35,11 @@ function jobFor(status) {
 }
 const QUEUE_DOWN = 'Background jobs are not running, so satin columns cannot be traced right now.';
 /** status: a job state, or 'idle' (no job yet), 'unavailable' (Redis down), 'loading' / 'timeout' (no answer). */
-async function mockEditor(page, status, estimate = null) {
+async function mockEditor(page, status, estimate = null, options = {}) {
   const timeout = status === 'timeout' ? 1 : 10;
   await page.route(`${API}/config`, (r) => r.fulfill({ json: { ...fx.config, trace_estimate_minutes: estimate, poll_start_s: 2, poll_max_s: 15, poll_backoff_factor: 2, status_timeout_s: timeout } }));
   await page.route(`${API}/designs/${fx.upload.id}`, (r) => r.fulfill({ json: { ...fx.design, trace_job_id: status === 'idle' ? null : JOB_ID } }));
-  const mock = await mockEditorApi(page, API, fx.upload.id); // the editor state recorded from the real API
+  const mock = await mockEditorApi(page, API, fx.upload.id, options); // the editor state recorded from the real API
   await page.route(`${API}/jobs/health`, (r) => {
     if (status === 'unavailable') return r.fulfill({ status: 503, json: { error: QUEUE_DOWN } });
     if (status === 'loading' || status === 'timeout') return; // never answers
@@ -151,6 +151,8 @@ const pages = {
   'editor-trace-failed': { route: editorRoute, editor: ['failed'], ready: '[data-state=failed]' },
   'editor-trace-cancelled': { route: editorRoute, editor: ['cancelled'], ready: '[data-state=cancelled]' },
   ...Object.fromEntries(Object.entries(tools).map(([name, act]) => [name, { route: editorRoute, editor: ['idle'], ready: '[data-state=idle]', act }])),
+  // A design with no satin shapes: Split is off and says why.
+  'editor-tool-no-satin': { route: editorRoute, editor: ['idle', null, { transform: allFill }], ready: '[data-state=idle]' },
 };
 const viewports = [
   { name: 'desktop', width: 1440, height: 900 },

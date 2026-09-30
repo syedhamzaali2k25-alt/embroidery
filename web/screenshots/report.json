@@ -279,6 +279,15 @@
     "issues": []
   },
   {
+    "page": "editor-tool-no-satin",
+    "viewport": "desktop",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
     "page": "index",
     "viewport": "phone",
     "fonts": {
@@ -550,6 +559,15 @@
   },
   {
     "page": "editor-view-shapes",
+    "viewport": "phone",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "editor-tool-no-satin",
     "viewport": "phone",
     "fonts": {
       "sans": true,

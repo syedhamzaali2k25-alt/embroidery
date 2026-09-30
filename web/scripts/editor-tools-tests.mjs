@@ -8,7 +8,7 @@ import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { extname, join, resolve } from 'node:path';
 
-import { clickAt, crossing, editorFixture, mockEditorApi } from './editor-helpers.mjs';
+import { allFill, clickAt, crossing, editorFixture, mockEditorApi } from './editor-helpers.mjs';
 
 const root = resolve(new URL('..', import.meta.url).pathname);
 const dist = join(root, 'dist');
@@ -37,12 +37,12 @@ let failures = 0;
 const check = (ok, what) => { console.log(`  ${ok ? 'ok  ' : 'FAIL'} ${what}`); if (!ok) failures++; };
 const near = (a, b, tol) => Math.hypot(a[0] - b[0], a[1] - b[1]) <= tol;
 
-async function open(browser, viewport = { width: 1440, height: 900 }) {
+async function open(browser, viewport = { width: 1440, height: 900 }, options = {}) {
   const page = await browser.newPage({ viewport });
   await page.route(`${API}/config`, (r) => r.fulfill({ json: config }));
   await page.route(`${API}/designs/${DESIGN}`, (r) => r.fulfill({ json: { ...design, id: DESIGN, trace_job_id: null } }));
   await page.route(`${API}/jobs/health`, (r) => r.fulfill({ json: { status: 'ok', workers: 1 } }));
-  const mock = await mockEditorApi(page, API, DESIGN);
+  const mock = await mockEditorApi(page, API, DESIGN, options);
   await page.goto(`${base}/editor?design=${DESIGN}`);
   await page.locator('.stitch-line').first().waitFor();
   return { page, mock };
@@ -157,6 +157,47 @@ try {
         // clicks land on whole screen pixels: about 0.16 mm (desktop) to 0.27 mm (phone) here
         && sent.left.points.every((p, i) => near(p, first[i], 0.3)) && sent.right.points.every((p, i) => near(p, second[i], 0.3)),
       `${tag} sends both drawn edges (mm) and the chosen thread colour`);
+      await page.close();
+    }
+
+    console.log(`-- Split with no satin shapes (${viewport.width}px)`);
+    {
+      const { page } = await open(browser, viewport, { transform: allFill });
+      const row = page.getByRole('button', { name: /^Split/ });
+      check(await row.isDisabled() && (await row.innerText()).includes('No satin shapes in this design'),
+        `${tag} Split is disabled and says "No satin shapes in this design"`);
+      check(await page.getByRole('button', { name: /^Select Satin Columns/ }).isEnabled(), `${tag} the other tools stay available`);
+      await page.close();
+    }
+    {
+      // Split is open while satin shapes exist; once the last one becomes Fill, the tool says so.
+      const { page } = await open(browser, viewport);
+      await page.getByRole('button', { name: /^Split/ }).click();
+      for (const n of editorFixture.shapes.shapes.filter((s) => s.kind === 'satin').map((s) => s.number)) {
+        await page.getByRole('button', { name: new RegExp(`^Shape ${n} `) }).click();
+        await page.getByRole('radio', { name: 'Fill' }).click();
+        await page.getByRole('button', { name: new RegExp(`^Shape ${n} Fill`) }).waitFor();
+      }
+      check((await page.locator('.tool-hint').innerText()).includes('No satin shapes in this design.')
+        && await page.getByRole('button', { name: /^Split/ }).isDisabled(),
+      `${tag} after the last satin shape becomes Fill, the open Split tool says "No satin shapes in this design"`);
+      await page.close();
+    }
+
+    console.log(`-- a "Not saved" banner goes when the person moves on (${viewport.width}px)`);
+    {
+      const { page, mock } = await open(browser, viewport);
+      await page.getByRole('button', { name: /^Shape 1 / }).click();
+      mock.next = 'fail';
+      await page.getByRole('radio', { name: 'Satin' }).click();
+      await page.locator('.edit-error').waitFor();
+      await page.getByRole('button', { name: /^Shape 2 / }).click();
+      check(await page.locator('.edit-error').count() === 0 && (await status(page)) === 'Saved',
+        `${tag} picking another shape clears the banner (status back to Saved: nothing was changed)`);
+      await page.getByRole('radio', { name: 'Running' }).click();
+      await page.locator('.edit-error').waitFor();
+      await page.getByRole('button', { name: /^Draw edges/ }).first().click();
+      check(await page.locator('.edit-error').count() === 0, `${tag} switching tool clears the banner`);
       await page.close();
     }
 

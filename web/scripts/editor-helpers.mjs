@@ -21,9 +21,10 @@ function label(edit) {
  * compensation, history); the real engine is covered by the API tests and npm run e2e.
  * `mock.next` decides the next answer to a change: 'ok' | 'hold' | 'fail' (500) | 'refuse' (422) | 'offline'.
  */
-export async function mockEditorApi(page, api, designId) {
+export async function mockEditorApi(page, api, designId, { transform } = {}) {
   const mock = { next: 'ok', bodies: [], undos: 0, redos: 0, release: null, history: [], applied: 0 };
   const base = { ...clone(editorFixture), id: designId };
+  transform?.(base); // e.g. a design with no satin shapes
   const state = () => {
     const s = clone(base);
     for (const edit of mock.history.slice(0, mock.applied)) {
@@ -55,6 +56,12 @@ export async function mockEditorApi(page, api, designId) {
   await page.route(`${api}/designs/${designId}/edits/redo`, (r) => { mock.redos++; mock.applied++; return r.fulfill({ json: state() }); });
   return mock;
 }
+
+/** A design with no satin shapes: every satin shape of the recorded bird sewn as fill. */
+export const allFill = (state) => {
+  for (const s of state.shapes.shapes) if (s.kind === 'satin') s.kind = 'fill';
+  state.columns = [];
+};
 
 /** mm (design coordinates) -> page pixels, the way the editor canvas fits the design. */
 export async function toScreen(page, bounds, [x, y]) {

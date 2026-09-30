@@ -76,7 +76,19 @@ export default function DesignEditor({ designId }: { designId: string }) {
   const [done, setDone] = useState<string | null>(null);
 
   const reset = useCallback(() => { setPoints([]); setPicks([]); setEdges([]); setCurrent([]); }, []);
-  const choose = (t: Tool) => { reset(); setDone(null); setTool((cur) => (cur === t && t !== "select" ? "select" : t)); };
+  // A "Not saved" banner belongs to what the person was doing: it goes when they move on to
+  // another tool or another shape (Retry is only offered while it still makes sense).
+  const clearError = () => { if (editor.error) editor.dismiss(); };
+  const choose = (t: Tool) => {
+    reset(); setDone(null); clearError();
+    setTool((cur) => (cur === t && t !== "select" ? "select" : t));
+  };
+  const selectShape = (n: number | null) => {
+    if (n !== selected) clearError();
+    setSelected(n);
+  };
+  // Split only works on satin shapes (not on columns made from two edges).
+  const hasSatin = !!data?.shapes.shapes.some((s) => s.kind === "satin");
 
   // A shape number can change after a split or a new column: keep the selection valid.
   useEffect(() => {
@@ -111,7 +123,8 @@ export default function DesignEditor({ designId }: { designId: string }) {
 
   const onCanvasClick = (e: MouseEvent) => {
     if (!data || !fit || !unfit || editor.saving) return;
-    if (tool === "select") { setSelected(null); return; }
+    if (tool === "select") { selectShape(null); return; }
+    if (tool === "split" && !hasSatin) return;
     const p = canvasPoint(e);
     if (!p) return;
     if (tool === "split") {
@@ -219,15 +232,19 @@ export default function DesignEditor({ designId }: { designId: string }) {
           <section className="manual" aria-labelledby="manual-title">
             <h2 className="manual__title" id="manual-title">Or start manually editing</h2>
             <ul className="manual__list">
-              {TOOL_ROWS.map(([id, label, icon, hint]) => (
-                <li key={id}>
-                  <button className="manual__row" type="button" aria-pressed={tool === id} onClick={() => choose(id)} disabled={!data}>
-                    <svg aria-hidden="true"><use href={`/assets/sprite.svg#${icon}`}/></svg>
-                    <span className="manual__name">{label}</span>
-                    <span className="manual__hint">{hint}</span>
-                  </button>
-                </li>
-              ))}
+              {TOOL_ROWS.map(([id, label, icon, hint]) => {
+                const noSatin = id === "split" && !!data && !hasSatin;
+                return (
+                  <li key={id}>
+                    <button className="manual__row" type="button" aria-pressed={tool === id} onClick={() => choose(id)}
+                            disabled={!data || noSatin}>
+                      <svg aria-hidden="true"><use href={`/assets/sprite.svg#${icon}`}/></svg>
+                      <span className="manual__name">{label}</span>
+                      <span className="manual__hint">{noSatin ? "No satin shapes in this design" : hint}</span>
+                    </button>
+                  </li>
+                );
+              })}
             </ul>
           </section>
         </aside>
@@ -246,7 +263,7 @@ export default function DesignEditor({ designId }: { designId: string }) {
             {data && tool !== "select" && (
               <ToolHint tool={tool} data={data} points={points.length} picks={picks.length} edges={edges.length}
                         current={current.length} saving={editor.saving} drawColour={drawColour} setDrawColour={setDrawColour}
-                        onFinish={finishEdge} onCancel={() => { reset(); setTool("select"); }} />
+                        hasSatin={hasSatin} onFinish={finishEdge} onCancel={() => { reset(); clearError(); setTool("select"); }} />
             )}
             {done && !editor.error && tool !== "select" && <p className="tool-done" role="status">Saved: {done}.</p>}
           </div>
@@ -265,7 +282,7 @@ export default function DesignEditor({ designId }: { designId: string }) {
                 <rect className="design-canvas__bg" width="400" height="400" />
                 <g className="design" style={zoom === 100 ? undefined : { transform: `scale(${zoom / 100})` }}>
                   <DesignShapesLayer shapes={data.shapes} fit={fit} hidden={hidden} selected={selected} traced={!!traced}
-                                     faint={view === "stitches"} onSelect={tool === "select" ? setSelected : undefined} />
+                                     faint={view === "stitches"} onSelect={tool === "select" ? selectShape : undefined} />
                   {view === "stitches" && <StitchLines stitches={data.stitches} layers={data.layers} colours={data.colours} fit={fit} />}
                   {view === "stitches" && !traced && <OverlapSeams shapes={data.shapes} fit={fit} hidden={hidden} />}
                   {traced && <TracedColumns result={traced} fit={fit} hidden={hidden} />}
@@ -300,7 +317,7 @@ export default function DesignEditor({ designId }: { designId: string }) {
         </section>
 
         <aside className="panel" aria-label="Properties">
-          <ShapePanel data={data} failed={!!editor.loadProblem} shape={shape} editor={editor} onSelect={setSelected}
+          <ShapePanel data={data} failed={!!editor.loadProblem} shape={shape} editor={editor} onSelect={selectShape}
                       hidden={hidden} onToggle={(n) => setHidden((prev) => {
                         const next = new Set(prev);
                         if (next.has(n)) next.delete(n); else next.add(n);
@@ -314,13 +331,14 @@ export default function DesignEditor({ designId }: { designId: string }) {
 
 type HintProps = {
   tool: Tool; data: EditorState; points: number; picks: number; edges: number; current: number; saving: string | null;
-  drawColour: number; setDrawColour: (n: number) => void; onFinish: () => void; onCancel: () => void;
+  drawColour: number; setDrawColour: (n: number) => void; hasSatin: boolean; onFinish: () => void; onCancel: () => void;
 };
 
 /** What to do next with the chosen tool, and its buttons. */
-function ToolHint({ tool, data, points, picks, edges, current, saving, drawColour, setDrawColour, onFinish, onCancel }: HintProps) {
+function ToolHint({ tool, data, points, picks, edges, current, saving, drawColour, setDrawColour, hasSatin, onFinish, onCancel }: HintProps) {
   let text = "";
   if (saving) text = `Saving: ${saving}…`;
+  else if (tool === "split" && !hasSatin) text = "No satin shapes in this design.";
   else if (tool === "split") text = points === 0
     ? "Split: click a point on one edge of a satin shape."
     : "Now click the point straight across, on the opposite edge.";
