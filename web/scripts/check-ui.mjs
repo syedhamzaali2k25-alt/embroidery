@@ -115,7 +115,7 @@ async function mockApi(page, { upload = 'ok', preview = 'ok' } = {}) {
   await page.route(`${API}/config`, (r) => r.fulfill({ json: fx.config }));
   await page.route(`${API}/designs`, (r) => upload === 'ok'
     ? r.fulfill({ status: 201, json: fx.upload })
-    : r.fulfill({ status: 415, json: { error: 'This file is not a PNG, JPG or SVG image. Export your logo in one of those formats and upload it again.' } }));
+    : r.fulfill({ status: 415, json: { error: 'This file is not a PNG or JPG image. Export your logo as PNG or JPG and upload it again.' } }));
   await page.route(new RegExp(`^${API}/designs/[0-9a-f]{32}$`), (r) => r.fulfill({ json: fx.design }));
   await page.route(`${API}/designs/*/preview`, (r) => {
     if (preview === 'ok') return r.fulfill({ json: fx.preview });
@@ -277,6 +277,10 @@ for (const vp of viewports) {
     const file = join(outDir, `${name}-${vp.name}.png`);
     await page.screenshot({ path: file, fullPage: !name.startsWith('editor') || vp.name === 'phone' });
     const { issues, fonts } = await page.evaluate(audit);
+    // Claims the product cannot back up today (SVG is not digitized; digitizing runs on the
+    // server; the old demo designs and numbers are not real).
+    const claim = (await page.locator('body').innerText()).match(/\bSVG\b|nothing to install|runs in your browser|Petals|Centre|Leaves|Daisy|4,210|Hoop space/i);
+    if (claim) issues.push({ kind: 'unbacked-claim', label: `"${claim[0]}" on the page` });
     mock?.release?.(); // let a held change finish before the next page
     report.push({ page: name, viewport: vp.name, fonts, issues });
   }

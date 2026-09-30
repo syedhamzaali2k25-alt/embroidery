@@ -101,7 +101,7 @@ export default function Preview() {
           <div className="flow-state" role="status">
             <div className="flow-spinner" aria-hidden="true" />
             <p className="flow-state__title">Turning your logo into stitches…</p>
-            <p className="flow-state__text">This takes a few seconds.</p>
+            <p className="flow-state__text">The stitches appear here when they are ready.</p>
           </div>
         )}
       </Shell>

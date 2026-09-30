@@ -377,6 +377,10 @@ body.editor {
 .trace-card__note { font-size: 13px; }
 .manual__row:disabled { cursor: not-allowed; opacity: 0.45; }
 
+/* The editor without a design */
+.editor-empty { display: grid; place-items: center; padding: 48px var(--gutter); }
+.editor-empty__title { font-size: 24px; }
+
 /* ---------- Editing tools ---------- */
 .design-shapes.is-faint .design-shape { opacity: 0.22; }
 .design-shapes.is-inert .design-shape { pointer-events: none; }

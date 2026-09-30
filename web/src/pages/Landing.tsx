@@ -7,21 +7,21 @@ import { setPendingUpload } from "../lib/pendingUpload";
 import { usePage } from "../lib/usePage";
 import "../css/landing.css";
 
-const ACCEPT = ".png,.jpg,.jpeg,.svg,image/png,image/jpeg,image/svg+xml";
+const ACCEPT = ".png,.jpg,.jpeg,image/png,image/jpeg";
 
 // Answers state only what the product does today. Unconfirmed terms stay visible placeholders.
 function faq(formats: string) {
   return [
     ["What kind of image works best?",
-      "A logo with clear shapes: dark on a plain light background, or a transparent PNG. After you upload it, the image check tells you if it is too small, low in contrast or blurry, and what to do about it."],
+      "A logo with clear, flat colours on a plain background, or a transparent PNG. After you upload it, the image check tells you if it is too small, low in contrast, blurry or full of small specks, and what to do about it."],
     ["Which files can I upload?",
-      "PNG and JPG files are turned into stitches. SVG files can be uploaded, but for now export them as PNG first."],
+      "PNG and JPG."],
     ["Which machine files can I download?",
-      `${formats}. A format is only offered after it passes a write-and-read-back check, so the file you download sews what the preview shows.`],
+      `${formats}. A format is only offered after it passes a write-and-read-back check, so the file you download has the same stitches as the preview.`],
     ["How many thread colours are used?",
-      "One for now: every shape of the logo is stitched in the same thread colour."],
+      "One per colour in your logo, with a thread change between colours; the background is left out. On the upload page you choose which of the colours found to keep. Thread names and codes are not chosen yet."],
     ["Can I change the stitches?",
-      "Yes. In the preview you set the design width and fill density; the editor is where you fix individual stitches before you export."],
+      "Yes. In the preview you set the design width and fill density. In the editor you pick a shape and change it to running, satin or fill stitch, set satin pull compensation, split a satin shape, or make a satin column between two edges. Every change shows up in the preview and the download."],
     ["Is there a free trial?", "[Fill in your trial terms]"],
   ] as const;
 }
@@ -72,7 +72,7 @@ export default function Landing() {
           <div className="hero__copy">
             <p className="eyebrow"><span className="dot" aria-hidden="true"></span>Automatic embroidery digitizing</p>
             <h1>Turn your logo into <span className="accent">stitches</span></h1>
-            <p className="lede">Upload an image of your logo. Stitchbook lays out the stitches automatically, lets you fix them in the editor, and exports a file your embroidery machine can run.</p>
+            <p className="lede">Upload an image of your logo. Stitchbook lays out the stitches automatically, lets you change them in the editor, and exports an embroidery machine file.</p>
             <div className="hero__cta">
               <a className="btn btn--ink btn--lg" href="/upload">Upload a logo <Icon name="i-arrow" /></a>
               <a className="btn btn--ghost btn--lg" href="#how">See how it works</a>
@@ -98,7 +98,7 @@ export default function Landing() {
                      onChange={(e) => start(e.target.files?.[0])} />
               <Icon name="i-image" className="hero-drop__icon" />
               <p className="hero-drop__title">Drop your logo here</p>
-              <p className="hero-drop__hint">PNG, JPG or SVG</p>
+              <p className="hero-drop__hint">PNG or JPG</p>
               <button className="btn btn--ink" type="button" onClick={() => input.current?.click()}>Choose a file</button>
             </div>
           </div>
@@ -110,7 +110,7 @@ export default function Landing() {
             <article className="card card--lavender feature">
               <Icon name="i-image" className="feature__icon" />
               <h3>Upload your logo</h3>
-              <p>Drop in a PNG or JPG. Stitchbook checks its size, contrast and sharpness first and tells you what to fix.</p>
+              <p>Drop in a PNG or JPG. Stitchbook checks its size, contrast, sharpness and specks first and tells you what to fix.</p>
             </article>
             <article className="card card--lime feature">
               <Icon name="i-needle" className="feature__icon" />
@@ -131,9 +131,9 @@ export default function Landing() {
             <p className="lede">The same four steps for every logo.</p>
           </div>
           <ol className="steps">
-            <li className="step"><span className="step__num">1</span><div><h3>Upload an image</h3><p>Drop your logo as PNG, JPG or SVG and set the design width.</p></div></li>
+            <li className="step"><span className="step__num">1</span><div><h3>Upload an image</h3><p>Drop your logo as PNG or JPG, choose its colours and set the design width.</p></div></li>
             <li className="step"><span className="step__num">2</span><div><h3>Get automatic stitches</h3><p>Fill and satin are laid out for you; the preview shows every stitch.</p></div></li>
-            <li className="step"><span className="step__num">3</span><div><h3>Fix them in the editor</h3><p>Adjust the stitches that need it before anything is sewn.</p></div></li>
+            <li className="step"><span className="step__num">3</span><div><h3>Change them in the editor</h3><p>Pick a shape and change its stitch type, split satin, or add satin columns.</p></div></li>
             <li className="step"><span className="step__num">4</span><div><h3>Export a machine file</h3><p>Download {formats} and send it to your machine.</p></div></li>
           </ol>
         </section>
@@ -172,7 +172,7 @@ export default function Landing() {
           <svg className="shape shape--ink cta__sparkle" aria-hidden="true"><use href="/assets/sprite.svg#sparkle" /></svg>
           <svg className="shape shape--lime cta__star" aria-hidden="true"><use href="/assets/sprite.svg#star" /></svg>
           <h2>Your next patch starts here</h2>
-          <p>Runs in your browser: nothing to install.</p>
+          <p>Upload a PNG or JPG logo and see its stitches.</p>
           <a className="btn btn--ink btn--lg" href="/upload">Upload a logo</a>
         </section>
       </main>

@@ -198,7 +198,7 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
 
     @app.post("/designs", response_model=DesignCreated, status_code=201, responses=ERRORS)
     async def create_design(
-        file: Annotated[UploadFile, File(description="Logo image: PNG, JPG or SVG")],
+        file: Annotated[UploadFile, File(description="Logo image: PNG or JPG (SVG is stored but cannot be digitized)")],
         settings_json: Annotated[str | None, Form(alias="settings", description="JSON, e.g. {\"width_mm\": 60}")] = None,
     ) -> DesignCreated:
         try:
@@ -249,7 +249,7 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
 
     def check_sync_size(record: DesignRecord, what: str) -> None:
         if record.type == "svg":
-            raise HTTPException(422, f"SVG files can be uploaded but not {what} yet. Export the logo as PNG and "
+            raise HTTPException(422, f"SVG files cannot be {what}. Export the logo as PNG or JPG and "
                                      "upload that instead.")
         limit = config.get("api.sync_preview_max_side_px")
         if max(record.width_px or 0, record.height_px or 0) > limit:
@@ -438,7 +438,7 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
         for this design, that job is returned instead of starting a second."""
         record = load_record(design_id)
         if record.type == "svg":
-            raise HTTPException(422, "SVG files can't be traced yet. Export the logo as PNG and upload that instead.")
+            raise HTTPException(422, "SVG files cannot be traced. Export the logo as PNG or JPG and upload that instead.")
         if record.trace_job_id:
             try:
                 current = jobs.state(record.trace_job_id)

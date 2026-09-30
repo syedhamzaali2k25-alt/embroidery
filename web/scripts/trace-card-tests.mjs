@@ -205,9 +205,10 @@ try {
   {
     const page = await browser.newPage();
     await page.goto(`${base}/editor`);
-    await page.locator('.hoop-canvas').waitFor();
+    await page.getByRole('heading', { name: 'No design open' }).waitFor();
     const body = await page.locator('body').innerText();
-    check(!/1001|1049/.test(body) && body.includes('[Thread colour 1]'), 'mock-up editor: thread names are placeholders too');
+    check(!/1001|1049|Petals|Centre|Leaves|4,210|Daisy/.test(body) && body.includes('No design open'),
+      'editor without a design: says so, no demo content or invented numbers');
     await page.close();
   }
 

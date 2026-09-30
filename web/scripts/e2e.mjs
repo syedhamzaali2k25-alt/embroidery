@@ -369,9 +369,19 @@ try {
     await page.goto(`${WEB}/upload`);
     await page.getByText('Drop your logo here').waitFor();
     await shot('state-upload-empty');
-    await page.locator('input[type=file]').setInputFiles({ name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('not an image') });
+    // A file that is not PNG or JPG is refused before it is sent.
+    let sent = 0;
+    const countUploads = (r) => { if (r.url() === `${API}/designs` && r.method() === 'POST') sent++; };
+    page.on('request', countUploads);
+    await page.locator('input[type=file]').setInputFiles({ name: 'logo.svg', mimeType: 'image/svg+xml', buffer: Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"/>') });
     await page.getByText("This file can't be used").waitFor();
-    check((await page.locator('[role=alert]').innerText()).includes('not a PNG, JPG or SVG'), 'upload error shows the API message');
+    check((await page.locator('[role=alert]').innerText()).includes('This file is not a PNG or JPG.') && sent === 0,
+      'an SVG is refused on the page, with a plain message, and not sent');
+    page.off('request', countUploads);
+    // A file named .png that is not an image: the API refuses it and the page shows its message.
+    await page.locator('input[type=file]').setInputFiles({ name: 'notes.png', mimeType: 'image/png', buffer: Buffer.from('not an image') });
+    await page.getByText('This file is not a PNG or JPG image').waitFor();
+    check(true, 'upload error shows the API message');
     check(await page.getByRole('button', { name: 'Try again' }).isVisible(), 'upload error has Try again');
     await shot('state-upload-error');
 

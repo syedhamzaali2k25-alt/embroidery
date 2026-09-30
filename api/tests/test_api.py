@@ -76,8 +76,8 @@ def test_upload_valid_svg_is_stored_but_not_digitized_yet(client):
 # ---------- invalid uploads: each says what to fix ----------
 
 @pytest.mark.parametrize("data,status,phrase", [
-    (b"just some text, not an image", 415, "not a PNG, JPG or SVG"),
-    (b"GIF89a" + b"\0" * 64, 415, "This is a GIF file. Upload the logo as PNG, JPG or SVG"),
+    (b"just some text, not an image", 415, "not a PNG or JPG"),
+    (b"GIF89a" + b"\0" * 64, 415, "This is a GIF file. Upload the logo as PNG or JPG"),
     (b"%PDF-1.7 ...", 415, "This is a PDF file"),
     (b"\x89PNG\r\n\x1a\n" + b"garbage" * 20, 422, "may be damaged"),
     (b"", 422, "The file is empty"),

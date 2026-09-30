@@ -49,13 +49,13 @@ def detect_type(data: bytes) -> str:
     if head.startswith(b"<") and b"<svg" in data[:4096]:
         return "svg"
     if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
-        raise UploadRejected(415, "This is a WebP image. Upload the logo as PNG, JPG or SVG instead.")
+        raise UploadRejected(415, "This is a WebP image. Upload the logo as PNG or JPG instead.")
     if data[4:12] in (b"ftypheic", b"ftypheix", b"ftypmif1"):
-        raise UploadRejected(415, "This is a HEIC photo. Upload the logo as PNG, JPG or SVG instead.")
+        raise UploadRejected(415, "This is a HEIC photo. Upload the logo as PNG or JPG instead.")
     for signature, name in _OTHER_FORMATS:
         if data.startswith(signature):
-            raise UploadRejected(415, f"This is {name} file. Upload the logo as PNG, JPG or SVG instead.")
-    raise UploadRejected(415, "This file is not a PNG, JPG or SVG image. Export your logo in one of those formats "
+            raise UploadRejected(415, f"This is {name} file. Upload the logo as PNG or JPG instead.")
+    raise UploadRejected(415, "This file is not a PNG or JPG image. Export your logo as PNG or JPG "
                               "and upload it again.")
 
 

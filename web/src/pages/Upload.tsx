@@ -15,7 +15,9 @@ type UploadState =
   | { status: "done"; file: File; url: string; design: DesignCreated }
   | { status: "error"; file: File; url: string; message: string };
 
-const ACCEPT = ".png,.jpg,.jpeg,.svg,image/png,image/jpeg,image/svg+xml";
+const ACCEPT = ".png,.jpg,.jpeg,image/png,image/jpeg";
+// Only PNG and JPG can be turned into stitches; anything else is not sent to the server.
+const isPngOrJpg = (file: File) => /\.(png|jpe?g)$/i.test(file.name) || /^image\/(png|jpeg)$/.test(file.type);
 
 function message(err: unknown): string {
   return err instanceof ApiError ? err.message : "Something went wrong. Try again.";
@@ -45,6 +47,10 @@ export default function Upload() {
   useEffect(loadConfig, [loadConfig]);
 
   const send = useCallback((file: File, url: string) => {
+    if (!isPngOrJpg(file)) {
+      setUpload({ status: "error", file, url, message: "This file is not a PNG or JPG. Export your logo as PNG or JPG and upload that." });
+      return;
+    }
     setUpload({ status: "uploading", file, url });
     api.upload(file).then(
       (design) => {
@@ -146,7 +152,7 @@ export default function Upload() {
                 <Icon name="i-image" className="flow-drop__icon" />
                 <p className="flow-drop__title">Drop your logo here</p>
                 <p className="flow-drop__hint">
-                  PNG, JPG or SVG, up to {(cfg.max_upload_bytes / 1_000_000).toFixed(0)} MB and {cfg.max_image_side_px} px on the long side
+                  PNG or JPG, up to {(cfg.max_upload_bytes / 1_000_000).toFixed(0)} MB and {cfg.max_image_side_px} px on the long side
                 </p>
                 <button className="btn btn--ink" type="button" onClick={() => input.current?.click()}>Choose a file</button>
               </>
@@ -185,11 +191,9 @@ export default function Upload() {
           <div>
             <section className="flow-card" aria-labelledby="checks-title">
               <h2 className="flow-card__title" id="checks-title">Image check</h2>
-              {!design && <p className="flow-note">Choose a file and we'll check its size, contrast and sharpness.</p>}
+              {!design && <p className="flow-note">Choose a file and we'll check its size, contrast, sharpness and specks.</p>}
               {design && isSvg && (
-                <p className="flow-note">
-                  SVG files are accepted, but they can't be turned into stitches yet. Export the logo as PNG and upload that to continue.
-                </p>
+                <p className="flow-note">This file can't be turned into stitches. Upload the logo as PNG or JPG.</p>
               )}
               {design && !isSvg && (
                 <ul className="flow-checks">
