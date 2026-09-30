@@ -1,4 +1,6 @@
-/* Landing page. Pastel fills are allowed here. */
+/* Landing page. Pastel fills are allowed here.
+   Element-level rules are scoped with :where(body.landing), which adds no specificity, so they
+   cannot leak into other screens after an in-app navigation (the landing opens Upload directly). */
 
 .nav {
   display: flex;
@@ -12,20 +14,18 @@
 .nav__links a { text-decoration: none; font-weight: 500; font-size: 15px; }
 .nav__links a:hover { text-decoration: underline; text-underline-offset: 4px; }
 .nav__actions { display: flex; gap: 8px; }
-.nav__login { display: none; }
 
-@media (min-width: 560px) { .nav__login { display: inline-flex; } }
 @media (min-width: 900px) {
   .nav { padding: 22px 40px; }
   .nav__links { display: flex; }
 }
 
-main > section { padding: 48px 20px; }
-@media (min-width: 900px) { main > section { padding: 72px 56px; } }
+main:where(body.landing *) > section { padding: 48px 20px; }
+@media (min-width: 900px) { main:where(body.landing *) > section { padding: 72px 56px; } }
 
-h1 { font-size: clamp(40px, 7vw, 76px); }
-h2 { font-size: clamp(30px, 4.4vw, 48px); }
-h3 { font-size: 20px; letter-spacing: -0.01em; }
+h1:where(body.landing *) { font-size: clamp(40px, 7vw, 76px); }
+h2:where(body.landing *) { font-size: clamp(30px, 4.4vw, 48px); }
+h3:where(body.landing *) { font-size: 20px; letter-spacing: -0.01em; }
 
 .lede { font-size: 18px; max-width: 34em; margin-top: 18px; }
 
@@ -76,33 +76,32 @@ h3 { font-size: 20px; letter-spacing: -0.01em; }
 .art-blob-a { inset: 0 8% 10% 0; width: 92%; height: 90%; }
 .art-blob-b { right: 0; bottom: 0; width: 56%; height: 56%; }
 .art-star { top: 2%; right: 8%; width: 17%; height: 17%; }
-.art-sparkle { left: 4%; bottom: 14%; width: 9%; height: 9%; }
 
-.hoop {
+.hero-drop {
   position: absolute;
-  inset: 16% 18% 18% 14%;
+  inset: 14% 10% 14% 8%;
   display: grid;
   place-items: center;
-  border-radius: 50%;
+  align-content: center;
+  gap: 10px;
+  padding: 24px;
+  border: 2px dashed var(--ink);
+  border-radius: var(--radius-card-lg);
   background: var(--surface);
-  border: 10px solid var(--ink);
-  box-shadow: 0 0 0 5px var(--surface), var(--shadow-float);
-}
-.hoop__motif { width: 64%; height: 64%; color: var(--ink); }
-
-.float-card {
-  position: absolute;
-  display: grid;
-  gap: 2px;
-  padding: 12px 16px;
-  border-radius: var(--radius-card-sm);
   box-shadow: var(--shadow-float);
-  color: var(--on-fill);
+  text-align: center;
+  transition: background-color .15s ease;
 }
-.float-card--pink  { left: 0; top: 10%; background: var(--pink); }
-.float-card--white { right: 0; bottom: 8%; background: var(--surface); border: 1px solid var(--border); }
-.float-card__label { font-size: 13px; font-weight: 500; }
-.float-card__value { font-size: 16px; font-weight: 700; }
+.hero-drop.is-over { background: var(--lime); }
+.hero-drop__icon {
+  width: 52px; height: 52px;
+  padding: 14px;
+  border-radius: 50%;
+  background: var(--lavender);
+  color: var(--ink);
+}
+.hero-drop__title { font-size: 20px; font-weight: 700; }
+.hero-drop__hint { font-size: 15px; }
 
 /* ---------- Features ---------- */
 .features__grid {
@@ -151,24 +150,59 @@ h3 { font-size: 20px; letter-spacing: -0.01em; }
   font-weight: 700;
 }
 
-/* ---------- Gallery ---------- */
-.gallery__head {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 16px;
+/* ---------- Demo video ---------- */
+.demo__frame {
+  margin-top: 28px;
+  aspect-ratio: 16 / 9;
+  border-radius: var(--radius-card-lg);
+  overflow: hidden;
+  background: var(--lavender);
 }
-.gallery__grid {
-  list-style: none;
-  padding: 0;
-  margin: 28px 0 0;
+.demo__video { width: 100%; height: 100%; background: var(--ink); }
+.demo__poster {
   display: grid;
-  gap: 16px;
-  grid-template-columns: repeat(2, 1fr);
+  place-items: center;
+  align-content: center;
+  gap: 14px;
+  width: 100%; height: 100%;
+  color: var(--on-fill);
 }
-@media (min-width: 900px) { .gallery__grid { grid-template-columns: repeat(4, 1fr); } }
-.gallery__name { margin-top: 10px; font-weight: 500; }
+.demo__play {
+  display: grid;
+  place-items: center;
+  width: 76px; height: 76px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--ink);
+  color: var(--on-ink);
+  cursor: not-allowed;
+}
+.demo__play svg { width: 30px; height: 30px; margin-left: 4px; }
+.demo__label { font-weight: 700; font-size: 18px; }
+
+/* ---------- FAQ ---------- */
+.faq__list { display: grid; gap: 10px; margin-top: 28px; max-width: 860px; }
+.faq__row {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card-sm);
+  background: var(--surface);
+}
+.faq__row summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 22px;
+  font-weight: 700;
+  font-size: 17px;
+  cursor: pointer;
+  list-style: none;
+}
+.faq__row summary::-webkit-details-marker { display: none; }
+.faq__icon { flex: none; width: 20px; height: 20px; transition: transform .15s ease; }
+.faq__row[open] .faq__icon { transform: rotate(45deg); }
+.faq__row p { padding: 0 22px 20px; max-width: 46em; }
+.faq__row:focus-within { border-color: var(--ink); }
 
 /* ---------- CTA band ---------- */
 .cta {
@@ -183,8 +217,8 @@ h3 { font-size: 20px; letter-spacing: -0.01em; }
   background: var(--green);
   color: var(--on-fill);
 }
-main > section.cta { padding: 56px 24px; }
-@media (min-width: 900px) { .cta { margin: 0 40px 40px; } main > section.cta { padding: 72px 40px; } }
+main:where(body.landing *) > section.cta { padding: 56px 24px; }
+@media (min-width: 900px) { .cta { margin: 0 40px 40px; } main:where(body.landing *) > section.cta { padding: 72px 40px; } }
 .cta p { font-size: 18px; margin-bottom: 8px; }
 .cta h2 { position: relative; max-width: 16em; text-wrap: balance; }
 .cta__sparkle { left: 20px; top: 20px; width: 26px; height: 26px; }

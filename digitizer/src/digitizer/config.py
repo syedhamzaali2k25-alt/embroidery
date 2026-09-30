@@ -105,10 +105,17 @@ PRODUCT: dict[str, dict[str, Any]] = {
         "fill_row_spacing_max_mm": PLACEHOLDER,
     },
     "output": {
-        # Formats written today, in priority order (DST first, PES second).
-        # JEF, VP3 and EXP may be added only after a pyembroidery write-then-read
-        # round-trip test passes for each one.
-        "formats": ["dst", "pes"],
+        # Machine formats offered to users (download, landing page). A format may be listed only
+        # after its pyembroidery write-then-read round trip passes (digitizer/tests/test_round_trip.py).
+        # PES is next, but its round trip fails today: every jump comes back with a trim, and one
+        # sample gets an extra stitch in the middle of a jump.
+        # JEF, VP3 and EXP come after PES.
+        "formats": ["dst"],
+    },
+    "site": {
+        # Landing-page demo video (a full URL to a video file). Empty = a poster with a play
+        # button and the label "[Demo video]".
+        "demo_video_url": "",
     },
     "preview": {
         # Cosmetic only: these change how preview.png looks, never the embroidery file.

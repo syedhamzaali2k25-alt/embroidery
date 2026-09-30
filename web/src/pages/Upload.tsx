@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { api, ApiError, type ClientConfig, type DesignCreated } from "../lib/api";
 import { imageColours, type ImageColour } from "../lib/colours";
 import { FlowBar } from "../lib/FlowBar";
+import { takePendingUpload } from "../lib/pendingUpload";
 import { Icon } from "../lib/Icon";
 import { usePage } from "../lib/usePage";
 import "../css/flow.css";
@@ -59,6 +60,15 @@ export default function Upload() {
     imageColours(url).then(setColours, () => setColours([]));
     send(file, url);
   };
+
+  // A file dropped on the Landing page arrives here and is uploaded as soon as the page is ready.
+  const ready = config.status === "ready";
+  useEffect(() => {
+    if (!ready) return;
+    const file = takePendingUpload();
+    if (file) choose(file);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready]);
 
   const onDrop = (e: DragEvent) => {
     e.preventDefault();

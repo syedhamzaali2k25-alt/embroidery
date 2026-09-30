@@ -35,7 +35,7 @@ export default function Home() {
         <div className="side__plan card card--lime">
           <p className="side__plan-title">Hoop space</p>
           <div className="meter" role="meter" aria-valuemin={0} aria-valuemax={20} aria-valuenow={7} aria-label="Designs used"><span style={{ "--fill": "35%" } as CSSProperties}></span></div>
-          <p className="side__plan-text">7 of 20 designs on the free plan</p>
+          <p className="side__plan-text">[Plan details]</p>
         </div>
       </aside>
 

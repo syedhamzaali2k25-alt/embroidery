@@ -34,6 +34,13 @@ class PreviewRequest(DesignSettings):
     """Optional body of POST /designs/{id}/preview: settings to change before digitizing again."""
 
 
+class SiteInfo(BaseModel):
+    """What the public landing page shows; none of it depends on unchosen limits."""
+    app_name: str
+    demo_video_url: str = Field(description="Empty means: show the poster with the [Demo video] label")
+    export_formats: list[str] = Field(description="Only formats whose pyembroidery round trip passes")
+
+
 class ClientConfig(BaseModel):
     """Defaults and limits the web app needs to fill in and check its forms."""
     app_name: str

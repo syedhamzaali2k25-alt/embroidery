@@ -9,6 +9,15 @@
     "issues": []
   },
   {
+    "page": "index-faq-open",
+    "viewport": "desktop",
+    "fonts": {
+      "sans": true,
+      "serif": true
+    },
+    "issues": []
+  },
+  {
     "page": "home",
     "viewport": "desktop",
     "fonts": {
@@ -91,6 +100,15 @@
   },
   {
     "page": "index",
+    "viewport": "phone",
+    "fonts": {
+      "sans": true,
+      "serif": true
+    },
+    "issues": []
+  },
+  {
+    "page": "index-faq-open",
     "viewport": "phone",
     "fonts": {
       "sans": true,

@@ -22,6 +22,8 @@ const testImage = join(root, 'scripts', 'test-images', 'cafe-luna.jpg');
 const API = 'http://localhost:8000';
 
 async function mockApi(page, { upload = 'ok', preview = 'ok' } = {}) {
+  // Landing: product values (no demo video yet, DST only).
+  await page.route(`${API}/site`, (r) => r.fulfill({ json: { app_name: 'Stitchbook', demo_video_url: '', export_formats: ['dst'] } }));
   await page.route(`${API}/config`, (r) => r.fulfill({ json: fx.config }));
   await page.route(`${API}/designs`, (r) => upload === 'ok'
     ? r.fulfill({ status: 201, json: fx.upload })
@@ -38,7 +40,8 @@ async function mockApi(page, { upload = 'ok', preview = 'ok' } = {}) {
 // three keep the names used by the static site.
 const previewRoute = `/preview/${fx.upload.id}?width=80`;
 const pages = {
-  index: { route: '/' },
+  index: { route: '/', api: {}, ready: 'text=machine file' },
+  'index-faq-open': { route: '/', api: {}, ready: 'text=machine file', click: '.faq__row summary' },
   home: { route: '/home' },
   editor: { route: '/editor' },
   upload: { route: '/upload', api: {}, ready: 'text=Drop your logo here' },
@@ -163,6 +166,7 @@ for (const vp of viewports) {
     await page.goto(`${base}${spec.route}`, { waitUntil: spec.ready ? 'load' : 'networkidle' });
     if (spec.file) await page.locator('input[type=file]').setInputFiles(testImage);
     if (spec.ready) await page.locator(spec.ready).first().waitFor();
+    if (spec.click) for (const el of await page.locator(spec.click).all()) await el.click();
     await page.evaluate(() => document.fonts.ready);
     const file = join(outDir, `${name}-${vp.name}.png`);
     await page.screenshot({ path: file, fullPage: name !== 'editor' || vp.name === 'phone' });

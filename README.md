@@ -46,6 +46,7 @@ API (see http://localhost:$API_PORT/docs for the full schema):
 | Endpoint | What it does |
 |---|---|
 | `GET /health` | liveness |
+| `GET /site` | what the landing page shows: demo video URL and export formats (from `config.py`) |
 | `POST /designs` | multipart `file` (PNG/JPG/SVG) + optional `settings` JSON (`{"width_mm": 60}`); validates, stores, returns an id and quality warnings |
 | `POST /designs/{id}/preview` | digitizes small PNG/JPG images on the spot, returns stats, report and every stitch as JSON |
 | `GET /designs/{id}` | the stored design record |

@@ -34,6 +34,7 @@ from stitchbook_api.models import (
     ErrorResponse,
     HealthResponse,
     Layer,
+    SiteInfo,
     PreviewRequest,
     PreviewResponse,
     SettingsUsed,
@@ -111,6 +112,11 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
     @app.get("/health", response_model=HealthResponse)
     def health() -> HealthResponse:
         return HealthResponse(status="ok", app=config.app_name)
+
+    @app.get("/site", response_model=SiteInfo)
+    def site() -> SiteInfo:
+        return SiteInfo(app_name=config.app_name, demo_video_url=config.get("site.demo_video_url"),
+                        export_formats=config.get("output.formats"))
 
     @app.get("/config", response_model=ClientConfig, responses=ERRORS)
     def client_config() -> ClientConfig:

@@ -39,6 +39,12 @@ npm run e2e          # real API (../.venv) + Chromium, three test images, deskto
 
 The spec's green serif accent word (`#2ED47A`) on white measures **1.94:1**. That is below the WCAG 3:1 minimum for large text, so the audit reports it on every heading that has an accent word. Keeping it is a deliberate design-system decision. Everything else passes.
 
+### Landing
+
+- The hero's dashed upload box hands the dropped (or chosen) file straight to the Upload screen.
+- Export formats and the demo video come from `config.py` through `GET /site`: `output.formats` lists only formats whose round-trip test passes (DST today), and an empty `site.demo_video_url` shows a poster labelled "[Demo video]".
+- Unconfirmed terms stay visible placeholders: "[Fill in your trial terms]" (FAQ), "[Export formats]" (only if the API can't be reached), "[Plan details]" (Home).
+
 ### Upload and Preview
 
 - API address: `VITE_API_URL` (default `http://localhost:8000`), read from the repo-root `.env`.

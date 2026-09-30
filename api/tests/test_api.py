@@ -263,3 +263,13 @@ def test_preview_rejects_bad_settings_plainly(client, body, phrase):
     design_id = upload(client, (SAMPLES / "circle.png").read_bytes()).json()["id"]
     response = client.post(f"/designs/{design_id}/preview", json=body)
     assert response.status_code == 422 and phrase in response.json()["error"]
+
+
+def test_site_info_works_with_the_product_config(tmp_path):
+    client = make_client(tmp_path, load_config())  # no stand-in values needed
+    assert client.get("/site").json() == {"app_name": "Stitchbook", "demo_video_url": "", "export_formats": ["dst"]}
+
+
+def test_site_info_passes_the_configured_video_url(tmp_path):
+    client = make_client(tmp_path, CONFIG.with_overrides({"site.demo_video_url": "https://example.com/demo.mp4"}))
+    assert client.get("/site").json()["demo_video_url"] == "https://example.com/demo.mp4"

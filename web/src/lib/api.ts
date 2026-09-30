@@ -9,6 +9,8 @@ export type QualityWarning = {
   threshold: number;
 };
 
+export type SiteInfo = { app_name: string; demo_video_url: string; export_formats: string[] };
+
 export type ClientConfig = {
   app_name: string;
   allowed_types: string[];
@@ -87,6 +89,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  site: () => request<SiteInfo>("/site"),
   config: () => request<ClientConfig>("/config"),
   upload: (file: File, settings: DesignSettings = {}) => {
     const form = new FormData();
