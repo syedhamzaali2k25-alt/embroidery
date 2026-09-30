@@ -1,5 +1,5 @@
 {
-  "id": "5fe956e5b36c461f98f096ba36717bf9",
+  "id": "ebcfa271c10243abbe5ba101f5156173",
   "filename": "bird.png",
   "type": "png",
   "bytes": 35389,
@@ -15,7 +15,7 @@
       "bounds_px": [
         90,
         142,
-        625,
+        629,
         473
       ]
     },
@@ -27,7 +27,7 @@
         322,
         334,
         558,
-        466
+        470
       ]
     },
     {
@@ -46,9 +46,9 @@
       "share": 0.134410309933294,
       "shape_count": 3,
       "bounds_px": [
-        111,
+        106,
         388,
-        702,
+        706,
         582
       ]
     },
@@ -95,20 +95,20 @@
   },
   "warnings": [],
   "status": "digitized",
-  "created_at": "2026-09-30T12:52:20.979679Z",
+  "created_at": "2026-09-30T13:27:47.390571Z",
   "stats": {
-    "stitch_count": 2612,
-    "jump_count": 45,
-    "trim_count": 18,
-    "width_mm": 90,
+    "stitch_count": 2636,
+    "jump_count": 48,
+    "trim_count": 22,
+    "width_mm": 89.9,
     "height_mm": 60.4,
     "longest_stitch_mm": 6.929646455628166,
-    "longest_jump_mm": 13.320660644277371,
+    "longest_jump_mm": 13.6517398158623,
     "color_count": 7
   },
   "report": {
-    "jumps": 28,
-    "trims": 18,
+    "jumps": 34,
+    "trims": 22,
     "fill_areas": 7,
     "satin_columns": 6,
     "junction_patches": 3,
