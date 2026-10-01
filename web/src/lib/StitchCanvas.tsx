@@ -2,17 +2,17 @@ import { useEffect, useRef } from "react";
 
 import type { StitchPoint } from "./api";
 
-const PADDING = 24; // css px around the design
+export const PADDING = 24; // css px around the design
 const FADED = 0.18; // opacity of stitches outside the selection, so the selected ones stand out
-const SEAM = 0.45; // opacity of the ink seam drawn over colour overlaps
-const LIGHT = 0.85; // thread colours lighter than this (relative luminance) get a thin outline on the white canvas
+export const SEAM = 0.45; // opacity of the ink seam drawn over colour overlaps
+export const LIGHT = 0.85; // thread colours lighter than this (relative luminance) get a thin outline on the white canvas
 
-function token(name: string): string {
+export function token(name: string): string {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 }
 
 /** WCAG relative luminance of "#RRGGBB" (0 black .. 1 white). */
-function luminance(hex: string): number {
+export function luminance(hex: string): number {
   const [r, g, b] = [1, 3, 5].map((i) => {
     const c = parseInt(hex.slice(i, i + 2), 16) / 255;
     return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;

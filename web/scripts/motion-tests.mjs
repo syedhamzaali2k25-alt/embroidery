@@ -215,6 +215,93 @@ try {
     check(p95 <= 34, `4x slower CPU: ${frames.length} frames, 95% within ${p95.toFixed(1)}ms (headless Chromium, not a real phone)`);
     await page.context().close();
   }
+
+  console.log('-- 4. Preview: play sewing order');
+  const design = await fixture('design.json'), upload = await fixture('upload.json');
+  const previewMock = async (page) => {
+    await page.route(new RegExp(`^${API}/designs/[0-9a-f]{32}$`), (r) => r.fulfill({ json: design }));
+    await page.route(`${API}/designs/*/preview`, (r) => r.fulfill({ json: preview }));
+  };
+  const dstStitches = preview.stitches.filter((x) => x.command === 'stitch').length;
+  const drawn = (page) => page.locator('.sew-player canvas').evaluate((c) => Number(c.dataset.drawn));
+  {
+    const page = await open(browser, `/preview/${upload.id}`, { mock: previewMock });
+    await page.getByRole('heading', { name: 'Summary' }).waitFor();
+    // The static preview, with jumps (it always draws them), to compare the last frame with.
+    const still = await page.locator('.flow-stage canvas').evaluate((c) => c.toDataURL());
+    const text = await page.locator('body').innerText();
+    check(!/machine speed|real[- ]time|instant|fastest/i.test(text), 'the page makes no speed claim ("machine speed", "real-time", "instant", "fastest")');
+    await page.getByRole('button', { name: 'Play sewing order' }).click();
+    const player = page.locator('.sew-player');
+    await player.waitFor();
+    const total = Number(await player.locator('canvas').getAttribute('data-total'));
+    check(total === preview.stats.stitch_count && total === dstStitches, `the player has ${total} stitches: the DST's stitch count (${preview.stats.stitch_count})`);
+    const speeds = await player.getByRole('radio').allInnerTexts();
+    check(JSON.stringify(speeds) === JSON.stringify(['1x', '8x', '32x', '128x']), `speeds ${speeds.join(', ')}`);
+    await wait(500);
+    const early = await drawn(page);
+    check(early > 0 && early < total, `it plays: ${early} stitches after half a second at 32x`);
+    await page.getByRole('button', { name: 'Pause' }).click();
+    const paused = await drawn(page);
+    await wait(400);
+    check((await drawn(page)) === paused, `Pause holds at stitch ${paused}`);
+    await page.getByRole('radio', { name: '8x', exact: true }).click();
+    await page.getByRole('button', { name: 'Play', exact: true }).click();
+    await wait(1000);
+    const at8 = (await drawn(page)) - paused;
+    await page.getByRole('radio', { name: '128x', exact: true }).click();
+    const before128 = await drawn(page);
+    await wait(1000);
+    const at128 = (await drawn(page)) - before128;
+    check(at128 > at8 * 4, `128x sews far more stitches than 8x in the same second (${at8} at 8x; ${at128} at 128x, where it reached the end)`);
+    const beforeRestart = await drawn(page);
+    await page.getByRole('button', { name: 'Restart' }).click();
+    const afterRestart = await drawn(page); // read at once: it is already playing again at 128x
+    check(afterRestart < beforeRestart && afterRestart < total * 0.15, `Restart goes back to the start (${beforeRestart} -> ${afterRestart})`);
+    await page.getByRole('button', { name: 'Pause' }).click();
+    await player.locator('.sew-player__scrub').fill('500');
+    check((await drawn(page)) === 500 && (await player.locator('.sew-player__status').innerText()).startsWith('Stitch 500 of'),
+      'the scrub bar goes to any stitch (500)');
+    // To the end, with jumps shown: the last frame is the finished design, stitch for stitch.
+    await player.getByLabel('Show jumps').check();
+    await player.locator('.sew-player__scrub').fill(String(total));
+    const last = await drawn(page);
+    const finalFrame = await player.locator('canvas').evaluate((c) => c.toDataURL());
+    check(last === total && last === preview.stats.stitch_count, `last frame: ${last} stitches drawn = the DST's ${preview.stats.stitch_count}`);
+    check(finalFrame === still, 'last frame (jumps shown) is pixel-identical to the static preview of the finished design');
+    await player.getByLabel('Show jumps').uncheck();
+    const noJumps = await player.locator('canvas').evaluate((c) => c.toDataURL());
+    check(noJumps !== finalFrame, 'Show jumps off: jumps are not drawn');
+    await page.context().close();
+  }
+  {
+    const page = await open(browser, `/preview/${upload.id}`, { mock: previewMock, reduced: true });
+    await page.getByRole('heading', { name: 'Summary' }).waitFor();
+    await page.getByRole('button', { name: 'Play sewing order' }).click();
+    await page.locator('.sew-player').waitFor();
+    await wait(100);
+    check((await drawn(page)) === preview.stats.stitch_count, `reduced motion: Play shows the finished design at once (${await drawn(page)} stitches)`);
+    await page.context().close();
+  }
+  {
+    // Frame timing while playing at 128x with the CPU slowed 4x (headless Chromium, not a phone).
+    const page = await open(browser, `/preview/${upload.id}`, { mock: previewMock, width: 390, height: 844 });
+    await page.getByRole('heading', { name: 'Summary' }).waitFor();
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send('Emulation.setCPUThrottlingRate', { rate: 4 });
+    await page.getByRole('button', { name: 'Play sewing order' }).click();
+    await page.locator('.sew-player').waitFor();
+    await page.getByRole('radio', { name: '128x', exact: true }).click();
+    await page.getByRole('button', { name: 'Restart' }).click();
+    const frames = await page.evaluate(() => new Promise((done) => {
+      const times = []; let last = performance.now();
+      const tick = (now) => { times.push(now - last); last = now; if (times.length < 60) requestAnimationFrame(tick); else done(times); };
+      requestAnimationFrame(tick);
+    }));
+    const sorted = [...frames].sort((a, b) => a - b), p95 = sorted[Math.floor(sorted.length * 0.95)];
+    check(p95 <= 34, `player at 128x, 4x slower CPU: 95% of frames within ${p95.toFixed(1)}ms`);
+    await page.context().close();
+  }
 } finally {
   await browser.close();
   server.close();

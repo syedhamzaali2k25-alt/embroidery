@@ -147,6 +147,12 @@ const pages = {
   'upload-colours': { route: '/upload', api: {}, file: true, ready: '.flow-swatch', click: '.flow-swatches li:nth-child(n+6) input' },
   'upload-error': { route: '/upload', api: { upload: 'error' }, file: true, ready: "text=This file can't be used" },
   preview: { route: previewRoute, api: {}, ready: 'text=Summary' },
+  // "Play sewing order" open; with reduced motion (as all screenshots) it shows the finished design.
+  'preview-player': { route: previewRoute, api: {}, ready: 'text=Summary', act: async (page) => {
+    await page.getByRole('button', { name: 'Play sewing order' }).click();
+    await page.locator('.sew-player__status').waitFor();
+    await page.getByLabel('Show jumps').check();
+  } },
   // Public pages: what ships today (nothing chosen: markers), and Contact with an example address.
   privacy: { route: '/privacy', api: {}, ready: '.draft-banner .not-chosen' },
   terms: { route: '/terms', api: {}, ready: '.draft-banner .not-chosen' },

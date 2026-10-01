@@ -81,6 +81,15 @@
     "issues": []
   },
   {
+    "page": "preview-player",
+    "viewport": "desktop",
+    "fonts": {
+      "sans": true,
+      "serif": true
+    },
+    "issues": []
+  },
+  {
     "page": "privacy",
     "viewport": "desktop",
     "fonts": {
@@ -477,6 +486,15 @@
     "issues": []
   },
   {
+    "page": "preview-player",
+    "viewport": "phone",
+    "fonts": {
+      "sans": true,
+      "serif": true
+    },
+    "issues": []
+  },
+  {
     "page": "privacy",
     "viewport": "phone",
     "fonts": {
@@ -1108,6 +1126,15 @@
   },
   {
     "page": "preview",
+    "viewport": "laptop-1366x768",
+    "fonts": {
+      "sans": true,
+      "serif": true
+    },
+    "issues": []
+  },
+  {
+    "page": "preview-player",
     "viewport": "laptop-1366x768",
     "fonts": {
       "sans": true,

@@ -83,6 +83,7 @@ npm run e2e              # real API + Redis + worker + browser: Upload, Preview,
 npm run test:trace       # editor "Create satin columns" card: states, polling back-off, hidden tab, cancel (mocked API)
 npm run test:editor      # editor tools: stitch type, pull compensation, fabric preset, Split, Select Satin Columns, Draw edges, undo/redo, errors (mocked API)
 npm run test:pages       # Privacy, Terms, Contact, Blog: render, footer links, "Not chosen yet" markers, blog empty state and a fixture post
+npm run test:motion      # hover/press, scroll reveal (incl. no observer, JS off), hero stitch drawing, Preview sewing-order player; each with reduced motion
 npm run test:once        # dev server (React StrictMode): one preview / editor load per design at a time (mocked API)
 ```
 

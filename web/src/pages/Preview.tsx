@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom"
 
 import { api, ApiError, type ClientConfig, type DesignSettings, type Preview as PreviewData } from "../lib/api";
 import { FlowBar } from "../lib/FlowBar";
+import { SewPlayer } from "../lib/SewPlayer";
 import { SiteFooter } from "../lib/SiteChrome";
 import { Icon } from "../lib/Icon";
 import { StitchCanvas } from "../lib/StitchCanvas";
@@ -35,6 +36,8 @@ export default function Preview() {
   const [spacing, setSpacing] = useState("");
   // Selected layers (a piece layer, or every layer of one colour); the rest are faded.
   const [selected, setSelected] = useState<{ key: string; layers: Set<number> } | null>(null);
+  // "Play sewing order": the player takes the place of the static preview while it is open.
+  const [player, setPlayer] = useState(false);
 
   const run = useCallback((settings: DesignSettings) => {
     if (!designId) return;
@@ -164,10 +167,23 @@ export default function Preview() {
             </div>
           )}
           <div className="flow-stage">
-            <StitchCanvas stitches={data.stitches} colourOf={colourOf} selected={selected?.layers ?? null} overlaps={data.overlaps}
-                          label={`Stitch preview: ${stats.stitch_count} stitches, ${mm(stats.width_mm)} by ${mm(stats.height_mm)} mm`} />
+            {player ? (
+              <SewPlayer stitches={data.stitches} colourOf={colourOf} onClose={() => setPlayer(false)} overlaps={data.overlaps}
+                         label={`Sewing order of your design: ${stats.stitch_count} stitches, colour by colour`} />
+            ) : (
+              <StitchCanvas stitches={data.stitches} colourOf={colourOf} selected={selected?.layers ?? null} overlaps={data.overlaps}
+                            label={`Stitch preview: ${stats.stitch_count} stitches, ${mm(stats.width_mm)} by ${mm(stats.height_mm)} mm`} />
+            )}
             {busy && (
               <div className="flow-stage__busy" role="status"><div className="flow-spinner" aria-hidden="true" />Updating stitches…</div>
+            )}
+            {!player && (
+              <div className="flow-stage__play">
+                <button className="btn btn--ghost btn--sm" type="button" onClick={() => setPlayer(true)} disabled={busy}>
+                  Play sewing order
+                </button>
+                <span className="flow-stage__play-note">Watch your design stitch by stitch, in the order of the file.</span>
+              </div>
             )}
             <div className="flow-stage__legend" aria-hidden="true">
               <span className="flow-legend"><span className="flow-legend__line" />Stitches, in each layer's colour</span>
