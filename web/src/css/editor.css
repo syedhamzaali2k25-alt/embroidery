@@ -62,18 +62,31 @@ body.editor {
   border-bottom: 1px solid var(--border);
   overflow-x: auto;
 }
-/* Left column: tool row, the "Create satin columns" card, manual editing tools */
+/* Left column: the tool row, then the cards ("Create satin columns", manual editing, Export).
+   On desktop the tool row stays put and only the cards scroll, in their own area. */
 .ed-left {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  padding-bottom: 16px;
   border-bottom: 1px solid var(--border);
   min-width: 0;
 }
+.ed-left__scroll {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px 0;
+  min-height: 0;
+}
 @media (min-width: 960px) {
-  .ed-left { border-bottom: 0; border-right: 1px solid var(--border); overflow-y: auto; }
-  .tools { flex-wrap: wrap; padding: 12px 16px; }
+  .ed-left { border-bottom: 0; border-right: 1px solid var(--border); min-height: 0; overflow: hidden; }
+  .tools { flex: none; flex-wrap: wrap; padding: 12px 16px; background: var(--surface); }
+  .ed-left__scroll {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-color: var(--muted) transparent;
+  }
 }
 .tool {
   display: grid;
@@ -529,9 +542,10 @@ body.editor {
 .bar { position: relative; }
 .chip--private { position: static; }
 .chip--private .tip { left: var(--gutter); top: calc(100% - 4px); }
-.formats { position: relative; }
-.format { position: static; }
-.formats .tip { left: 0; right: 0; width: auto; max-width: none; }
+/* A refused format's reason shows inside the card, under the buttons (never clipped by the
+   scrolling column): the row wraps it onto its own line. */
+.format { display: contents; }
+.formats .tip { position: static; order: 1; flex: 1 0 100%; width: auto; max-width: none; box-shadow: none; }
 
 /* ---------- In-page Close dialog ---------- */
 .close-dialog {

@@ -700,5 +700,491 @@
       "serif": "unused"
     },
     "issues": []
+  },
+  {
+    "page": "editor-trace-loading",
+    "viewport": "laptop-1440x800",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "editor-trace-unavailable",
+    "viewport": "laptop-1440x800",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "editor-trace-timeout",
+    "viewport": "laptop-1440x800",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "editor-trace-idle",
+    "viewport": "laptop-1440x800",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "editor-trace-queued",
+    "viewport": "laptop-1440x800",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "editor-trace-running",
+    "viewport": "laptop-1440x800",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "editor-trace-done",
+    "viewport": "laptop-1440x800",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "editor-trace-failed",
+    "viewport": "laptop-1440x800",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "editor-trace-cancelled",
+    "viewport": "laptop-1440x800",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "editor-tool-select",
+    "viewport": "laptop-1440x800",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "editor-tool-saving",
+    "viewport": "laptop-1440x800",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "editor-tool-saved",
+    "viewport": "laptop-1440x800",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "editor-tool-error",
+    "viewport": "laptop-1440x800",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "editor-tool-split",
+    "viewport": "laptop-1440x800",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "editor-tool-split-saved",
+    "viewport": "laptop-1440x800",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "editor-tool-columns",
+    "viewport": "laptop-1440x800",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "editor-tool-draw",
+    "viewport": "laptop-1440x800",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "editor-tool-draw-saved",
+    "viewport": "laptop-1440x800",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "editor-view-shapes",
+    "viewport": "laptop-1440x800",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "editor-view-stitches-hidden",
+    "viewport": "laptop-1440x800",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "editor-tool-no-satin",
+    "viewport": "laptop-1440x800",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "editor-fabric-chosen",
+    "viewport": "laptop-1440x800",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "editor-sliders-sublayers",
+    "viewport": "laptop-1440x800",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "editor-sublayer-drawing",
+    "viewport": "laptop-1440x800",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "editor-export-refused",
+    "viewport": "laptop-1440x800",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "editor-close-waiting",
+    "viewport": "laptop-1440x800",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "editor-fabric-no-values",
+    "viewport": "laptop-1440x800",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "editor-trace-loading",
+    "viewport": "laptop-1366x768",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "editor-trace-unavailable",
+    "viewport": "laptop-1366x768",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "editor-trace-timeout",
+    "viewport": "laptop-1366x768",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "editor-trace-idle",
+    "viewport": "laptop-1366x768",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "editor-trace-queued",
+    "viewport": "laptop-1366x768",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "editor-trace-running",
+    "viewport": "laptop-1366x768",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "editor-trace-done",
+    "viewport": "laptop-1366x768",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "editor-trace-failed",
+    "viewport": "laptop-1366x768",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "editor-trace-cancelled",
+    "viewport": "laptop-1366x768",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "editor-tool-select",
+    "viewport": "laptop-1366x768",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "editor-tool-saving",
+    "viewport": "laptop-1366x768",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "editor-tool-saved",
+    "viewport": "laptop-1366x768",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "editor-tool-error",
+    "viewport": "laptop-1366x768",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "editor-tool-split",
+    "viewport": "laptop-1366x768",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "editor-tool-split-saved",
+    "viewport": "laptop-1366x768",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "editor-tool-columns",
+    "viewport": "laptop-1366x768",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "editor-tool-draw",
+    "viewport": "laptop-1366x768",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "editor-tool-draw-saved",
+    "viewport": "laptop-1366x768",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "editor-view-shapes",
+    "viewport": "laptop-1366x768",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "editor-view-stitches-hidden",
+    "viewport": "laptop-1366x768",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "editor-tool-no-satin",
+    "viewport": "laptop-1366x768",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "editor-fabric-chosen",
+    "viewport": "laptop-1366x768",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "editor-sliders-sublayers",
+    "viewport": "laptop-1366x768",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "editor-sublayer-drawing",
+    "viewport": "laptop-1366x768",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "editor-export-refused",
+    "viewport": "laptop-1366x768",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "editor-close-waiting",
+    "viewport": "laptop-1366x768",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "editor-fabric-no-values",
+    "viewport": "laptop-1366x768",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
   }
 ]

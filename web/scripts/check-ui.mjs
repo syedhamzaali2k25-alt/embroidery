@@ -174,8 +174,8 @@ const pages = {
     for (const p of [[cx - 2.5, cy - 2.5], [cx + 2.5, cy - 2.5], [cx + 2.5, cy + 2.5], [cx - 2.5, cy + 2.5]]) await clickAt(page, BOUNDS, p);
   } },
   'editor-export-refused': { route: editorRoute, editor: ['idle'], ready: '[data-state=idle]', keepScroll: true, act: async (page) => {
-    await page.locator('.export-card').scrollIntoViewIfNeeded();
-    await page.locator('.export-card').getByRole('radio', { name: 'PES' }).hover();
+    await page.locator('.export-card').getByRole('radio', { name: 'PES' }).focus(); // the reason shows on focus or hover
+    await page.locator('#why-pes').evaluate((el) => el.scrollIntoView({ block: 'center' }));
   } },
   'editor-close-waiting': { route: editorRoute, editor: ['idle'], ready: '[data-state=idle]', act: async (page, mock) => {
     await pick(page, 'Shape 1'); mock.next = 'hold';
@@ -190,7 +190,39 @@ const pages = {
 const viewports = [
   { name: 'desktop', width: 1440, height: 900 },
   { name: 'phone', width: 390, height: 844 },
+  // Shorter laptop screens: editor screens only (their columns have a fixed height and scroll).
+  { name: 'laptop-1440x800', width: 1440, height: 800, editorOnly: true },
+  { name: 'laptop-1366x768', width: 1366, height: 768, editorOnly: true },
 ];
+
+// The editor's tools row must be fully visible (every tool button actually clickable at its
+// centre), and on desktop it must stay visible when the cards below it are scrolled to the end,
+// with the last card (Export) reachable.
+function toolsRow() {
+  const nav = document.querySelector('.ed-left .tools');
+  if (!nav || document.querySelector('[role=alertdialog]')) return [];
+  const out = [];
+  const visible = () => [...nav.querySelectorAll('.tool')].every((b) => {
+    const r = b.getBoundingClientRect();
+    const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    return r.top >= 0 && r.bottom <= innerHeight && !!hit && b.contains(hit);
+  });
+  window.scrollTo(0, 0);
+  if (!visible()) out.push({ kind: 'tools-clipped', label: 'editor tools row is not fully visible' });
+  const cards = document.querySelector('.ed-left__scroll');
+  if (innerWidth >= 960 && cards) {
+    const before = cards.scrollTop;
+    cards.scrollTop = cards.scrollHeight;
+    if (!visible()) out.push({ kind: 'tools-clipped', label: 'editor tools row scrolls away with the cards' });
+    const last = cards.lastElementChild?.getBoundingClientRect(), box = cards.getBoundingClientRect();
+    if (last && last.bottom > box.bottom + 1) out.push({ kind: 'unreachable', label: 'the last left-column card cannot be scrolled into view' });
+    if (getComputedStyle(document.querySelector('.ed-left')).overflowY !== 'hidden') {
+      out.push({ kind: 'double-scroll', label: 'the whole left column scrolls, not just its cards' });
+    }
+    cards.scrollTop = before;
+  }
+  return out;
+}
 const types = { '.html': 'text/html', '.css': 'text/css', '.js': 'text/javascript', '.svg': 'image/svg+xml', '.woff2': 'font/woff2' };
 
 const server = createServer(async (req, res) => {
@@ -296,6 +328,7 @@ function audit() {
 for (const vp of viewports) {
   const page = await browser.newPage({ viewport: { width: vp.width, height: vp.height }, deviceScaleFactor: 1 });
   for (const [name, spec] of Object.entries(pages)) {
+    if (vp.editorOnly && !spec.editor) continue;
     await page.unrouteAll();
     if (spec.api) await mockApi(page, spec.api);
     const mock = spec.editor ? await mockEditor(page, ...spec.editor) : null;
@@ -305,11 +338,12 @@ for (const vp of viewports) {
     if (spec.editor) await page.locator('.design-shape').first().waitFor(); // the design's shapes are drawn
     if (spec.click) for (const el of await page.locator(spec.click).all()) await el.click();
     if (spec.act) await spec.act(page, mock);
-    if (spec.editor && vp.name === 'desktop' && !spec.keepScroll) await page.evaluate(() => { window.scrollTo(0, 0); document.querySelector('.panel')?.scrollTo(0, 0); });
+    if (spec.editor && vp.width >= 960 && !spec.keepScroll) await page.evaluate(() => { window.scrollTo(0, 0); document.querySelector('.panel')?.scrollTo(0, 0); });
     await page.evaluate(() => document.fonts.ready);
     const file = join(outDir, `${name}-${vp.name}.png`);
-    await page.screenshot({ path: file, fullPage: !name.startsWith('editor') || vp.name === 'phone' });
+    await page.screenshot({ path: file, fullPage: !name.startsWith('editor') || vp.width < 960 });
     const { issues, fonts } = await page.evaluate(audit);
+    if (spec.editor) issues.push(...await page.evaluate(toolsRow));
     // Claims the product cannot back up today (SVG is not digitized; digitizing runs on the
     // server; the old demo designs and numbers are not real).
     // Nothing may be called tested except in the note that says it is not.

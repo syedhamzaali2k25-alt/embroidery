@@ -397,7 +397,8 @@ try {
         && (await kindChecked(page)) === 'Fill', `${tag} server error: plain message, "Not saved" banner, Error chip, type unchanged`);
       mock.next = 'ok';
       await page.locator('.edit-error').getByRole('button', { name: 'Retry' }).click();
-      await page.locator('.edit-error').waitFor({ state: 'detached' });
+      await page.locator('.edit-error').waitFor({ state: 'detached' }); // gone as soon as the retry starts saving...
+      await page.waitForFunction(() => document.querySelector('.file__state')?.textContent === 'Saved'); // ...shown once saved
       check(mock.bodies.length === 2 && JSON.stringify(mock.bodies[0]) === JSON.stringify(mock.bodies[1]) && (await kindChecked(page)) === 'Satin',
         `${tag} Retry sends the same change again and then shows it`);
       mock.next = 'offline';

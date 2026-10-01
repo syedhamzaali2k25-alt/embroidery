@@ -271,6 +271,8 @@ export default function DesignEditor({ designId }: { designId: string }) {
             </button>
           </nav>
 
+          {/* Only the cards scroll; the tools row above stays in view. */}
+          <div className="ed-left__scroll">
           {loadProblem ? (
             <section className="trace-card" aria-label="Create satin columns" data-state="error" role="alert">
               <div className="trace-card__head"><h2 className="trace-card__title">Create satin columns</h2><span className="chip-beta">Beta</span></div>
@@ -302,6 +304,7 @@ export default function DesignEditor({ designId }: { designId: string }) {
           </section>
 
           <ExportCard designId={designId} ready={!!data && editor.status === "saved"} saving={editor.status === "saving"} />
+          </div>
         </aside>
 
         <section className="stage stage--design" aria-label="Canvas">
