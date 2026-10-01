@@ -64,8 +64,8 @@ try {
   for (const width of [390, 1366, 1440]) {
     for (const [path, title] of PAGES) {
       const page = await open(browser, base, path, { width, height: width === 390 ? 844 : 768 });
-      check((await h1(page)) === title && await noSideScroll(page) && await page.locator('footer .footer__link').count() === 7,
-        `${width}px ${path}: "${title}", footer with 7 links, no sideways scroll`);
+      check((await h1(page)) === title && await noSideScroll(page) && await page.locator('footer .footer__link').count() === 8,
+        `${width}px ${path}: "${title}", footer with 8 links, no sideways scroll`);
       check(await page.locator('header .acct').count() === 0 && await page.locator('header').getByText('Upload a logo').count() === 0,
         `${width}px ${path}: offline build: no account control and no Upload button in the header`);
       await page.close();
@@ -77,6 +77,7 @@ try {
     ['Product', '/upload', 'Upload a logo', { h1: 'Upload your logo' }],
     ['Product', '/#how', 'How it works', { section: 'how' }],
     ['Product', '/#faq', 'FAQ', { section: 'faq' }],
+    ['Product', '/pricing', 'Pricing', { h1: 'Plans and credits' }],  // on the home page: #pricing
     ['Company', '/contact', 'Contact', { h1: 'Contact' }],
     ['Company', '/blog', 'Blog', { h1: 'Blog' }],
     ['Legal', '/privacy', 'Privacy', { h1: 'Privacy' }],
@@ -102,8 +103,8 @@ try {
     const headings = await footer.locator('.footer__heading').allInnerTexts();
     const groups = await footer.locator('.footer__col').evaluateAll((cols) => cols.map((c) => [...c.querySelectorAll('a')].map((a) => a.getAttribute('href'))));
     check(JSON.stringify(headings) === JSON.stringify(['Product', 'Company', 'Legal'])
-      && JSON.stringify(groups) === JSON.stringify([['/upload', '/#how', '/#faq'], ['/contact', '/blog'], ['/privacy', '/terms']]),
-      'columns: Product (Upload a logo, How it works, FAQ), Company (Contact, Blog), Legal (Privacy, Terms of Service)');
+      && JSON.stringify(groups) === JSON.stringify([['/upload', '/#how', '/#faq', '/pricing'], ['/contact', '/blog'], ['/privacy', '/terms']]),
+      'columns: Product (Upload a logo, How it works, FAQ, Pricing), Company (Contact, Blog), Legal (Privacy, Terms of Service)');
     check((await footer.locator('.footer__tagline').innerText()) === 'Turn a PNG or JPG logo into an embroidery file.', 'about line: only what the product does today');
     await footer.locator('.footer__copy .not-chosen').waitFor();
     check((await footer.locator('.footer__copy').innerText()).replace(/\s+/g, ' ') === `© ${new Date().getFullYear()} Not chosen yet`
@@ -136,8 +137,10 @@ try {
   for (const from of ['/', '/upload', '/preview', '/privacy', '/terms', '/contact', '/blog']) {
     const page = await open(browser, base, from);
     const hrefs = await page.locator('footer .footer__link').evaluateAll((as) => as.map((a) => a.getAttribute('href')));
-    check(JSON.stringify(hrefs) === JSON.stringify(FOOTER.map((f) => f[1])), `${from}: all 7 footer links`);
-    for (const [, href, label, expect] of FOOTER) {
+    // Pricing: the home page's own section from the home page, the Pricing page from anywhere else.
+    const links = FOOTER.map(([col, href, label, expect]) => (href === '/pricing' && from === '/' ? [col, '/#pricing', label, { section: 'pricing' }] : [col, href, label, expect]));
+    check(JSON.stringify(hrefs) === JSON.stringify(links.map((f) => f[1])), `${from}: all 8 footer links`);
+    for (const [, href, label, expect] of links) {
       await page.locator('footer .footer__link', { hasText: new RegExp(`^${label}$`) }).click();
       await page.waitForURL(`${base}${href}`);
       let shown;
