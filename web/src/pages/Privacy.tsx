@@ -50,6 +50,11 @@ export default function Privacy() {
         <li>A machine embroidery file (DST), a preview image (PNG) and a short report about the stitches.</li>
         <li>Your settings (design width, fill density, the colours kept) and every change you make in the
           editor (including a fabric preset), with its undo history.</li>
+        {signInEnabled && (
+          <li>A record of every export (and other operation that can use credits): when it ran, on which design, with
+            which settings and file format, how it ended and how many credits it used. It is shown to you on the Credits
+            page.</li>
+        )}
       </ul>
 
       {signInEnabled && (

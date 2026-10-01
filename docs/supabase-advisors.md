@@ -25,6 +25,19 @@ These are intentions, not results. The advisor findings are the result.
   - `profiles.id` is the primary key.
 - **Multiple permissive policies** (performance): one policy per table and action, for the `authenticated` role only.
 
+## After migration 5 (billing): check again
+
+Migration 5 adds six tables and ten functions. Run both advisors again after pasting it, and add every finding below. Nothing here says they are clean.
+
+What migration 5 was written to avoid (intentions, not results):
+
+- RLS is enabled on all six new tables. Users have SELECT on their own rows only, with no write grants; anon has no grants.
+- Every function has `set search_path = ''`.
+  - The functions that change credits are `security definer` and executable by `service_role` only (revoked from public, anon and authenticated).
+- **"Security definer functions" findings are expected** for those functions. They are deliberate: users cannot call them. Record them anyway.
+- Indexes cover `(owner_id, created_at)` and every composite foreign key (including `jobs` and `exports` → `designs (id, owner_id)`).
+- `processed_webhook_events` has RLS on and no policies, on purpose: only the service role uses it. The advisor may flag "RLS enabled, no policy"; record it.
+
 ## Security Advisor findings
 
 | # | Level (Error / Warning / Info) | Finding (name as shown) | Object (table, function, bucket) | What it says | Fixed in | Notes |

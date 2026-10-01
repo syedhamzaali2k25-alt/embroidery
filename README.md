@@ -90,10 +90,13 @@ npm run test:pages       # Privacy, Terms, Contact, Blog: render, footer links, 
 npm run test:motion      # hover/press, scroll reveal (incl. no observer, JS off), hero stitch drawing, Preview sewing-order player; each with reduced motion
 npm run test:once        # dev server (React StrictMode): one preview / editor load per design at a time (mocked API)
 npm run test:auth        # sign-in build against a stand-in Supabase and Google: log in/up/out, Continue with Google, One Tap, My designs, log in before saving, signed downloads, screenshots + audit
-npm run check:secrets    # dist/ contains no Supabase secret key (also runs after npm run build)
+npm run check:secrets    # dist/ contains no Supabase secret key, Google client secret or payment secret (also runs after npm run build)
+npm run test:pricing     # /pricing and the home Pricing section: every number from config, price math, toggle, no invented claims, 360 px
 ```
 
-To try the Upload and Preview screens locally: `STITCHBOOK_TEST_RUN_VALUES=1 make api` in one terminal and `make web` in another, then open http://localhost:8080/upload. Tracing in the editor (`/editor?design=<id>`, reached from Preview) also needs Redis and `make worker`.
+Credits and plans (Step 13, `docs/billing.md`): preview is free; exports cost credits, reserved when they start and used only if they succeed. Plans and prices come from `billing.*` in config.py (`GET /plans`, the /pricing page). Without Supabase there is no billing: run the API with `STITCHBOOK_FREE_OPERATIONS=1` to export locally.
+
+To try the Upload and Preview screens locally: `STITCHBOOK_FREE_OPERATIONS=1 STITCHBOOK_TEST_RUN_VALUES=1 make api` in one terminal and `make web` in another, then open http://localhost:8080/upload. Tracing in the editor (`/editor?design=<id>`, reached from Preview) also needs Redis and `make worker`.
 
 ## Config and environment
 

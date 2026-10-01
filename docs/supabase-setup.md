@@ -2,9 +2,9 @@
 
 Stitchbook keeps accounts, designs and files in one Supabase project:
 `https://vnfvgotzjbfikgcivrmn.supabase.co`. Nothing in the repository changes the project by
-itself. You paste three SQL files into the SQL Editor, in order, and put three keys in `.env`.
+itself. You paste the SQL files into the SQL Editor, in order, and put the keys in `.env`.
 
-## 1. Run the three migrations, in this order
+## 1. Run the migrations, in this order
 
 The files are in `supabase/migrations/`. Paste each one whole and run it before you open the next.
 
@@ -13,6 +13,9 @@ The files are in `supabase/migrations/`. Paste each one whole and run it before 
 | 1st | `20261001000001_tables.sql` | Tables `profiles`, `designs`, `jobs`, `exports`. Each has an owner column. Each has an index on `owner_id`. Row level security is on, and every table has four owner-only policies (read, insert, update, delete) for signed-in users. The anon role has no policy and no table privileges. |
 | 2nd | `20261001000002_profiles_on_signup.sql` | A trigger on `auth.users` that adds a `profiles` row for each new account. |
 | 3rd | `20261001000003_storage.sql` | Private buckets `uploads` and `exports`. Their policies let a signed-in user read and write only under their own folder: `{user_id}/...`. |
+| 4th | `20261001000005_billing.sql` | Credits and plans (Step 13): `subscriptions`, `credit_ledger`, `credit_reservations`, `credit_allocations`, `operation_log`, `processed_webhook_events`, with RLS (users read their own rows only and write nothing), and the credit functions that only the secret key may run. It also adds `(design_id, owner_id)` indexes to `jobs` and `exports`. See `docs/billing.md`. |
+
+There is no `20261001000004_*.sql` in this repository. If you made a migration 4 yourself, run it before migration 5. Migration 5 does not depend on it; its index statements use `if not exists`, so an index of the same name is not made twice.
 
 What to click:
 
@@ -24,12 +27,14 @@ What to click:
    - If you see an error, stop and send it to me. Don't run the next file.
 5. Open a new tab with **+** again. Paste and run `20261001000002_profiles_on_signup.sql`.
 6. Open a new tab with **+** again. Paste and run `20261001000003_storage.sql`.
+7. Open a new tab with **+** again. Paste and run `20261001000005_billing.sql`. (If the first three are already in your project, this is the only one to run now.)
 
 Each file is meant to run once on the empty project. Running file 1 or 2 a second time fails with "already exists"; that is harmless, nothing is changed. File 3 also stops at its first policy on a second run, after setting both buckets back to private.
 
 Check that it worked:
 
-- **Table Editor**: the four tables are listed. None of them is marked "RLS disabled".
+- **Table Editor**: the four tables of migration 1 and the six of migration 5 are listed. None of them is marked "RLS disabled".
+- **Database → Functions**: `reserve_credit`, `consume_credit`, `release_credit`, `credit_balance`, `grant_credits`, `release_stale_reservations`, `apply_billing_event` are there.
 - **Storage**: the buckets `uploads` and `exports` are there. Neither is marked "Public".
 - **Authentication → Policies**: each table has its four "owner can ..." policies.
 
