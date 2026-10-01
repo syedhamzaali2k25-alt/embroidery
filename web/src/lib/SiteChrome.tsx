@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 
 import { api, type SiteInfo } from "./api";
 import { Icon } from "./Icon";
+import { useReveal } from "./useReveal";
 import "../css/site.css";
 
 // GET /site once per page load, shared by every page that needs it.
@@ -107,7 +108,11 @@ export function DraftBanner({ state }: { state: SiteState }) {
 }
 
 /** Layout of a public text page: header, a centred column, footer. */
+// Text-page blocks (headings, paragraphs, lists) and blog cards below the first screen reveal on scroll.
+const DOC_REVEAL = ".doc > :is(h2, h3, p, ul, ol, article, .empty-state):not(.post-list), .post-list > li";
+
 export function SitePage({ children }: { children: ReactNode }) {
+  useReveal(DOC_REVEAL);
   return (
     <>
       <div className="sheet">

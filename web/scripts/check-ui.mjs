@@ -346,7 +346,9 @@ function audit() {
 }
 
 for (const vp of viewports) {
-  const page = await browser.newPage({ viewport: { width: vp.width, height: vp.height }, deviceScaleFactor: 1 });
+  // Resting states: with reduced motion nothing is mid-animation (scroll reveal, hero drawing,
+  // player), so every screenshot shows the finished page. The motion itself: npm run test:motion.
+  const page = await browser.newPage({ viewport: { width: vp.width, height: vp.height }, deviceScaleFactor: 1, reducedMotion: 'reduce' });
   for (const [name, spec] of Object.entries(pages)) {
     if (vp.editorOnly && !spec.editor) continue;
     await page.unrouteAll();

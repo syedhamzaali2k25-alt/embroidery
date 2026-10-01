@@ -6,9 +6,13 @@ import { Icon } from "../lib/Icon";
 import { setPendingUpload } from "../lib/pendingUpload";
 import { SiteFooter } from "../lib/SiteChrome";
 import { usePage } from "../lib/usePage";
+import { useReveal } from "../lib/useReveal";
 import "../css/landing.css";
 
 const ACCEPT = ".png,.jpg,.jpeg,image/png,image/jpeg";
+// (The CTA card clips its contents, and moving the whole card counted as a layout shift in
+// Chrome; its heading, line and button reveal inside it instead.)
+const REVEAL = "main > section:not(.hero):not(.cta) > h2, .features__grid > .feature, .how__intro, .steps > .step, .demo__frame, .faq__row, .cta > h2, .cta > p, .cta > .btn";
 
 // Answers state only what the product does today. Unconfirmed terms stay visible placeholders.
 function faq(formats: string) {
@@ -37,6 +41,9 @@ export default function Landing() {
   useEffect(() => {
     api.site().then(setSite, () => setSite(null));
   }, []);
+  // Sections, cards, steps and FAQ rows below the first screen fade and rise into view once.
+  useReveal(REVEAL);
+
   // Links such as /#how (the footer's "How it works") scroll to their section once it is drawn:
   // this page loads on demand, so the browser cannot do it by itself.
   const location = useLocation();

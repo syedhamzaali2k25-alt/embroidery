@@ -263,6 +263,10 @@ try {
       const { page, mock } = await open(browser, viewport);
       // Stitch segments drawn per thread colour (data-colour), and every request the page sends from here on.
       const drawn = () => page.$$eval('.stitch-line', (ps) => Object.fromEntries(ps.map((p) => [p.dataset.colour, (p.getAttribute('d').match(/M/g) || []).length])));
+      // Record requests only once the page has finished loading (the Export card's formats, the
+      // trace card's job check), so only what hiding and showing would send is counted.
+      await page.locator('.export-card [role=radio]').first().waitFor();
+      await page.waitForLoadState('networkidle');
       const sent = [];
       page.on('request', (r) => { if (r.url().startsWith(API)) sent.push(`${r.method()} ${r.url()}`); });
       check((await page.getByRole('radio', { name: 'Stitches' }).getAttribute('aria-checked')) === 'true', `${tag} the editor opens in the Stitches view`);
@@ -282,7 +286,7 @@ try {
       await page.getByRole('button', { name: 'Show Shape 4', exact: true }).click();
       check(JSON.stringify(await drawn()) === JSON.stringify(before), `${tag} showing them again draws exactly the same stitches as before`);
 
-      check(sent.length === 0 && mock.bodies.length === 0, `${tag} hiding and showing sends nothing to the server (a view setting only)`);
+      check(sent.length === 0 && mock.bodies.length === 0, `${tag} hiding and showing sends nothing to the server (a view setting only)${sent.length ? `: ${sent.join(', ')}` : ''}`);
       check((await page.getByRole('link', { name: 'Export file' }).getAttribute('href')) === download
         && (await page.locator('.stats').innerText()).includes(editorFixture.stats.stitch_count.toLocaleString('en')),
         `${tag} Download link and stitch count unchanged`);

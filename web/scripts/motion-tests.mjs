@@ -87,6 +87,85 @@ try {
     check(focused.outline === 'solid' && focused.width === '2px', `${tag}: keyboard focus keeps a visible outline (${focused.tag}, ${focused.width} ${focused.outline})`);
     await page.context().close();
   }
+
+  console.log('-- 2. scroll reveal');
+  const scrollThrough = async (page) => {
+    const height = await page.evaluate(() => document.documentElement.scrollHeight);
+    for (let y = 0; y <= height; y += 300) { await page.evaluate((v) => window.scrollTo(0, v), y); await wait(60); }
+    await wait(1000); // longest reveal: 400ms + 5 x 80ms stagger
+  };
+  const states = (page) => page.evaluate(() => ({
+    pending: document.querySelectorAll('.reveal-pending').length,
+    hiddenOnFirstScreen: [...document.querySelectorAll('.reveal-pending')].filter((el) => el.getBoundingClientRect().top < innerHeight).length,
+    invisible: [...document.querySelectorAll('main *')].filter((el) => getComputedStyle(el).opacity === '0').length,
+  }));
+  for (const [path, width, height] of [['/', 1440, 900], ['/', 390, 844], ['/privacy', 1366, 768], ['/privacy', 390, 844]]) {
+    const page = await open(browser, path, { width, height });
+    await page.locator('footer .footer__link').first().waitFor();
+    await wait(500); // site settings loaded, first screen settled
+    // Count layout shifts from here on (while scrolling and revealing), not the ones during loading.
+    await page.evaluate(() => {
+      window.__shift = 0;
+      new PerformanceObserver((list) => { for (const e of list.getEntries()) if (!e.hadRecentInput) window.__shift += e.value; })
+        .observe({ type: 'layout-shift' });
+    });
+    const before = await states(page);
+    check(before.pending > 0 && before.hiddenOnFirstScreen === 0,
+      `${path} ${width}px: ${before.pending} items below the first screen wait to be revealed; nothing on the first screen is hidden`);
+    const offsets = await page.evaluate(() => [...document.querySelectorAll('.reveal-pending')].map((el) => el.offsetTop));
+    if (path === '/') {
+      // The four steps come into view together: each starts 80ms after the one before.
+      const delays = await page.evaluate(async () => {
+        const steps = document.querySelector('.steps');
+        window.scrollTo(0, steps.getBoundingClientRect().bottom + scrollY - innerHeight + 10);
+        await new Promise((r) => setTimeout(r, 150));
+        return [...steps.children].map((el) => parseFloat(el.style.transitionDelay)).filter((d) => !Number.isNaN(d));
+      });
+      const steps = delays.slice(1).map((d, i) => d - delays[i]);
+      check(delays.length >= 2 && steps.every((d) => d === 80), `${path} ${width}px: steps revealed together are staggered by 80ms (${delays.join(', ')} ms)`);
+    }
+    await scrollThrough(page);
+    const after = await states(page);
+    const offsetsAfter = await page.evaluate(() => [...document.querySelectorAll('[style*="transition-delay"], .reveal-in')].length);
+    const shift = await page.evaluate(() => window.__shift);
+    check(after.pending === 0 && after.invisible === 0, `${path} ${width}px: after scrolling, every item has been revealed (none left at opacity 0)`);
+    check(shift === 0 && offsetsAfter === 0, `${path} ${width}px: no layout shift (CLS ${shift}) and reveal classes cleaned up`);
+    check(offsets.length > 0, `${path} ${width}px: revealed items keep their place (transform and opacity only)`);
+    await page.context().close();
+  }
+  {
+    const page = await open(browser, '/', { reduced: true });
+    await page.locator('footer .footer__link').first().waitFor();
+    await wait(300);
+    const s = await states(page);
+    check(s.pending === 0 && s.invisible === 0, 'reduced motion: nothing is ever hidden, no reveal');
+    await page.context().close();
+  }
+  for (const [what, script] of [
+    ['an observer that never fires', () => { window.IntersectionObserver = class { observe() {} unobserve() {} disconnect() {} }; }],
+    ['no IntersectionObserver at all', () => { delete window.IntersectionObserver; }],
+  ]) {
+    const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    await context.addInitScript(script);
+    const page = await context.newPage();
+    await page.route(`${API}/site`, (r) => r.fulfill({ json: SITE }));
+    await page.goto(`${base}/`);
+    await page.locator('footer .footer__link').first().waitFor();
+    await wait(300);
+    await scrollThrough(page);
+    const s = await states(page);
+    check(s.pending === 0 && s.invisible === 0, `with ${what}: after scrolling, all content is visible`);
+    await context.close();
+  }
+  {
+    const page = await open(browser, '/', { js: false });
+    const noscript = await page.locator('noscript').evaluate((n) => n.textContent.trim()).catch(() => '');
+    const shown = await page.locator('body').innerText();
+    const pending = await page.locator('.reveal-pending').count();
+    check(pending === 0 && shown.includes('Stitchbook needs JavaScript to run'),
+      `JavaScript off: nothing is hidden by the reveal; the page says it needs JavaScript (${noscript ? 'noscript shown' : 'no noscript'})`);
+    await page.context().close();
+  }
 } finally {
   await browser.close();
   server.close();

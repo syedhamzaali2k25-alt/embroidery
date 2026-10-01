@@ -34,7 +34,17 @@
 .nav__links a:active, .footer__link:active { transform: scale(0.98); }
 .doc a:hover { text-decoration-color: var(--green); }
 
+/* Scroll reveal (src/lib/useReveal.ts). Nothing is hidden by default: only the script adds
+   .reveal-pending, and only to elements below the first screen, then swaps it for .reveal-in. */
+.reveal-pending { opacity: 0; transform: translateY(var(--motion-rise)); }
+.reveal-in {
+  opacity: 1;
+  transform: none;
+  transition: opacity var(--motion-reveal) var(--ease-out), transform var(--motion-reveal) var(--ease-out);
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .reveal-pending { opacity: 1 !important; transform: none !important; }
   *, *::before, *::after {
     transition-duration: 0s !important;
     animation-duration: 0s !important;
