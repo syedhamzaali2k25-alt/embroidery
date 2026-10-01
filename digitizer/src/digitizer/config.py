@@ -279,6 +279,58 @@ PRODUCT: dict[str, dict[str, Any]] = {
         # and answers with a plain "try again" message instead of hanging.
         "http_timeout_s": PLACEHOLDER,
     },
+    "billing": {
+        # Plans, credits and payments (Step 13). Values marked OWNER TO CONFIRM were given by the
+        # owner but still need a final yes. PLACEHOLDER = not chosen: shown as a visible
+        # placeholder in the UI, never replaced by an invented value.
+        # Plan display names (what the pricing page and the account menu show).
+        "plans.free.display_name": "Free",
+        "plans.pro.display_name": "Pro",
+        "plans.business.display_name": "Business",
+        # Price per month in billing.currency. Free costs nothing.
+        "plans.free.price_monthly": 0,
+        "plans.pro.price_monthly": 12,
+        "plans.business.price_monthly": 25,
+        # Free plan: credits given once per account, never renewed ("lifetime"). 30 = 3 exports
+        # at the export cost below. OWNER TO CONFIRM (exports, lifetime or monthly).
+        "plans.free.credits": 30,
+        "plans.free.credit_period": "lifetime",
+        # Paid plans: credits given every UTC calendar month (yearly plans get the same monthly
+        # allowance, granted month by month).
+        "plans.pro.credits_per_month": 5000,
+        "plans.business.credits_per_month": 10000,
+        # Features listed on a plan's card. Only what exists; nothing else is claimed.
+        "plans.free.features": [],
+        "plans.pro.features": ["Dashboard"],
+        "plans.business.features": PLACEHOLDER,
+        # Accounts per Business subscription. Not built (Step 13b: Teams); never shown as a claim.
+        "plans.business.seats": PLACEHOLDER,
+        # Yearly billing: the yearly price is monthly x 12 x (1 - this/100), computed in code
+        # (Pro 129.60, Business 270.00), never typed in anywhere.
+        "yearly_discount_percent": 10,
+        # Credits each metered operation costs. 0 or PLACEHOLDER = free and nothing is reserved.
+        # The list of operation kinds is the keys here. Preview is never metered.
+        "credit_costs.export": 10,
+        "credit_costs.satin_columns": PLACEHOLDER,
+        "credit_costs.auto_digitize": PLACEHOLDER,
+        # Whether unused monthly plan credits carry into the next month. False = they expire at
+        # the end of the UTC month. OWNER TO CONFIRM.
+        "monthly_rollover": False,
+        # Credit packs to buy on top of a plan: a list of {"credits": n, "price": p}. Hidden while
+        # unset. Bought credits never expire and are spent after the monthly allowance.
+        "credit_packs": PLACEHOLDER,
+        # Currency of every price (whether the provider supports it is an owner decision).
+        "currency": "USD",
+        # Payment provider adapter name (stitchbook_api.payments); PLACEHOLDER = payments off
+        # ("Payments are not available yet"). "fake" = the FakeProvider, never in production.
+        "provider": PLACEHOLDER,
+        # A reservation still open after this many seconds is released (its job is presumed
+        # lost) by the sweep, which runs every sweep_interval_s seconds and at API start.
+        "reservation_timeout_s": PLACEHOLDER,
+        "sweep_interval_s": PLACEHOLDER,
+        # Refund policy text shown on the pricing page. PLACEHOLDER = "[Refund policy]".
+        "refund_policy": PLACEHOLDER,
+    },
     "rate_limits": {
         # Uploads a single user may start per minute.
         "uploads_per_minute": PLACEHOLDER,
@@ -327,6 +379,8 @@ TEST_RUN_OVERRIDES: dict[str, Any] = {
     "jobs.poll_backoff_factor": 2,
     "jobs.redis_timeout_s": 2,
     "jobs.status_timeout_s": 10,
+    "billing.reservation_timeout_s": 600,
+    "billing.sweep_interval_s": 60,
     "auth.jwks_cache_s": 300,
     "auth.http_timeout_s": 10,
     "editor.edit_point_tolerance_mm": 0.5,
