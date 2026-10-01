@@ -267,6 +267,17 @@ PRODUCT: dict[str, dict[str, Any]] = {
         "replace_attempts": 5,
         # ...waiting this many seconds between tries.
         "replace_retry_s": 0.05,
+        # Supabase Storage: a link to a private file (an export, the original) stops working this
+        # many seconds after the API makes it. 60 s was named in the step-12 request.
+        "signed_url_ttl_s": 60,
+    },
+    "auth": {
+        # Supabase sign-in: the API keeps the project's public signing keys (JWKS) this many
+        # seconds before fetching them again (a key the API has not seen yet is fetched at once).
+        "jwks_cache_s": PLACEHOLDER,
+        # The API gives up on a call to Supabase (Auth, database, Storage) after this many seconds
+        # and answers with a plain "try again" message instead of hanging.
+        "http_timeout_s": PLACEHOLDER,
     },
     "rate_limits": {
         # Uploads a single user may start per minute.
@@ -316,6 +327,8 @@ TEST_RUN_OVERRIDES: dict[str, Any] = {
     "jobs.poll_backoff_factor": 2,
     "jobs.redis_timeout_s": 2,
     "jobs.status_timeout_s": 10,
+    "auth.jwks_cache_s": 300,
+    "auth.http_timeout_s": 10,
     "editor.edit_point_tolerance_mm": 0.5,
     "editor.snap_distance_mm": 1.0,
     "stitch.running_stitch_length_mm": 2.5,

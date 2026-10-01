@@ -228,14 +228,34 @@ class DesignRecord(BaseModel):
     stats: StitchStats | None = None
     report: DigitizeReport | None = None
     downloads: list[str] = []
-    # Who can see the design. Only "private" exists: there is no sharing yet. There are no accounts
-    # yet either, so the design's address (a random id) is the only thing that keeps it private.
+    # Who can see the design. Only "private" exists: there is no sharing. Only its owner (the
+    # signed-in user who uploaded it) can read or change it; anyone else gets 404.
     visibility: Literal["private"] = "private"
     trace_job_id: str | None = None  # latest "Create satin columns" job, so the editor can resume it
     # Editor changes, stored in image pixels (digitizer.edits). The first edits_applied are in
     # effect; the rest can be redone. A new change drops the ones that could be redone.
     edits: list[dict] = []
     edits_applied: int = 0
+
+
+class DesignSummary(BaseModel):
+    """One row of "My designs"."""
+    id: str
+    filename: str
+    type: ImageType
+    status: Literal["uploaded", "digitized"]
+    created_at: datetime
+    colour_count: int
+    stitch_count: int | None = Field(description="None until the design has been digitized")
+    width_mm: float | None
+    height_mm: float | None
+
+
+class DownloadLink(BaseModel):
+    url: str = Field(description="Signed Storage link, or (local mode) the API's own /download path")
+    filename: str
+    expires_in_s: int | None = Field(description="Seconds the link works for; None for the API path")
+    signed: bool
 
 
 class DesignCreated(BaseModel):

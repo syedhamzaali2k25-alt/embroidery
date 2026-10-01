@@ -4,13 +4,21 @@ Endpoints: GET /health, GET /site, GET /config, POST /designs, POST /designs/{id
 GET /designs/{id}, GET /designs/{id}/shapes, GET /designs/{id}/download?format=dst,
 GET /designs/{id}/editor, POST /designs/{id}/edits, POST /designs/{id}/edits/undo,
 POST /designs/{id}/edits/redo, POST /designs/{id}/trace, GET /jobs/health, GET /jobs/{id},
-POST /jobs/{id}/cancel. Every error body is {"error": "<what to fix>"}.
-Design records are JSON files in Storage for now (a database comes with Supabase later).
+POST /jobs/{id}/cancel, GET /designs, GET /designs/{id}/download-url. Every error body is
+{"error": "<what to fix>"}.
+
+Sign-in: with SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY set, every route except /health, /site,
+/formats and /config (public, no user data) needs "Authorization: Bearer <Supabase access
+token>"; the user id comes only from that verified token. Missing or bad token: 401. Someone
+else's design or job: 404, exactly as if it did not exist. Records then live in Supabase's tables
+and files in its private Storage buckets, always read and written as the signed-in user.
+Without those settings the API runs in local mode: one local user, records and files on disk.
 """
 
 from __future__ import annotations
 
 import functools
+import logging
 import re
 import tempfile
 import threading
@@ -26,7 +34,8 @@ from digitizer.edits import EditError, apply_edit, label as edit_label, to_pixel
 from digitizer.fabric import presets as fabric_presets
 from digitizer.formats import CANDIDATES as FORMAT_LABELS, offered as offered_formats, write as write_format
 from digitizer.readback import records
-from fastapi import Body, FastAPI, File, Form, HTTPException, Path as PathParam, Query, Request, UploadFile
+import httpx
+from fastapi import Body, Depends, FastAPI, File, Form, Header, HTTPException, Path as PathParam, Query, Request, UploadFile
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
@@ -34,7 +43,8 @@ from pydantic import ValidationError
 from shapely.ops import unary_union
 
 from stitchbook_api import uploads
-from stitchbook_api.jobs import AlreadyFinished, JobNotFound, Jobs, QueueUnavailable
+from stitchbook_api.auth import LOCAL_USER, Auth, AuthUnavailable, SupabaseAuth, Unauthorized, User
+from stitchbook_api.jobs import TERMINAL, AlreadyFinished, JobNotFound, Jobs, QueueUnavailable
 from stitchbook_api.models import (
     ClientConfig,
     ColourLayerOut,
@@ -42,8 +52,10 @@ from stitchbook_api.models import (
     DesignRecord,
     DesignSettings,
     DesignShapes,
+    DesignSummary,
     DetectedColour,
     DigitizeReport,
+    DownloadLink,
     DownloadQuery,
     EditorDefaults,
     EditorState,
@@ -67,12 +79,14 @@ from stitchbook_api.models import (
     TraceColumn,
     UnavailableFormat,
 )
+from stitchbook_api.records import DatabaseUnavailable, Designs, LocalDesigns, SupabaseDesigns
 from stitchbook_api.settings import Settings, load_settings
-from stitchbook_api.storage import LocalDiskStorage, NotFound, Storage
+from stitchbook_api.storage import LocalDiskStorage, NotFound, Storage, StorageUnavailable
 
 DesignId = Annotated[str, PathParam(pattern=r"^[0-9a-f]{32}$", description="Design id from POST /designs")]
 JobId = Annotated[str, PathParam(pattern=r"^[0-9a-f]{32}$", description="Job id from POST /designs/{id}/trace")]
-ERRORS = {code: {"model": ErrorResponse} for code in (404, 409, 413, 415, 422, 503)}
+ERRORS = {code: {"model": ErrorResponse} for code in (401, 404, 409, 413, 415, 422, 503)}
+log = logging.getLogger("stitchbook_api")
 
 
 def _warnings(items) -> list[QualityWarningOut]:
@@ -100,11 +114,52 @@ def _plain_validation_message(exc: RequestValidationError | ValidationError) -> 
 
 
 def create_app(config: Config | None = None, storage: Storage | None = None,
-               settings: Settings | None = None) -> FastAPI:
+               settings: Settings | None = None, auth: Auth | None = None,
+               http: httpx.Client | None = None) -> FastAPI:
+    """`auth` checks sign-in tokens: made from the Supabase settings when they are set; tests may
+    pass their own. With neither, the API is in local mode (no sign-in, one local user)."""
     settings = settings or load_settings()
     config = config or (load_test_run_config() if settings.test_run_values else load_config())
     storage = storage or LocalDiskStorage(settings.storage_dir, config.get("storage.replace_attempts"),
                                           config.get("storage.replace_retry_s"))
+    if settings.supabase:
+        http = http or httpx.Client()
+        auth = auth or SupabaseAuth(settings.supabase_url, settings.supabase_publishable_key,
+                                    timeout_s=lambda: config.get("auth.http_timeout_s"),
+                                    cache_s=lambda: config.get("auth.jwks_cache_s"), http=http)
+
+        def designs_for(user: User) -> Designs:
+            return SupabaseDesigns(settings.supabase_url, settings.supabase_publishable_key, user.id, user.token,
+                                   config.get("auth.http_timeout_s"), http)
+    else:
+        if auth is None:
+            log.warning("Supabase is not configured: local mode, no sign-in, every request is the one local user. "
+                        "For offline development and tests only.")
+
+        def designs_for(user: User) -> Designs:
+            return LocalDesigns(storage, user.id)
+
+    def current_user(authorization: Annotated[str | None, Header(include_in_schema=False)] = None) -> User:
+        """The signed-in user, from a verified token only. Local mode: the one local user."""
+        if auth is None:
+            return LOCAL_USER
+        scheme, _, token = (authorization or "").partition(" ")
+        if scheme.lower() != "bearer" or not token.strip():
+            raise HTTPException(401, "Sign in to continue: this request has no sign-in token.",
+                                headers={"WWW-Authenticate": "Bearer"})
+        try:
+            return auth.verify(token.strip())
+        except Unauthorized as exc:
+            raise HTTPException(401, str(exc), headers={"WWW-Authenticate": "Bearer"}) from None
+        except AuthUnavailable:
+            raise HTTPException(503, "Sign-in could not be checked right now. Try again in a moment.") from None
+        except PlaceholderValueError:
+            raise  # an unchosen auth.* value: the plain "choose a value" 503
+
+    # Routes take `designs: Designs = Depends(my_designs)` (the default form, because names local to
+    # create_app cannot be resolved from string annotations).
+    def my_designs(user: User = Depends(current_user)) -> Designs:
+        return designs_for(user)
     # One lock per design: requests that sew a design and write its files (preview, editor,
     # changes, undo, redo) run one after the other for the same design, never at the same time.
     # This covers one API process; several processes would need a shared lock (not built).
@@ -116,14 +171,15 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
             return locks.setdefault(design_id, threading.Lock())
 
     def one_at_a_time(endpoint):
-        """Run the endpoint while holding its design's lock (FastAPI still sees its signature)."""
+        """Run the endpoint while holding its design's lock (FastAPI still sees its signature).
+        The lock is per owner and design, so one user cannot hold up another's design."""
         @functools.wraps(endpoint)
         def locked(design_id: str, *args, **kwargs):
-            with design_lock(design_id):
+            with design_lock(f"{kwargs['designs'].owner_id}/{design_id}"):
                 return endpoint(design_id, *args, **kwargs)
         return locked
 
-    jobs = Jobs(settings.redis_url, settings.rq_queue, settings.trace_job, storage,
+    jobs = Jobs(settings.redis_url, settings.rq_queue, settings.trace_job,
                 redis_timeout_s=lambda: config.get("jobs.redis_timeout_s"))
 
     app = FastAPI(title=f"{config.app_name} API")
@@ -132,12 +188,19 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
             CORSMiddleware,
             allow_origins=[settings.cors_origin],
             allow_methods=["GET", "POST"],
-            allow_headers=["Content-Type"],
+            allow_headers=["Authorization", "Content-Type"],
         )
 
     @app.exception_handler(HTTPException)
     async def http_error(_: Request, exc: HTTPException):
-        return JSONResponse({"error": exc.detail}, status_code=exc.status_code)
+        return JSONResponse({"error": exc.detail}, status_code=exc.status_code, headers=exc.headers)
+
+    @app.exception_handler(DatabaseUnavailable)
+    @app.exception_handler(StorageUnavailable)
+    async def store_down(_: Request, exc: Exception):
+        log.warning("store unavailable: %s", exc)
+        return JSONResponse({"error": "Your designs could not be reached right now. Try again in a moment."},
+                            status_code=503)
 
     @app.exception_handler(RequestValidationError)
     async def validation_error(_: Request, exc: RequestValidationError):
@@ -149,12 +212,12 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
         return JSONResponse({"error": f"The server is not configured yet: choose a value for {key} in "
                                       "digitizer/src/digitizer/config.py."}, status_code=503)
 
-    def load_record(design_id: str) -> DesignRecord:
-        try:
-            return DesignRecord.model_validate_json(storage.get(f"designs/{design_id}/design.json"))
-        except NotFound:
-            raise HTTPException(404, f"No design with id {design_id}. Upload the image again with POST /designs.") \
-                from None
+    def load_record(designs: Designs, design_id: str) -> DesignRecord:
+        """The user's own design, or 404: someone else's design looks exactly like a missing one."""
+        record = designs.get(design_id)
+        if record is None:
+            raise HTTPException(404, f"No design with id {design_id}. Upload the image again with POST /designs.")
+        return record
 
     def check_settings(s: DesignSettings, record: DesignRecord | None = None) -> None:
         """Plain messages for values outside the limits in config.py (and colours the design lacks)."""
@@ -170,9 +233,6 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
             lo, hi = config.get("api.fill_row_spacing_min_mm"), config.get("api.fill_row_spacing_max_mm")
             if not lo <= s.fill_row_spacing_mm <= hi:
                 raise HTTPException(422, f"Fill density (row spacing) must be between {lo:g} and {hi:g} mm.")
-
-    def save_record(record: DesignRecord) -> None:
-        storage.put(f"designs/{record.id}/design.json", record.model_dump_json(indent=2).encode())
 
     @app.get("/health", response_model=HealthResponse)
     def health() -> HealthResponse:
@@ -224,6 +284,7 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
     @app.post("/designs", response_model=DesignCreated, status_code=201, responses=ERRORS)
     async def create_design(
         file: Annotated[UploadFile, File(description="Logo image: PNG or JPG (SVG is stored but cannot be digitized)")],
+        designs: Designs = Depends(my_designs),
         settings_json: Annotated[str | None, Form(alias="settings", description="JSON, e.g. {\"width_mm\": 60}")] = None,
     ) -> DesignCreated:
         try:
@@ -239,7 +300,6 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
             raise HTTPException(exc.status, exc.message) from None
 
         design_id = uuid.uuid4().hex
-        storage.put(f"designs/{design_id}/original.{upload.type}", data)
         detected, background, specks, bounds = [], None, 0, None
         warnings = list(upload.warnings)
         if upload.type != "svg":
@@ -266,7 +326,8 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
             colours=detected, background=background, specks_removed=specks, settings=design_settings,
             warnings=_warnings(warnings), status="uploaded", created_at=datetime.now(timezone.utc),
         )
-        save_record(record)
+        designs.create(record)  # the record first: Storage and the exports table refer to it
+        designs.put_file(design_id, f"original.{upload.type}", data)
         return DesignCreated(id=design_id, type=record.type, width_px=record.width_px, height_px=record.height_px,
                              logo_width_px=record.logo_width_px, logo_height_px=record.logo_height_px,
                              colours=record.colours, background=record.background,
@@ -288,7 +349,7 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
     def applied(record: DesignRecord) -> list[dict]:
         return record.edits[:record.edits_applied]
 
-    def sew(record: DesignRecord):
+    def sew(designs: Designs, record: DesignRecord):
         """Digitize the design with its settings and the changes in effect; store the DST, preview
         and report (so Download matches), and the stats on the record. Returns
         (record, result, stitches, width, spacing). The fill density set on the preview screen is
@@ -296,7 +357,7 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
         width = record_width(record)
         with tempfile.TemporaryDirectory() as tmp:
             source = Path(tmp) / f"original.{record.type}"
-            source.write_bytes(storage.get(f"designs/{record.id}/original.{record.type}"))
+            source.write_bytes(designs.get_file(record.id, f"original.{record.type}"))
             out = Path(tmp) / "out"
             try:
                 result = digitize(source, out, config, width, record.settings.colours, applied(record),
@@ -309,13 +370,13 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
                 if fmt != "dst":
                     write_format(out / "out.dst", out / f"out.{fmt}", fmt)
             for name in ("preview.png", "report.json", *(f"out.{fmt}" for fmt in available)):
-                storage.put(f"designs/{record.id}/{name}", (out / name).read_bytes())
+                designs.put_file(record.id, name, (out / name).read_bytes())
             layers_iter = iter(result.stitch_layers)
             stitches = [StitchPoint(x_mm=x, y_mm=y, command=c, layer=next(layers_iter) if c == "stitch" else None)
                         for x, y, c in records(out / "out.dst")]
         record = record.model_copy(update={"status": "digitized", "stats": StitchStats(**vars(result.stats)),
                                            "report": DigitizeReport(**result.to_json()), "downloads": available})
-        save_record(record)
+        designs.save(record)
         return record, result, stitches, width, result.fill_row_spacing_mm
 
     def layers_and_colours(result):
@@ -328,10 +389,11 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
 
     @app.post("/designs/{design_id}/preview", response_model=PreviewResponse, responses=ERRORS)
     @one_at_a_time
-    def preview(design_id: DesignId, body: PreviewRequest | None = None) -> PreviewResponse:
+    def preview(design_id: DesignId, designs: Designs = Depends(my_designs),
+                body: PreviewRequest | None = None) -> PreviewResponse:
         """Digitize with the design's settings (optionally changed here) and every editor change
         in effect. Stores the DST for download."""
-        record = load_record(design_id)
+        record = load_record(designs, design_id)
         if body is not None:
             check_settings(body, record)
             changes = body.model_dump(exclude_none=True)
@@ -339,7 +401,7 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
                 changes["colours"] = [c.upper() for c in changes["colours"]]
             record = record.model_copy(update={"settings": record.settings.model_copy(update=changes)})
         check_sync_size(record, "digitized")
-        record, result, stitches, width, spacing = sew(record)
+        record, result, stitches, width, spacing = sew(designs, record)
         layers, colours = layers_and_colours(result)
         return PreviewResponse(id=design_id, stats=record.stats, report=record.report,
                                settings_used=SettingsUsed(width_mm=width, fill_row_spacing_mm=spacing),
@@ -347,15 +409,15 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
                                warnings=record.warnings, stitches=stitches)
 
     @app.get("/designs/{design_id}/shapes", response_model=DesignShapes, responses=ERRORS)
-    def shapes(design_id: DesignId) -> DesignShapes:
+    def shapes(design_id: DesignId, designs: Designs = Depends(my_designs)) -> DesignShapes:
         """The design's shapes in mm (same coordinates as the DST) for the editor canvas and
         Layers list, with the editor's changes in effect."""
-        record = load_record(design_id)
+        record = load_record(designs, design_id)
         check_sync_size(record, "opened in the editor")
         width = record_width(record)
         with tempfile.TemporaryDirectory() as tmp:
             source = Path(tmp) / f"original.{record.type}"
-            source.write_bytes(storage.get(f"designs/{design_id}/original.{record.type}"))
+            source.write_bytes(designs.get_file(design_id, f"original.{record.type}"))
             try:
                 found = design_shapes(source, config, width, record.settings.colours, applied(record))
             except ValueError as exc:
@@ -365,8 +427,8 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
 
     # ---------- editor: changes, undo, redo ----------
 
-    def editor_state(record: DesignRecord) -> EditorState:
-        record, result, stitches, _width, _spacing = sew(record)
+    def editor_state(designs: Designs, record: DesignRecord) -> EditorState:
+        record, result, stitches, _width, _spacing = sew(designs, record)
         layers, colours = layers_and_colours(result)
         n, total = record.edits_applied, len(record.edits)
         history = History(applied=n, total=total, undo=edit_label(record.edits[n - 1]) if n else None,
@@ -393,12 +455,12 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
 
     @app.get("/designs/{design_id}/editor", response_model=EditorState, responses=ERRORS)
     @one_at_a_time
-    def get_editor(design_id: DesignId) -> EditorState:
+    def get_editor(design_id: DesignId, designs: Designs = Depends(my_designs)) -> EditorState:
         """The editor's view of the design: shapes, satin columns and every stitch, from one run
         of the digitizer with the changes in effect (which also refreshes the DST for download)."""
-        record = load_record(design_id)
+        record = load_record(designs, design_id)
         check_sync_size(record, "opened in the editor")
-        return editor_state(record)
+        return editor_state(designs, record)
 
     def check_density(traced, number: int, mm: float) -> None:
         """The density slider's range from config.py: fill row spacing or satin spacing."""
@@ -413,11 +475,12 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
 
     @app.post("/designs/{design_id}/edits", response_model=EditorState, responses=ERRORS)
     @one_at_a_time
-    def add_edit(design_id: DesignId, body: Annotated[EditRequest, Body()]) -> EditorState:
+    def add_edit(design_id: DesignId, body: Annotated[EditRequest, Body()],
+                 designs: Designs = Depends(my_designs)) -> EditorState:
         """Make one change (stitch type, pull compensation, split, satin column from two edges).
         It is checked against the design as it is now; a change that cannot be made is refused
         with a plain message and nothing is stored. Changes that could be redone are dropped."""
-        record = load_record(design_id)
+        record = load_record(designs, design_id)
         check_sync_size(record, "edited")
         if body.op == "set_pull_compensation" and body.mm is not None:
             lo, hi = config.get("api.pull_compensation_min_mm"), config.get("api.pull_compensation_max_mm")
@@ -426,7 +489,7 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
         width = record_width(record)
         with tempfile.TemporaryDirectory() as tmp:
             source = Path(tmp) / f"original.{record.type}"
-            source.write_bytes(storage.get(f"designs/{design_id}/original.{record.type}"))
+            source.write_bytes(designs.get_file(design_id, f"original.{record.type}"))
             try:
                 traced = trace_design(source, config, width, record.settings.colours, edits=applied(record))
                 if body.op == "set_density" and body.mm is not None:
@@ -438,72 +501,115 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
             except ValueError as exc:
                 raise HTTPException(422, f"This image could not be digitized ({exc}).") from None
         edits = applied(record) + [stored]
-        return editor_state(record.model_copy(update={"edits": edits, "edits_applied": len(edits)}))
+        return editor_state(designs, record.model_copy(update={"edits": edits, "edits_applied": len(edits)}))
 
     @app.post("/designs/{design_id}/edits/undo", response_model=EditorState, responses=ERRORS)
     @one_at_a_time
-    def undo(design_id: DesignId) -> EditorState:
-        record = load_record(design_id)
+    def undo(design_id: DesignId, designs: Designs = Depends(my_designs)) -> EditorState:
+        record = load_record(designs, design_id)
         if record.edits_applied == 0:
             raise HTTPException(409, "There is nothing to undo.")
         check_sync_size(record, "edited")
-        return editor_state(record.model_copy(update={"edits_applied": record.edits_applied - 1}))
+        return editor_state(designs, record.model_copy(update={"edits_applied": record.edits_applied - 1}))
 
     @app.post("/designs/{design_id}/edits/redo", response_model=EditorState, responses=ERRORS)
     @one_at_a_time
-    def redo(design_id: DesignId) -> EditorState:
-        record = load_record(design_id)
+    def redo(design_id: DesignId, designs: Designs = Depends(my_designs)) -> EditorState:
+        record = load_record(designs, design_id)
         if record.edits_applied >= len(record.edits):
             raise HTTPException(409, "There is nothing to redo.")
         check_sync_size(record, "edited")
-        return editor_state(record.model_copy(update={"edits_applied": record.edits_applied + 1}))
+        return editor_state(designs, record.model_copy(update={"edits_applied": record.edits_applied + 1}))
+
+    @app.get("/designs", response_model=list[DesignSummary], responses=ERRORS)
+    def list_designs(designs: Designs = Depends(my_designs)) -> list[DesignSummary]:
+        """The signed-in user's designs, newest first ("My designs"). Never anyone else's."""
+        return [DesignSummary(id=r.id, filename=r.filename, type=r.type, status=r.status, created_at=r.created_at,
+                              colour_count=len(r.colours), stitch_count=r.stats.stitch_count if r.stats else None,
+                              width_mm=r.stats.width_mm if r.stats else None,
+                              height_mm=r.stats.height_mm if r.stats else None)
+                for r in designs.list()]
 
     @app.get("/designs/{design_id}", response_model=DesignRecord, responses=ERRORS)
-    def get_design(design_id: DesignId) -> DesignRecord:
-        return load_record(design_id)
+    def get_design(design_id: DesignId, designs: Designs = Depends(my_designs)) -> DesignRecord:
+        return load_record(designs, design_id)
+
+    def machine_file(record: DesignRecord, fmt: str) -> str:
+        """The download file name for an offered format the design has; plain 422/409 otherwise."""
+        available, unavailable = offered_formats(config)
+        if fmt not in available:
+            reason = unavailable.get(fmt, f"{fmt!r} is not a machine file format this app writes.")
+            raise HTTPException(422, f"{reason} Choose one of: {', '.join(f.upper() for f in available)}.")
+        if fmt not in record.downloads:
+            raise HTTPException(409, f"This design has no stitch file yet. Run POST /designs/{record.id}/preview "
+                                     "first, then download.")
+        stem = re.sub(r"[^A-Za-z0-9._-]", "_", Path(record.filename).stem) or "design"
+        return f"{stem}.{fmt}"
 
     @app.get("/designs/{design_id}/download", responses={200: {"content": {"application/octet-stream": {}}}, **ERRORS})
-    def download(design_id: DesignId, query: Annotated[DownloadQuery, Query()]) -> Response:
-        record = load_record(design_id)
-        available, unavailable = offered_formats(config)
-        if query.format not in available:
-            reason = unavailable.get(query.format, f"{query.format!r} is not a machine file format this app writes.")
-            raise HTTPException(422, f"{reason} Choose one of: {', '.join(f.upper() for f in available)}.")
-        if query.format not in record.downloads:
-            raise HTTPException(409, f"This design has no stitch file yet. Run POST /designs/{design_id}/preview "
-                                     "first, then download.")
-        data = storage.get(f"designs/{design_id}/out.{query.format}")
-        stem = re.sub(r"[^A-Za-z0-9._-]", "_", Path(record.filename).stem) or "design"
-        filename = f"{stem}.{query.format}"
+    def download(design_id: DesignId, query: Annotated[DownloadQuery, Query()], designs: Designs = Depends(my_designs)) -> Response:
+        record = load_record(designs, design_id)
+        filename = machine_file(record, query.format)
+        data = designs.get_file(design_id, f"out.{query.format}")
         return Response(data, media_type="application/octet-stream",
                         headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+
+    @app.get("/designs/{design_id}/download-url", response_model=DownloadLink, responses=ERRORS)
+    def download_url(design_id: DesignId, query: Annotated[DownloadQuery, Query()], designs: Designs = Depends(my_designs)) -> DownloadLink:
+        """A short-lived signed link to the machine file in private Storage (storage.signed_url_ttl_s
+        in config.py). Local mode has no signed links and points at /download instead."""
+        record = load_record(designs, design_id)
+        filename = machine_file(record, query.format)
+        ttl = config.get("storage.signed_url_ttl_s")
+        try:
+            url = designs.signed_url(design_id, f"out.{query.format}", ttl, filename)
+        except NotFound:
+            raise HTTPException(409, f"This design has no stitch file yet. Run POST /designs/{design_id}/preview "
+                                     "first, then download.") from None
+        if url is None:
+            return DownloadLink(url=f"/designs/{design_id}/download?format={query.format}", filename=filename,
+                                expires_in_s=None, signed=False)
+        return DownloadLink(url=url, filename=filename, expires_in_s=ttl, signed=True)
 
     # ---------- background jobs ----------
     QUEUE_DOWN = "Background jobs are not running, so satin columns cannot be traced right now."
 
-    def job_state(job_id: str) -> JobOut:
+    JOB_GONE = "This job no longer exists. Start it again from the editor."
+
+    def job_state(designs: Designs, job_id: str) -> JobOut:
+        """The user's own job (404 for anyone else's): its last stored state once it has ended,
+        else its state in Redis now. An ended job is stored, so it is still shown after Redis
+        has expired it."""
+        stored = designs.get_job(job_id)
+        if stored is None:
+            raise HTTPException(404, JOB_GONE)
+        if stored.status in TERMINAL:
+            return stored.model_copy(update={"server_time": datetime.now(timezone.utc)})
         try:
-            return jobs.state(job_id)
+            live = jobs.state(job_id)
         except JobNotFound:
-            raise HTTPException(404, "This job no longer exists. Start it again from the editor.") from None
+            raise HTTPException(404, JOB_GONE) from None
         except QueueUnavailable:
             raise HTTPException(503, QUEUE_DOWN) from None
+        if live.status in TERMINAL:
+            designs.save_job(live)
+        return live
 
     @app.post("/designs/{design_id}/trace", response_model=JobOut, status_code=202, responses=ERRORS)
-    def start_trace(design_id: DesignId) -> JobOut:
+    def start_trace(design_id: DesignId, designs: Designs = Depends(my_designs)) -> JobOut:
         """Start "Create satin columns" in the background. If one is already queued or running
         for this design, that job is returned instead of starting a second."""
-        record = load_record(design_id)
+        record = load_record(designs, design_id)
         if record.type == "svg":
             raise HTTPException(422, "SVG files cannot be traced. Export the logo as PNG or JPG and upload that instead.")
         if record.trace_job_id:
             try:
-                current = jobs.state(record.trace_job_id)
+                current = job_state(designs, record.trace_job_id)
                 if current.status in ("queued", "running"):
                     return current
-            except (JobNotFound, QueueUnavailable):
+            except HTTPException:
                 pass
-        image = storage.get(f"designs/{design_id}/original.{record.type}")
+        image = designs.get_file(design_id, f"original.{record.type}")
         try:
             started = jobs.start_trace(
                 design_id, image, record.type, record.settings.width_mm, dict(config.overrides), record.settings.colours,
@@ -513,12 +619,13 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
             )
         except QueueUnavailable:
             raise HTTPException(503, QUEUE_DOWN) from None
-        save_record(record.model_copy(update={"trace_job_id": started.id}))
+        designs.add_job(started)
+        designs.save(record.model_copy(update={"trace_job_id": started.id}))
         return started
 
     # Registered before /jobs/{job_id} so "health" is not taken for a job id.
     @app.get("/jobs/health", response_model=JobsHealth, responses=ERRORS)
-    def jobs_health() -> JobsHealth:
+    def jobs_health(_user: User = Depends(current_user)) -> JobsHealth:
         """Whether background jobs can run: 503 with a plain message if Redis can't be reached."""
         try:
             return JobsHealth(status="ok", workers=jobs.health())
@@ -526,13 +633,17 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
             raise HTTPException(503, QUEUE_DOWN) from None
 
     @app.get("/jobs/{job_id}", response_model=JobOut, responses=ERRORS)
-    def get_job(job_id: JobId) -> JobOut:
-        return job_state(job_id)
+    def get_job(job_id: JobId, designs: Designs = Depends(my_designs)) -> JobOut:
+        return job_state(designs, job_id)
 
     @app.post("/jobs/{job_id}/cancel", response_model=JobOut, responses=ERRORS)
-    def cancel_job(job_id: JobId) -> JobOut:
+    def cancel_job(job_id: JobId, designs: Designs = Depends(my_designs)) -> JobOut:
+        current = job_state(designs, job_id)  # 404 unless it is the user's own job
         try:
-            return jobs.cancel(job_id)
+            out = jobs.cancel(job_id, current)
+            if out.status in TERMINAL:
+                designs.save_job(out)
+            return out
         except AlreadyFinished as exc:
             raise HTTPException(409, f"This job has already ended ({exc}); there is nothing to cancel.") from None
         except JobNotFound:

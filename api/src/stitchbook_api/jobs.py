@@ -1,8 +1,8 @@
 """Background jobs (RQ) for the API: start a trace, read its state, cancel it.
 
 The API only enqueues by function path (stitchbook_worker.jobs.trace_design by default); the
-worker runs it and the digitizer does the work. Finished, failed and cancelled jobs are copied to
-Storage so the editor can show them again after Redis has expired the job.
+worker runs it and the digitizer does the work. Which user a job belongs to, and its last known
+state (kept after Redis has expired the job), are stored per user by the API (records.Designs).
 """
 
 from __future__ import annotations
@@ -19,7 +19,6 @@ from rq.exceptions import NoSuchJobError
 from rq.job import Job, JobStatus
 
 from stitchbook_api.models import JobOut, TraceResult
-from stitchbook_api.storage import NotFound, Storage
 
 _STATUS = {
     JobStatus.CREATED: "queued", JobStatus.QUEUED: "queued", JobStatus.DEFERRED: "queued",
@@ -53,15 +52,13 @@ def _now() -> datetime:
 
 
 class Jobs:
-    def __init__(self, redis_url: str, queue_name: str, trace_job: str, storage: Storage,
-                 redis_timeout_s: Callable[[], float]):
+    def __init__(self, redis_url: str, queue_name: str, trace_job: str, redis_timeout_s: Callable[[], float]):
         self.redis_url = redis_url
         self.queue_name = queue_name
         self.redis_timeout_s = redis_timeout_s  # read on first use, so an unchosen value only
         self._redis: Redis | None = None        # affects job endpoints, not the whole API
         self._queue: Queue | None = None
         self.trace_job = trace_job
-        self.storage = storage
 
     @property
     def redis(self) -> Redis:
@@ -104,9 +101,7 @@ class Jobs:
 
     # ---------- read ----------
     def state(self, job_id: str) -> JobOut:
-        snapshot = self._snapshot(job_id)
-        if snapshot is not None:
-            return snapshot.model_copy(update={"server_time": _now()})
+        """The job's state as Redis has it now. Raises JobNotFound once Redis has expired it."""
         try:
             job = Job.fetch(job_id, connection=self.redis)
             status = _STATUS.get(job.get_status(refresh=True), "queued")
@@ -127,19 +122,11 @@ class Jobs:
             error=(meta.get("error") or GENERIC_FAILURE) if status == "failed" else None,
             result=result,
         )
-        if status in TERMINAL:
-            self.storage.put(f"jobs/{job_id}.json", out.model_dump_json().encode())
         return out
 
-    def _snapshot(self, job_id: str) -> JobOut | None:
-        try:
-            return JobOut.model_validate_json(self.storage.get(f"jobs/{job_id}.json"))
-        except NotFound:
-            return None
-
     # ---------- cancel ----------
-    def cancel(self, job_id: str) -> JobOut:
-        current = self.state(job_id)
+    def cancel(self, job_id: str, current: JobOut | None = None) -> JobOut:
+        current = current or self.state(job_id)
         if current.status in TERMINAL:
             raise AlreadyFinished(current.status)
         try:

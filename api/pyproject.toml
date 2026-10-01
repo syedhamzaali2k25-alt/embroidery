@@ -15,6 +15,8 @@ dependencies = [
   "rq",
   "python-multipart",
   "pillow",
+  "httpx",          # calls to Supabase (Auth keys, database REST API, Storage)
+  "PyJWT[crypto]",  # checks Supabase sign-in tokens (ES256/RS256)
 ]
 
 [tool.setuptools.packages.find]
