@@ -55,8 +55,6 @@
   .faq__row summary:active, .hero-drop:hover, .nav__links a:active, .footer__link:active { transform: none !important; }
 }
 
-/* Smooth scrolling to the home page's own sections (#pricing, #faq, ...), only when motion is
-   welcome, and only on the home page: elsewhere (the editor) scrolling must stay immediate. */
-@media (prefers-reduced-motion: no-preference) {
-  html:has(> body.landing) { scroll-behavior: smooth; }
-}
+/* Smooth scrolling to the home page's own sections (#pricing, #faq, ...) is done in Landing.tsx
+   (sectionLink), only when a visitor follows such a link and only without reduced motion. There is
+   no global scroll-behavior: programmatic scrolling (editor, scroll reveal) stays immediate. */

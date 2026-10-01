@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type DragEvent } from "react";
+import { useEffect, useRef, useState, type DragEvent, type MouseEvent } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 
 import { api, type SiteInfo } from "../lib/api";
@@ -35,6 +35,20 @@ function faq(formats: string) {
   ] as const;
 }
 
+/** Smooth only when the visitor has not asked for reduced motion. */
+const scrollMotion = (): ScrollBehavior => (matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth");
+
+/** A link to one of this page's sections: scrolls there (smoothly unless reduced motion) and keeps
+ *  the address (#pricing) so it can be shared. */
+function sectionLink(e: MouseEvent<HTMLAnchorElement>) {
+  const id = e.currentTarget.hash.slice(1);
+  const target = document.getElementById(id);
+  if (!target || e.metaKey || e.ctrlKey || e.shiftKey) return;
+  e.preventDefault();
+  target.scrollIntoView({ behavior: scrollMotion() });
+  history.pushState(null, "", `#${id}`);
+}
+
 export default function Landing() {
   usePage("Stitchbook", "landing");
   const navigate = useNavigate();
@@ -52,7 +66,7 @@ export default function Landing() {
   // this page loads on demand, so the browser cannot do it by itself.
   const location = useLocation();
   useEffect(() => {
-    if (location.hash) document.getElementById(decodeURIComponent(location.hash.slice(1)))?.scrollIntoView();
+    if (location.hash) document.getElementById(decodeURIComponent(location.hash.slice(1)))?.scrollIntoView({ behavior: scrollMotion() });
   }, [location.hash, location.key]);
 
   const start = (file: File | undefined) => {
@@ -77,11 +91,11 @@ export default function Landing() {
       <header className="nav">
         <a className="brand" href="/"><Icon name="logo" />Stitchbook</a>
         <nav className="nav__links" aria-label="Main">
-          <a href="#features">Features</a>
-          <a href="#how">How it works</a>
-          <a href="#demo">Demo</a>
-          <a href="#faq">FAQ</a>
-          <a href="#pricing">Pricing</a>
+          <a href="#features" onClick={sectionLink}>Features</a>
+          <a href="#how" onClick={sectionLink}>How it works</a>
+          <a href="#demo" onClick={sectionLink}>Demo</a>
+          <a href="#faq" onClick={sectionLink}>FAQ</a>
+          <a href="#pricing" onClick={sectionLink}>Pricing</a>
         </nav>
         <div className="nav__actions"><AccountControl /></div>
       </header>

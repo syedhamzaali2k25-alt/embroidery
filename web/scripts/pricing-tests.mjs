@@ -160,17 +160,25 @@ try {
     await section.screenshot({ path: join(shots, 'home-pricing-1366.png') });
     const { issues } = await page.evaluate(audit);
     check(issues.length === 0, `home audit: ${issues.length ? JSON.stringify(issues) : 'no issues'}`);
-    check(await page.evaluate(() => getComputedStyle(document.documentElement).scrollBehavior) === 'auto', 'reduced motion: no smooth scroll');
+    // Following "Pricing" in the header: immediate with reduced motion, smooth (still moving a moment later) without.
+    const jumpTo = async (pg) => {
+      await pg.evaluate(() => window.scrollTo(0, 0));
+      await pg.locator('.nav__links').getByRole('link', { name: 'Pricing' }).click();
+      const soon = await pg.evaluate(() => new Promise((r) => setTimeout(() => r(scrollY), 40)));
+      await pg.waitForFunction(() => Math.abs(document.getElementById('pricing').getBoundingClientRect().top) < 2, null, { timeout: 5000 });
+      return { soon, end: await pg.evaluate(() => scrollY), hash: await pg.evaluate(() => location.hash) };
+    };
+    const still = await jumpTo(page);
+    check(still.soon === still.end && still.hash === '#pricing', `reduced motion: the jump to #pricing is immediate (${still.soon} = ${still.end})`);
     await page.close();
     await pricing.close();
     const moving = await open('/', { motion: 'no-preference' });
-    check(await moving.evaluate(() => getComputedStyle(document.documentElement).scrollBehavior) === 'smooth', 'with motion: smooth scroll to #pricing');
+    await moving.locator('#pricing .plan').first().waitFor();
+    const glide = await jumpTo(moving);
+    check(glide.soon < glide.end && glide.hash === '#pricing', `with motion: a smooth scroll to #pricing (${glide.soon} on the way to ${glide.end})`);
+    check(await moving.evaluate(() => getComputedStyle(document.documentElement).scrollBehavior) === 'auto',
+      'no global smooth scrolling (programmatic scrolling stays immediate)');
     await moving.close();
-    const elsewhere = await open('/pricing', { motion: 'no-preference' });
-    await elsewhere.locator('.plan').first().waitFor();
-    check(await elsewhere.evaluate(() => getComputedStyle(document.documentElement).scrollBehavior) === 'auto',
-      'other pages keep immediate scrolling (the editor relies on it)');
-    await elsewhere.close();
   }
 
   console.log('-- 360 px wide: no sideways scroll, audit');
