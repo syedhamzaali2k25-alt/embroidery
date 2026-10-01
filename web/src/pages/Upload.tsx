@@ -4,7 +4,8 @@ import { useNavigate } from "react-router-dom";
 import { api, ApiError, type ClientConfig, type DesignCreated } from "../lib/api";
 import { FlowBar } from "../lib/FlowBar";
 import { SiteFooter } from "../lib/SiteChrome";
-import { takePendingUpload } from "../lib/pendingUpload";
+import { loginPath, signInEnabled, useSession } from "../lib/auth";
+import { setPendingUpload, takePendingUpload } from "../lib/pendingUpload";
 import { Icon } from "../lib/Icon";
 import { usePage } from "../lib/usePage";
 import "../css/flow.css";
@@ -27,6 +28,8 @@ function message(err: unknown): string {
 export default function Upload() {
   usePage("Upload a logo · Stitchbook", "flow");
   const navigate = useNavigate();
+  const auth = useSession();
+  const session = auth.session;
   const input = useRef<HTMLInputElement>(null);
   const [config, setConfig] = useState<Load<ClientConfig>>({ status: "loading" });
   const [upload, setUpload] = useState<UploadState>({ status: "empty" });
@@ -64,14 +67,21 @@ export default function Upload() {
 
   const choose = (file: File | undefined) => {
     if (!file) return;
+    if (signInEnabled && !session) {
+      // Saving needs an account: log in first, then this file is uploaded on the way back.
+      setPendingUpload(file);
+      navigate(loginPath("/upload"));
+      return;
+    }
     if (upload.status !== "empty") URL.revokeObjectURL(upload.url);
     const url = URL.createObjectURL(file);
     setKept(new Set());
     send(file, url);
   };
 
-  // A file dropped on the Landing page arrives here and is uploaded as soon as the page is ready.
-  const ready = config.status === "ready";
+  // A file dropped on the Landing page (or chosen before logging in) arrives here and is uploaded
+  // as soon as the page is ready.
+  const ready = config.status === "ready" && auth.ready;
   useEffect(() => {
     if (!ready) return;
     const file = takePendingUpload();

@@ -1,3 +1,6 @@
 /* React mounts into #root; let its children lay out as if they were the body's own
    children, so the page CSS ported from the static site (body.editor grid etc.) is unchanged. */
 #root { display: contents; }
+
+/* Download errors next to a signed-download button (Preview, editor Export card). */
+.download-error { display: block; margin-top: 8px; font-size: 14px; font-weight: 500; }

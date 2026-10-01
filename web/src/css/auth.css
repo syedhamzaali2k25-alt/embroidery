@@ -1,0 +1,48 @@
+/* Log in, Sign up, Log out: one centred column on the plain white page. Ink and the text green
+   only; no pastel fills. */
+
+.auth {
+  width: min(440px, 100%);
+  margin: 0 auto;
+  padding: 56px var(--gutter) 80px;
+}
+@media (min-width: 900px) { .auth { padding-top: 88px; } }
+
+.auth__title { font-size: clamp(34px, 5vw, 48px); }
+.auth__lede { margin-top: 12px; font-size: 17px; }
+
+.auth__form { display: grid; gap: 18px; margin-top: 32px; }
+.auth__field { display: grid; gap: 6px; }
+.auth__field label { font-size: 14px; font-weight: 700; }
+.auth__field input {
+  min-height: 48px;
+  padding: 0 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card-sm);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 16px;
+}
+.auth__field input:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; border-color: var(--ink); }
+
+.auth__error {
+  padding: 12px 16px;
+  border: 1px solid var(--ink);
+  border-radius: var(--radius-card-sm);
+  font-size: 15px;
+  font-weight: 500;
+}
+.auth__submit { width: 100%; }
+.auth__switch { font-size: 15px; text-align: center; }
+.auth__switch a, .auth__note a:not(.btn) { color: var(--accent-text); font-weight: 700; }
+
+.auth__note {
+  display: grid;
+  gap: 16px;
+  margin-top: 28px;
+  padding: 22px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  font-size: 16px;
+}

@@ -8,6 +8,7 @@ import {
 import {
   DesignShapesLayer, fitTo, OverlapSeams, RingPicker, StitchLines, ToolMarks, TracedColumns, unfitFrom, type RingPick,
 } from "../lib/DesignCanvas";
+import { DownloadLink } from "../lib/DownloadLink";
 import { TraceCard } from "../lib/TraceCard";
 import { useEditor, type EditorHook } from "../lib/useEditor";
 import { useTraceJob } from "../lib/useTraceJob";
@@ -758,9 +759,9 @@ function ExportCard({ designId, ready, saving }: { designId: string; ready: bool
           </div>
           <p className="panel__note">{formats.labels[picked] ?? ""}</p>
           {canExport
-            ? <a className="btn btn--ink btn--sm export-card__go" href={api.downloadUrl(designId, picked)} download>
+            ? <DownloadLink className="btn btn--ink btn--sm export-card__go" designId={designId} format={picked}>
                 <svg aria-hidden="true"><use href="/assets/sprite.svg#i-download"/></svg>Export file
-              </a>
+              </DownloadLink>
             : <button className="btn btn--ink btn--sm export-card__go" type="button" disabled>
                 <svg aria-hidden="true"><use href="/assets/sprite.svg#i-download"/></svg>{saving ? "Saving…" : "Export file"}
               </button>}

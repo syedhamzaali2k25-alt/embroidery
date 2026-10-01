@@ -1,4 +1,7 @@
 // Typed client for the Stitchbook API (api/src/stitchbook_api). Types mirror its pydantic models.
+// When this build has sign-in, every request carries the signed-in user's access token; a 401
+// means "log in first" (see needsLogin).
+import { accessToken, loginPath, signInEnabled } from "./auth";
 
 export const API_URL: string = (import.meta.env.VITE_API_URL as string | undefined) ?? "http://localhost:8000";
 
@@ -117,9 +120,16 @@ export type DesignRecord = DesignCreated & {
   settings: DesignSettings;
   status: "uploaded" | "digitized";
   trace_job_id: string | null;
-  /** Only "private" exists: there is no sharing yet. */
+  /** Only "private" exists: only its owner can open it. */
   visibility?: "private";
 };
+/** One row of "My designs" (GET /designs). */
+export type DesignSummary = {
+  id: string; filename: string; type: "png" | "jpg" | "svg"; status: "uploaded" | "digitized"; created_at: string;
+  colour_count: number; stitch_count: number | null; width_mm: number | null; height_mm: number | null;
+};
+/** GET /designs/{id}/download-url: a short-lived signed link, or (local mode) the API's own path. */
+export type DownloadLink = { url: string; filename: string; expires_in_s: number | null; signed: boolean };
 /** GET /formats: what can be exported (write-then-read round trip passes), and why not for the rest. */
 export type Formats = {
   formats: string[];
@@ -164,13 +174,21 @@ export class ApiError extends Error {
 /** Status 0: the server could not be reached. TIMED_OUT: it did not answer within the time allowed. */
 export const TIMED_OUT = -1;
 
+/** True for "sign in first" (401). Pages send the visitor to log in and back. */
+export const needsLogin = (err: unknown) => signInEnabled && err instanceof ApiError && err.status === 401;
+/** The log-in address that returns to the page the visitor is on now. */
+export const loginHere = () => loginPath(location.pathname + location.search);
+
 type Options = RequestInit & { timeoutS?: number };
 
 async function request<T>(path: string, { timeoutS, ...init }: Options = {}): Promise<T> {
   let response: Response;
   const signal = timeoutS ? AbortSignal.timeout(timeoutS * 1000) : undefined;
   try {
-    response = await fetch(`${API_URL}${path}`, { ...init, signal });
+    const token = await accessToken();
+    const headers = new Headers(init.headers);
+    if (token) headers.set("Authorization", `Bearer ${token}`);
+    response = await fetch(`${API_URL}${path}`, { ...init, headers, signal });
   } catch (err) {
     if (signal?.aborted && err instanceof DOMException && err.name === "TimeoutError") {
       throw new ApiError(`The server did not answer within ${timeoutS} ${timeoutS === 1 ? "second" : "seconds"}.`, TIMED_OUT);
@@ -185,7 +203,10 @@ async function request<T>(path: string, { timeoutS, ...init }: Options = {}): Pr
     } catch {
       // keep the generic message
     }
-    throw new ApiError(message, response.status);
+    const error = new ApiError(message, response.status);
+    // Signed out (or the session ended): log in, then come back to this page.
+    if (needsLogin(error) && !location.pathname.startsWith("/login")) location.assign(loginHere());
+    throw error;
   }
   return response.json() as Promise<T>;
 }
@@ -275,7 +296,14 @@ export const api = {
   redo: (id: string) => request<EditorState>(`/designs/${id}/edits/redo`, post()),
   preview: (id: string, settings: DesignSettings = {}) =>
     oneAtATime(`preview:${id}`, JSON.stringify(settings), () => request<Preview>(`/designs/${id}/preview`, post(settings))),
+  designs: () => request<DesignSummary[]>("/designs"),
+  /** The API's own download path: what a build without sign-in links to directly. */
   downloadUrl: (id: string, format = "dst") => `${API_URL}/designs/${id}/download?format=${encodeURIComponent(format)}`,
+  /** A link to the machine file: signed and short-lived with sign-in, the API path without. */
+  downloadLink: async (id: string, format = "dst") => {
+    const link = await request<DownloadLink>(`/designs/${id}/download-url?format=${encodeURIComponent(format)}`);
+    return { ...link, url: link.signed ? link.url : `${API_URL}${link.url}` };
+  },
   formats: () => request<Formats>("/formats"),
   trace: (designId: string) => request<Job>(`/designs/${designId}/trace`, { method: "POST" }),
   jobsHealth: (timeoutS?: number) => request<JobsHealth>("/jobs/health", { timeoutS }),

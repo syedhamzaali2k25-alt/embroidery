@@ -239,7 +239,7 @@ try {
 
 console.log('-- blog with a fixture post (separate build: STITCHBOOK_BLOG_DIR=scripts/fixtures/blog)');
 const fixtureDist = join(root, 'dist-blog-fixture');
-execFileSync('npx', ['vite', 'build', '--outDir', fixtureDist, '--emptyOutDir', '--logLevel', 'error'], {
+execFileSync('npx', ['vite', 'build', '--mode', 'offline', '--outDir', fixtureDist, '--emptyOutDir', '--logLevel', 'error'], {
   cwd: root, env: { ...process.env, STITCHBOOK_BLOG_DIR: 'scripts/fixtures/blog' }, stdio: 'inherit',
 });
 const fixtureServer = await serve(fixtureDist);

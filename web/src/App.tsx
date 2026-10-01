@@ -13,6 +13,9 @@ const Privacy = lazy(() => import("./pages/Privacy"));
 const Terms = lazy(() => import("./pages/Terms"));
 const Contact = lazy(() => import("./pages/Contact"));
 const Blog = lazy(() => import("./pages/Blog"));
+const Login = lazy(() => import("./pages/Auth").then((m) => ({ default: m.Login })));
+const Signup = lazy(() => import("./pages/Auth").then((m) => ({ default: m.Signup })));
+const Logout = lazy(() => import("./pages/Auth").then((m) => ({ default: m.Logout })));
 const BlogPost = lazy(() => import("./pages/Blog").then((m) => ({ default: m.BlogPost })));
 
 export default function App() {
@@ -21,6 +24,10 @@ export default function App() {
       <Routes>
         <Route path="/" element={<Landing />} />
         <Route path="/home" element={<Home />} />
+        <Route path="/designs" element={<Home />} />
+        <Route path="/login" element={<Login />} />
+        <Route path="/signup" element={<Signup />} />
+        <Route path="/logout" element={<Logout />} />
         <Route path="/editor" element={<Editor />} />
         <Route path="/upload" element={<Upload />} />
         <Route path="/preview" element={<Preview />} />

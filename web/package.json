@@ -5,17 +5,20 @@
   "scripts": {
     "dev": "vite",
     "start": "vite",
-    "build": "tsc -p . && vite build",
+    "build": "tsc -p . && vite build && node scripts/check-bundle-secrets.mjs",
+    "build:offline": "tsc -p . && vite build --mode offline",
     "preview": "vite preview",
     "check:tokens": "node scripts/check-tokens.mjs",
-    "check:ui": "npm run build && node scripts/check-ui.mjs",
-    "check": "npm run check:tokens && npm run check:ui",
+    "check:ui": "npm run build:offline && node scripts/check-ui.mjs",
+    "check": "npm run check:tokens && npm run check:ui && npm run build && npm run test:auth",
     "e2e": "node scripts/e2e.mjs",
-    "test:trace": "npm run build && node scripts/trace-card-tests.mjs",
-    "test:editor": "npm run build && node scripts/editor-tools-tests.mjs",
+    "test:trace": "npm run build:offline && node scripts/trace-card-tests.mjs",
+    "test:editor": "npm run build:offline && node scripts/editor-tools-tests.mjs",
     "test:once": "node scripts/single-request-tests.mjs",
-    "test:pages": "npm run build && node scripts/pages-tests.mjs",
-    "test:motion": "npm run build && node scripts/motion-tests.mjs"
+    "test:pages": "npm run build:offline && node scripts/pages-tests.mjs",
+    "test:auth": "node scripts/auth-tests.mjs",
+    "check:secrets": "node scripts/check-bundle-secrets.mjs",
+    "test:motion": "npm run build:offline && node scripts/motion-tests.mjs"
   },
   "devDependencies": {
     "@types/react": "^19.3.0",
@@ -26,6 +29,7 @@
     "vite": "^7.3.6"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.117.2",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "react-router-dom": "^7.18.4"

@@ -1,3 +1,5 @@
 node_modules/
 dist/
 dist-blog-fixture/
+dist-auth-fixture/
+dist-leak-test/

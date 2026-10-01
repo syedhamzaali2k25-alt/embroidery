@@ -5,6 +5,7 @@ import { api, ApiError, type ClientConfig, type DesignSettings, type Preview as 
 import { FlowBar } from "../lib/FlowBar";
 import { SewPlayer } from "../lib/SewPlayer";
 import { SiteFooter } from "../lib/SiteChrome";
+import { DownloadLink } from "../lib/DownloadLink";
 import { Icon } from "../lib/Icon";
 import { StitchCanvas } from "../lib/StitchCanvas";
 import { usePage } from "../lib/usePage";
@@ -204,7 +205,7 @@ export default function Preview() {
               <div className="wide"><dt>Jumps</dt><dd>{report.jumps} <small>· {report.trims} trims</small></dd></div>
             </dl>
             <div className="flow-actions">
-              <a className="btn btn--ink" href={api.downloadUrl(data.id)}><Icon name="i-download" />Download DST</a>
+              <DownloadLink className="btn btn--ink" designId={data.id} format="dst"><Icon name="i-download" />Download DST</DownloadLink>
               <button className="btn btn--ghost" type="button" onClick={() => navigate(`/editor?design=${data.id}`)}>
                 Fix stitches in the editor
               </button>

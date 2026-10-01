@@ -27,6 +27,15 @@
     "issues": []
   },
   {
+    "page": "home-empty",
+    "viewport": "desktop",
+    "fonts": {
+      "sans": true,
+      "serif": true
+    },
+    "issues": []
+  },
+  {
     "page": "editor",
     "viewport": "desktop",
     "fonts": {
@@ -424,6 +433,15 @@
   },
   {
     "page": "home",
+    "viewport": "phone",
+    "fonts": {
+      "sans": true,
+      "serif": true
+    },
+    "issues": []
+  },
+  {
+    "page": "home-empty",
     "viewport": "phone",
     "fonts": {
       "sans": true,
@@ -1072,6 +1090,15 @@
   },
   {
     "page": "home",
+    "viewport": "laptop-1366x768",
+    "fonts": {
+      "sans": true,
+      "serif": true
+    },
+    "issues": []
+  },
+  {
+    "page": "home-empty",
     "viewport": "laptop-1366x768",
     "fonts": {
       "sans": true,

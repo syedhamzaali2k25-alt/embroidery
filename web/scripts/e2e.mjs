@@ -5,6 +5,7 @@
 // Usage: npm run e2e   (needs `make setup` done: it uses ../.venv)
 import { chromium } from 'playwright';
 import { spawn, execFileSync } from 'node:child_process';
+const withoutSupabase = (env) => Object.fromEntries(Object.entries(env).filter(([k]) => !k.startsWith('SUPABASE_')));
 import { createServer } from 'node:http';
 import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -50,11 +51,12 @@ const startWorker = () => {
 };
 const apiProc = spawn(python, ['-m', 'uvicorn', 'stitchbook_api.main:app', '--port', String(API_PORT)], {
   cwd: repo,
-  env: { ...process.env, STITCHBOOK_TEST_RUN_VALUES: '1', STORAGE_DIR: storage, CORS_ORIGIN: WEB, REDIS_URL,
+  env: { ...withoutSupabase(process.env), STITCHBOOK_TEST_RUN_VALUES: '1', STORAGE_DIR: storage, CORS_ORIGIN: WEB, REDIS_URL,
          STITCHBOOK_TRACE_JOB: 'stitchbook_worker.testing.slow_trace_design' },
   stdio: 'ignore',
 });
-execFileSync('npx', ['vite', 'build'], { cwd: web, env: { ...process.env, VITE_API_URL: API }, stdio: 'ignore' });
+// Offline build (no sign-in) against the API in local mode: the Supabase settings are left out of both.
+execFileSync('npx', ['vite', 'build', '--mode', 'offline'], { cwd: web, env: { ...process.env, VITE_API_URL: API }, stdio: 'ignore' });
 const types = { '.html': 'text/html', '.css': 'text/css', '.js': 'text/javascript', '.svg': 'image/svg+xml', '.woff2': 'font/woff2' };
 const server = createServer(async (req, res) => {
   const path = decodeURIComponent(new URL(req.url, 'http://x').pathname);
