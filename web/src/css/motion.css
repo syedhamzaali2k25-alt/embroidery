@@ -1,0 +1,46 @@
+/* Hover and press states, on every page. Only things you can click move: buttons, icon buttons,
+   link cards, FAQ rows, the upload drop areas, and the nav and footer links. Hover lifts by 1px
+   (or shifts colour), press shrinks to 98%, both in --motion-fast. Only transform, opacity and
+   colours change, so nothing around them moves. Keyboard focus keeps its outline (base.css).
+   prefers-reduced-motion: no movement at all, colour changes only, without transition. */
+
+.btn, .icon-btn, .post-card, .faq__row, .hero-drop, .flow-drop, .footer__link, .nav__links a, .doc a {
+  transition:
+    transform var(--motion-fast) var(--ease-out),
+    background-color var(--motion-fast) var(--ease-out),
+    border-color var(--motion-fast) var(--ease-out),
+    box-shadow var(--motion-fast) var(--ease-out),
+    text-decoration-color var(--motion-fast) var(--ease-out);
+}
+
+/* Buttons and icon buttons: lift on hover, shrink on press. */
+.btn:hover:not(:disabled), .icon-btn:hover:not(:disabled) { transform: translateY(-1px); }
+.btn:active:not(:disabled), .icon-btn:active:not(:disabled) { transform: scale(0.98); }
+
+/* Cards you can click: lift and darker edge on hover, shrink on press. */
+.post-card:hover { transform: translateY(-1px); border-color: var(--ink); }
+.post-card:active { transform: scale(0.98); }
+.faq__row:hover { border-color: var(--ink); }
+.faq__row summary:active { transform: scale(0.98); }
+.faq__row summary { transition: transform var(--motion-fast) var(--ease-out); }
+.hero-drop:hover { transform: translateY(-1px); }
+.flow-drop:hover { border-color: var(--ink); }
+
+/* Links: an underline that fades in mint (colour shift), and a small press. */
+.nav__links a, .footer__link { display: inline-flex; align-items: center; }
+.nav__links a:hover, .nav__links a:focus-visible { text-decoration-color: var(--green); }
+.footer__link { text-decoration: underline 2px transparent; } /* (site.css sets the offset) */
+.footer__link:hover, .footer__link:focus-visible { text-decoration-color: var(--green); }
+.nav__links a:active, .footer__link:active { transform: scale(0.98); }
+.doc a:hover { text-decoration-color: var(--green); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    transition-duration: 0s !important;
+    animation-duration: 0s !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+  }
+  .btn:hover, .btn:active, .icon-btn:hover, .icon-btn:active, .post-card:hover, .post-card:active,
+  .faq__row summary:active, .hero-drop:hover, .nav__links a:active, .footer__link:active { transform: none !important; }
+}

@@ -14,7 +14,8 @@
     "test:trace": "npm run build && node scripts/trace-card-tests.mjs",
     "test:editor": "npm run build && node scripts/editor-tools-tests.mjs",
     "test:once": "node scripts/single-request-tests.mjs",
-    "test:pages": "npm run build && node scripts/pages-tests.mjs"
+    "test:pages": "npm run build && node scripts/pages-tests.mjs",
+    "test:motion": "npm run build && node scripts/motion-tests.mjs"
   },
   "devDependencies": {
     "@types/react": "^19.3.0",

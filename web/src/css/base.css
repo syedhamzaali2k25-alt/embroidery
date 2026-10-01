@@ -91,9 +91,7 @@ button { font: inherit; color: inherit; }
   white-space: nowrap;
   text-decoration: none;
   cursor: pointer;
-  transition: transform .15s ease, background-color .15s ease;
 }
-.btn:hover { transform: translateY(-1px); }
 .btn svg { width: 18px; height: 18px; flex: none; }
 
 .btn--ink   { background: var(--ink);   color: var(--on-ink); }
