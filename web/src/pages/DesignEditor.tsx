@@ -9,6 +9,7 @@ import {
   DesignShapesLayer, fitTo, OverlapSeams, RingPicker, StitchLines, ToolMarks, TracedColumns, unfitFrom, type RingPick,
 } from "../lib/DesignCanvas";
 import { DownloadLink } from "../lib/DownloadLink";
+import { SelectField } from "../lib/Field";
 import { TraceCard } from "../lib/TraceCard";
 import { useEditor, type EditorHook } from "../lib/useEditor";
 import { useTraceJob } from "../lib/useTraceJob";
@@ -419,12 +420,10 @@ function ToolHint({ tool, data, points, picks, edges, current, saving, drawColou
       <div className="tool-hint__actions">
         {tool === "draw" && (
           <>
-            <label className="tool-hint__colour">
-              <span>Thread</span>
-              <select value={drawColour} onChange={(e) => setDrawColour(Number(e.target.value))} disabled={!!saving}>
-                {data.colours.map((c) => <option key={c.number} value={c.number}>Colour {c.number} · {c.hex}</option>)}
-              </select>
-            </label>
+            <SelectField compact className="tool-hint__colour" label="Thread" value={drawColour}
+                         onChange={(e) => setDrawColour(Number(e.target.value))} disabled={!!saving}>
+              {data.colours.map((c) => <option key={c.number} value={c.number}>Colour {c.number} · {c.hex}</option>)}
+            </SelectField>
             <button className="btn btn--ink btn--sm" type="button" onClick={onFinish} disabled={current < 2 || !!saving}>
               Finish edge
             </button>
@@ -629,20 +628,20 @@ function FabricSection({ fabric, editor }: { fabric: EditorState["fabric"]; edit
   const noneReady = !fabric.presets.some((p) => p.ready);
   return (
     <section className="panel__section">
-      <label className="label" htmlFor="fabric">Fabric preset</label>
       <div className="fabric">
-        <select id="fabric" className="fabric__select" value={fabric.preset ?? ""} aria-describedby="fabric-status fabric-help"
-                disabled={!!editor.saving || (noneReady && !fabric.preset)}
-                onChange={(e) => {
-                  const name = e.target.value || null;
-                  const label = fabric.presets.find((p) => p.name === name)?.label;
-                  void editor.edit({ op: "fabric", preset: name }, label ? `Choose the ${label} preset` : "Turn the fabric preset off");
-                }}>
+        <SelectField compact id="fabric" className="fabric__field" label="Fabric preset" value={fabric.preset ?? ""}
+                     aria-describedby={unverified ? "fabric-status fabric-help" : "fabric-help"}
+                     disabled={!!editor.saving || (noneReady && !fabric.preset)}
+                     onChange={(e) => {
+                       const name = e.target.value || null;
+                       const label = fabric.presets.find((p) => p.name === name)?.label;
+                       void editor.edit({ op: "fabric", preset: name }, label ? `Choose the ${label} preset` : "Turn the fabric preset off");
+                     }}>
           <option value="">None (stitch defaults)</option>
           {fabric.presets.map((p) => (
             <option key={p.name} value={p.name} disabled={!p.ready}>{p.label}{p.ready ? "" : " (no values yet)"}</option>
           ))}
-        </select>
+        </SelectField>
         {unverified && <span className="fabric__status" id="fabric-status">Unverified: not yet tested on a machine</span>}
       </div>
       <p className="panel__note" id="fabric-help">

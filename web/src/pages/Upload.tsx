@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type CSSProperties, type Drag
 import { useNavigate } from "react-router-dom";
 
 import { api, ApiError, type ClientConfig, type DesignCreated } from "../lib/api";
+import { TextField } from "../lib/Field";
 import { FlowBar } from "../lib/FlowBar";
 import { SiteFooter } from "../lib/SiteChrome";
 import { loginPath, signInEnabled, useSession } from "../lib/auth";
@@ -261,7 +262,7 @@ export default function Upload() {
                   </>
                 )}
                 {!coloursOk ? (
-                  <p className="flow-field__error" id="colours-help">Keep at least one colour.</p>
+                  <p className="fld__msg fld__msg--error" id="colours-help" role="alert"><Icon name="i-alert" />Keep at least one colour.</p>
                 ) : (
                   <p className="flow-field__help" id="colours-help">
                     Each colour you keep is sewn as its own layer, with a thread change in between. Unchecked colours are left out.
@@ -269,23 +270,12 @@ export default function Upload() {
                 )}
               </fieldset>
 
-              <div className="flow-field">
-                <label htmlFor="width">Design width</label>
-                <div className="flow-input">
-                  <input id="width" type="number" inputMode="decimal" min={1} max={cfg.max_design_width_mm} step="0.5"
-                         value={width} onChange={(e) => setWidth(e.target.value)} aria-describedby="width-help" />
-                  <span className="unit">mm</span>
-                </div>
-                {!widthOk ? (
-                  <p className="flow-field__error" id="width-help">Enter a width above 0 and at most {cfg.max_design_width_mm} mm.</p>
-                ) : (
-                  <p className="flow-field__help" id="width-help">
-                    {height !== null
-                      ? `Height: ${height.toFixed(1)} mm (follows the logo's proportions)`
-                      : "Height follows automatically once your logo is checked."}
-                  </p>
-                )}
-              </div>
+              <TextField id="width" label="Design width" type="number" inputMode="decimal" autoComplete="off" unit="mm"
+                         min={1} max={cfg.max_design_width_mm} step="0.5" value={width} onChange={(e) => setWidth(e.target.value)}
+                         error={widthOk ? undefined : `Enter a width above 0 and at most ${cfg.max_design_width_mm} mm.`}
+                         help={height !== null
+                           ? `Height: ${height.toFixed(1)} mm (follows the logo's proportions)`
+                           : "Height follows automatically once your logo is checked."} />
 
               <button className="btn btn--ink btn--lg flow-continue" type="button" disabled={!canContinue}
                       onClick={continueTo}>

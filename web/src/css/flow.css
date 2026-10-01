@@ -180,30 +180,7 @@ body.flow { background: var(--surface); }
 .flow-field { display: grid; gap: 6px; }
 .flow-field + .flow-field { margin-top: 14px; }
 .flow-field label, .flow-field .flow-label { font-size: 14px; font-weight: 700; }
-.flow-input {
-  display: flex;
-  align-items: center;
-  min-height: 44px;
-  border: 1px solid var(--muted);
-  border-radius: var(--radius-control);
-  background: var(--surface);
-  overflow: hidden;
-}
-.flow-input:focus-within { outline: 2px solid var(--ink); outline-offset: 1px; }
-.flow-input input {
-  flex: 1;
-  min-width: 0;
-  height: 42px;
-  padding: 0 12px;
-  border: 0;
-  outline: 0;
-  background: transparent;
-  font: inherit;
-  font-size: 16px;
-  color: var(--ink);
-}
-.flow-input .unit { padding: 0 12px; font-size: 14px; font-weight: 500; }
-.flow-field__help { font-size: 14px; }
+.flow-field__help { font-size: 14px; color: var(--muted-text); }
 .flow-field__error { font-size: 14px; font-weight: 700; }
 
 .flow-continue { width: 100%; margin-top: 16px; }

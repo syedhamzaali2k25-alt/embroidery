@@ -312,6 +312,27 @@ for (const vp of viewports) {
   await page.close();
 }
 
+// One editor field group (the fabric preset select), resting and with keyboard focus, cropped,
+// at laptop 1366x768 and phone width. The whole editor is audited above.
+for (const vp of viewports.filter((v) => v.name === 'laptop-1366x768' || v.name === 'phone')) {
+  const page = await browser.newPage({ viewport: { width: vp.width, height: vp.height }, deviceScaleFactor: 1, reducedMotion: 'reduce' });
+  await mockEditor(page, 'idle');
+  await page.goto(`${base}${editorRoute}`, { waitUntil: 'load' });
+  await page.locator('.design-shape').first().waitFor();
+  const group = page.locator('.panel__section', { has: page.locator('#fabric') });
+  await group.scrollIntoViewIfNeeded();
+  await page.evaluate(() => document.fonts.ready);
+  await page.mouse.move(0, 0);
+  await group.screenshot({ path: join(outDir, `fields-editor-${vp.name}.png`) });
+  await page.locator('#fabric').focus();
+  await page.keyboard.press('Shift+Tab');
+  await page.keyboard.press('Tab');
+  await group.screenshot({ path: join(outDir, `fields-editor-focused-${vp.name}.png`) });
+  const { issues } = await page.evaluate(audit);
+  report.push({ page: 'editor-field-group', viewport: vp.name, fonts: { sans: true, serif: 'unused' }, issues });
+  await page.close();
+}
+
 await browser.close();
 server.close();
 await writeFile(join(outDir, 'report.json'), JSON.stringify(report, null, 2) + '\n');

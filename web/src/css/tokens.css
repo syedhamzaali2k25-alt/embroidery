@@ -33,6 +33,20 @@
   --surface-soft: color-mix(in srgb, var(--line) 50%, var(--white));
   --text-soft: color-mix(in srgb, var(--ink) 80%, var(--white));
 
+  /* Form fields (fields.css). Measured on white: muted 3.45:1 (field borders, need 3:1);
+     muted-text 5.0:1 (placeholders and helper text, need 4.5:1; mixed from muted and ink, no new
+     literal); focus ring 3.6:1 (the text green at 85%: the brand green is 1.9:1, too light for a
+     ring at any opacity); danger 6.6:1 (error borders need 3:1, error text 4.5:1). */
+  --field-border: var(--muted);
+  --muted-text: color-mix(in srgb, var(--muted) 75%, var(--ink));
+  --focus-ring: color-mix(in srgb, var(--green-text) 85%, transparent);
+  --danger: #B42318;
+  --danger-text: var(--danger);
+  --radius-field: var(--radius-pill);     /* single-line fields */
+  --radius-field-area: var(--radius-card-sm); /* textareas and selects with long content */
+  --field-height: 52px;                   /* form fields */
+  --field-height-compact: 40px;           /* editor fields */
+
   /* Thumbnail cycle */
   --thumb-1: var(--green);
   --thumb-2: var(--lavender);

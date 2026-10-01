@@ -5,6 +5,8 @@ import {
   finishGoogleReturn, logIn, logOut, oauthReturnError, safeNext, signInEnabled, signInWithGoogle, signUp, startOneTap,
   takeSavedNext, useSession,
 } from "../lib/auth";
+import { TextField } from "../lib/Field";
+import { Icon } from "../lib/Icon";
 import { SiteFooter, SiteHeader } from "../lib/SiteChrome";
 import { usePage } from "../lib/usePage";
 import "../css/auth.css";
@@ -34,17 +36,37 @@ function NoSignIn() {
   );
 }
 
-function Field({ id, label, type, value, onChange, autoComplete, help }: {
-  id: string; label: string; type: string; value: string; onChange: (v: string) => void; autoComplete: string; help?: string;
+/** Email and password, the same everywhere: visible labels, the shared field style, plain messages. */
+function EmailField({ value, onChange, error }: { value: string; onChange: (v: string) => void; error?: string }) {
+  return (
+    <TextField id="email" name="email" label="Email" type="email" inputMode="email" autoComplete="email"
+               autoCapitalize="none" spellCheck={false} placeholder="you@example.com" value={value} error={error}
+               onChange={(e) => onChange(e.target.value)} />
+  );
+}
+
+function PasswordField({ value, onChange, error, isNew }: {
+  value: string; onChange: (v: string) => void; error?: string; isNew?: boolean;
 }) {
   return (
-    <div className="auth__field">
-      <label htmlFor={id}>{label}</label>
-      <input id={id} name={id} type={type} value={value} autoComplete={autoComplete} required
-             aria-describedby={help ? `${id}-help` : undefined} onChange={(e) => onChange(e.target.value)} />
-      {help && <p className="auth__help" id={`${id}-help`}>{help}</p>}
-    </div>
+    <TextField id="password" name="password" label="Password" type="password" autoComplete={isNew ? "new-password" : "current-password"}
+               autoCapitalize="none" spellCheck={false} value={value} error={error} onChange={(e) => onChange(e.target.value)} />
   );
+}
+
+type FieldErrors = { email?: string; password?: string };
+/** Checked before anything is sent: an empty field or an email address without its parts. */
+function checkFields(email: string, password: string): FieldErrors {
+  const errors: FieldErrors = {};
+  if (!email.trim()) errors.email = "Enter your email address.";
+  else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) errors.email = "Enter an email address like you@example.com.";
+  if (!password) errors.password = "Enter your password.";
+  return errors;
+}
+
+/** A message about the whole form (e.g. Supabase refused the log-in): icon + text, announced. */
+function FormMessage({ children }: { children: ReactNode }) {
+  return <p className="form-msg" role="alert"><Icon name="i-alert" />{children}</p>;
 }
 
 /** "Continue with Google" and the "or" divider above the email form; One Tap runs alongside. */
@@ -70,7 +92,7 @@ function GoogleChoice({ next, error }: { next: string; error: string | null }) {
       <button className="btn btn--ink btn--lg auth__submit" type="button" onClick={go} disabled={busy}>
         {busy ? "Opening Google…" : "Continue with Google"}
       </button>
-      {message && <p className="auth__error" role="alert">{message}</p>}
+      {message && <FormMessage>{message}</FormMessage>}
       <p className="auth__or"><span>or</span></p>
     </div>
   );
@@ -92,6 +114,7 @@ export function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -100,6 +123,12 @@ export function Login() {
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
+    const errors = checkFields(email, password);
+    setFieldErrors(errors);
+    if (errors.email || errors.password) {
+      document.getElementById(errors.email ? "email" : "password")?.focus();
+      return;
+    }
     setBusy(true);
     setError(null);
     logIn(email.trim(), password).then((r) => {
@@ -114,11 +143,13 @@ export function Login() {
       <h1 className="auth__title">Log <span className="accent">in</span></h1>
       {params.get("next") && <p className="auth__lede">Log in to save your design. You'll come straight back.</p>}
       {!signInEnabled ? <NoSignIn /> : (
-        <form className="auth__form" onSubmit={submit} noValidate={false}>
+        <form className="auth__form" onSubmit={submit} noValidate>
           <GoogleChoice next={next} error={googleError} />
-          <Field id="email" label="Email" type="email" value={email} onChange={setEmail} autoComplete="email" />
-          <Field id="password" label="Password" type="password" value={password} onChange={setPassword} autoComplete="current-password" />
-          {error && <p className="auth__error" role="alert">{error}</p>}
+          <EmailField value={email} onChange={(v) => { setEmail(v); setFieldErrors((f) => ({ ...f, email: undefined })); }}
+                      error={fieldErrors.email} />
+          <PasswordField value={password} onChange={(v) => { setPassword(v); setFieldErrors((f) => ({ ...f, password: undefined })); }}
+                         error={fieldErrors.password} />
+          {error && <FormMessage>{error}</FormMessage>}
           <button className="btn btn--ink btn--lg auth__submit" type="submit" disabled={busy}>{busy ? "Logging in…" : "Log in"}</button>
           <p className="auth__switch">No account yet? <Link to={`/signup${params.get("next") ? `?next=${encodeURIComponent(next)}` : ""}`}>Sign up</Link></p>
         </form>
@@ -136,6 +167,7 @@ export function Signup() {
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const { ready, session } = useSession();
   useEffect(() => { // signed in with Google One Tap from here
     if (ready && session) navigate(next, { replace: true });
@@ -143,6 +175,13 @@ export function Signup() {
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
+    const errors = checkFields(email, password);
+    if (errors.password) errors.password = "Choose a password.";
+    setFieldErrors(errors);
+    if (errors.email || errors.password) {
+      document.getElementById(errors.email ? "email" : "password")?.focus();
+      return;
+    }
     setBusy(true);
     setError(null);
     signUp(email.trim(), password).then((r) => {
@@ -162,12 +201,13 @@ export function Signup() {
           <p><Link to={`/login${params.get("next") ? `?next=${encodeURIComponent(next)}` : ""}`}>Go to log in</Link></p>
         </div>
       ) : (
-        <form className="auth__form" onSubmit={submit}>
+        <form className="auth__form" onSubmit={submit} noValidate>
           <GoogleChoice next={next} error={null} />
-          <Field id="email" label="Email" type="email" value={email} onChange={setEmail} autoComplete="email" />
-          <Field id="password" label="Password" type="password" value={password} onChange={setPassword}
-                 autoComplete="new-password" />
-          {error && <p className="auth__error" role="alert">{error}</p>}
+          <EmailField value={email} onChange={(v) => { setEmail(v); setFieldErrors((f) => ({ ...f, email: undefined })); }}
+                      error={fieldErrors.email} />
+          <PasswordField value={password} onChange={(v) => { setPassword(v); setFieldErrors((f) => ({ ...f, password: undefined })); }}
+                         error={fieldErrors.password} isNew />
+          {error && <FormMessage>{error}</FormMessage>}
           <button className="btn btn--ink btn--lg auth__submit" type="submit" disabled={busy}>{busy ? "Signing up…" : "Sign up"}</button>
           <p className="auth__switch">Already have an account? <Link to={`/login${params.get("next") ? `?next=${encodeURIComponent(next)}` : ""}`}>Log in</Link></p>
         </form>

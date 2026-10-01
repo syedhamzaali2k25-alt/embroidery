@@ -186,7 +186,7 @@ async function fresh({ width = 1440, height = 900, gis = 'dismissed', authorize 
 }
 const logInWith = async (page, password) => {
   await page.getByLabel('Email').fill(USER.email);
-  await page.getByLabel('Password').fill(password);
+  await page.getByLabel('Password', { exact: true }).fill(password);
   await page.getByRole('button', { name: 'Log in', exact: true }).click();
 };
 
@@ -251,13 +251,13 @@ try {
     const { context, page } = await fresh();
     await page.goto(`${base}/signup`);
     await page.getByLabel('Email').fill('new@example.com');
-    await page.getByLabel('Password').fill('a-long-password');
+    await page.getByLabel('Password', { exact: true }).fill('a-long-password');
     await page.getByRole('button', { name: 'Sign up', exact: true }).click();
     await page.getByText('Check your email').waitFor();
     check(true, 'with email confirmation on: "Check your email", no session');
     await page.goto(`${base}/signup`);
     await page.getByLabel('Email').fill(USER.email);
-    await page.getByLabel('Password').fill('a-long-password');
+    await page.getByLabel('Password', { exact: true }).fill('a-long-password');
     await page.getByRole('button', { name: 'Sign up', exact: true }).click();
     const error = await page.getByRole('alert').innerText();
     check(/already exists/.test(error), `an existing email: plain message ("${error}")`);
@@ -449,12 +449,52 @@ try {
     await context.close();
   }
 
+  console.log('-- text fields: labels, field errors, Show / Hide password, input types');
+  {
+    const { context, page } = await fresh({ width: 390, height: 844 });
+    await page.goto(`${base}/login`);
+    const email = page.locator('#email'), password = page.locator('#password');
+    await email.waitFor();
+    const attrs = await email.evaluate((el) => ({ type: el.type, autocomplete: el.autocomplete, inputmode: el.inputMode,
+      autocap: el.getAttribute('autocapitalize'), spell: el.spellcheck, placeholder: el.placeholder, size: parseFloat(getComputedStyle(el).fontSize) }));
+    check(attrs.type === 'email' && attrs.autocomplete === 'email' && attrs.inputmode === 'email' && attrs.autocap === 'none' && !attrs.spell,
+      'email: type, autocomplete, inputmode, no autocapitalize or spellcheck');
+    check(attrs.placeholder === 'you@example.com' && attrs.size >= 16, 'email: an example placeholder; 16px text on a phone (no iOS zoom)');
+    check(await password.getAttribute('autocomplete') === 'current-password', 'password: autocomplete current-password');
+    await page.getByRole('button', { name: 'Log in', exact: true }).click();
+    const err = await email.evaluate((el) => {
+      const ids = (el.getAttribute('aria-describedby') || '').split(' ');
+      const msg = document.getElementById(ids.find((i) => i.endsWith('-error')) || '');
+      return { invalid: el.getAttribute('aria-invalid'), role: msg?.getAttribute('role'), text: msg?.innerText, icon: !!msg?.querySelector('svg'), focused: document.activeElement === el };
+    });
+    check(err.invalid === 'true' && err.role === 'alert' && err.icon && /Enter your email address/.test(err.text ?? '') && err.focused,
+      `empty submit: the email field is marked invalid, its message (icon + text, role=alert) is linked by aria-describedby, focus moves there ("${err.text}")`);
+    check(await password.getAttribute('aria-invalid') === 'true', 'the password field is marked too');
+    await email.fill('a@example.com');
+    await password.fill('secret-123');
+    const toggle = page.getByRole('button', { name: 'Show password' });
+    const box = await toggle.boundingBox();
+    check(box && box.width >= 44 && box.height >= 44, `Show password button is ${box?.width}x${box?.height} (44x44 or more)`);
+    check(await toggle.getAttribute('aria-pressed') === 'false' && await password.getAttribute('type') === 'password', 'password hidden at first');
+    await toggle.focus();
+    await page.keyboard.press('Enter');
+    const hide = page.getByRole('button', { name: 'Hide password' });
+    check(await hide.getAttribute('aria-pressed') === 'true' && await password.getAttribute('type') === 'text' && await password.inputValue() === 'secret-123',
+      'keyboard Enter shows the password (aria-pressed=true), value kept');
+    await page.keyboard.press('Space');
+    check(await password.getAttribute('type') === 'password', 'Space hides it again');
+    await context.close();
+  }
+
   console.log('-- screenshots and audit: log in, sign up, log out, My designs (1440, 1366, 390)');
   await mkdir(shots, { recursive: true });
   for (const [vp, width, height] of [['desktop', 1440, 900], ['laptop-1366x768', 1366, 768], ['phone', 390, 844]]) {
     const screens = [
       ['login', '/login', 'h1'],
       ['login-error', '/login', 'error'],
+      ['login-focused', '/login', 'focused'],
+      ['login-field-error', '/login', 'fielderror'],
+      ['login-filled', '/login', 'filled'],
       ['signup', '/signup', 'h1'],
       ['signup-sent', '/signup', 'sent'],
       ['logout', '/logout', 'out'],
@@ -471,15 +511,18 @@ try {
       }
       await page.goto(`${base}${path}`);
       if (state === 'error') await logInWith(page, 'wrong-password');
+      if (state === 'focused') { await page.locator('#email').waitFor(); await page.keyboard.press('Tab'); await page.locator('#email').focus(); }
+      if (state === 'fielderror') { await page.locator('#email').fill('not-an-address'); await page.getByRole('button', { name: 'Log in', exact: true }).click(); }
+      if (state === 'filled') { await page.locator('#email').fill(USER.email); await page.locator('#password').fill('right-password'); }
       if (state === 'sent') {
         await page.getByLabel('Email').fill('new@example.com');
-        await page.getByLabel('Password').fill('a-long-password');
+        await page.getByLabel('Password', { exact: true }).fill('a-long-password');
         await page.getByRole('button', { name: 'Sign up', exact: true }).click();
       }
-      const ready = { h1: 'h1', error: '[role=alert]', sent: 'text=Check your email', out: "text=You're logged out", home: '.design' }[state];
+      const ready = { h1: 'h1', error: '[role=alert]', focused: '#email:focus', fielderror: '.fld__msg--error', filled: '#password', sent: 'text=Check your email', out: "text=You're logged out", home: '.design' }[state];
       await page.locator(ready).first().waitFor();
       await page.evaluate(() => document.fonts.ready);
-      await page.mouse.move(0, 0);
+      if (state !== 'focused') await page.mouse.move(0, 0);
       await page.screenshot({ path: join(shots, `auth-${name}-${vp}.png`), fullPage: true });
       const { issues } = await page.evaluate(audit);
       check(issues.length === 0, `${name} @ ${vp}: ${issues.length ? JSON.stringify(issues) : 'no contrast, clipping or overflow issues'}`);

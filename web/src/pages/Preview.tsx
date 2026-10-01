@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "r
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 import { api, ApiError, type ClientConfig, type DesignSettings, type Preview as PreviewData } from "../lib/api";
+import { TextField } from "../lib/Field";
 import { FlowBar } from "../lib/FlowBar";
 import { SewPlayer } from "../lib/SewPlayer";
 import { SiteFooter } from "../lib/SiteChrome";
@@ -129,29 +130,15 @@ export default function Preview() {
         <aside className="flow-card" aria-labelledby="settings-title">
           <h2 className="flow-card__title" id="settings-title">Settings</h2>
           <form onSubmit={(e) => { e.preventDefault(); run(s === data.settings_used.fill_row_spacing_mm ? { width_mm: w } : { width_mm: w, fill_row_spacing_mm: s }); }}>
-            <div className="flow-field">
-              <label htmlFor="pv-width">Design width</label>
-              <div className="flow-input">
-                <input id="pv-width" type="number" inputMode="decimal" step="0.5" min={1} max={config?.max_design_width_mm}
-                       value={width} onChange={(e) => setWidth(e.target.value)} />
-                <span className="unit">mm</span>
-              </div>
-              {!widthOk && <p className="flow-field__error">Enter a width above 0{config ? ` and at most ${config.max_design_width_mm} mm` : ""}.</p>}
-            </div>
-            <div className="flow-field">
-              <label htmlFor="pv-spacing">Fill density</label>
-              <div className="flow-input">
-                <input id="pv-spacing" type="number" inputMode="decimal" step="0.05"
-                       min={config?.fill_row_spacing_min_mm} max={config?.fill_row_spacing_max_mm}
-                       value={spacing} onChange={(e) => setSpacing(e.target.value)} aria-describedby="pv-spacing-help" />
-                <span className="unit">mm</span>
-              </div>
-              <p className={spacingOk ? "flow-field__help" : "flow-field__error"} id="pv-spacing-help">
-                {spacingOk
-                  ? "Space between fill rows. Smaller is denser."
-                  : `Enter a spacing${config ? ` from ${config.fill_row_spacing_min_mm} to ${config.fill_row_spacing_max_mm} mm` : " above 0"}.`}
-              </p>
-            </div>
+            <TextField id="pv-width" label="Design width" type="number" inputMode="decimal" autoComplete="off" unit="mm"
+                       step="0.5" min={1} max={config?.max_design_width_mm} value={width} onChange={(e) => setWidth(e.target.value)}
+                       error={widthOk ? undefined : `Enter a width above 0${config ? ` and at most ${config.max_design_width_mm} mm` : ""}.`} />
+            <TextField id="pv-spacing" label="Fill density" type="number" inputMode="decimal" autoComplete="off" unit="mm"
+                       step="0.05" min={config?.fill_row_spacing_min_mm} max={config?.fill_row_spacing_max_mm}
+                       value={spacing} onChange={(e) => setSpacing(e.target.value)}
+                       help="Space between fill rows. Smaller is denser."
+                       error={spacingOk ? undefined
+                         : `Enter a spacing${config ? ` from ${config.fill_row_spacing_min_mm} to ${config.fill_row_spacing_max_mm} mm` : " above 0"}.`} />
             <button className="btn btn--ink flow-continue" type="submit" disabled={busy || !changed || !widthOk || !spacingOk}>
               Update preview
             </button>

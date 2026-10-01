@@ -1,0 +1,135 @@
+/* The one text-field style for the whole site (inputs, selects, textareas), used through
+   lib/Field.tsx. Every colour is a token. Structure:
+     .fld                     label, control, helper text, message
+       .fld__label            always visible, above the control
+       .fld__box              the visible boundary (border, radius, height); holds the control
+         input/select/textarea  borderless inside the box
+         .fld__unit           "mm" etc., inside the box
+         .fld__btn            Show/Hide password, clear (x): 44x44
+       .fld__help             helper text (muted-text, 5:1)
+       .fld__msg--error       icon + message, role="alert", linked by aria-describedby
+   Modifiers: .fld--compact (40px, editor), .fld--area (textarea), .fld--select. */
+
+.fld { display: grid; gap: 6px; min-width: 0; }
+.fld + .fld { margin-top: 14px; }
+
+.fld__label {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--ink);
+}
+.fld--compact .fld__label { font-size: 14px; }
+
+.fld__box {
+  display: flex;
+  align-items: center;
+  min-height: var(--field-height);
+  border: 1.5px solid var(--field-border);
+  border-radius: var(--radius-field);
+  background: var(--surface);
+  color: var(--ink);
+  transition: border-color var(--motion-fast) var(--ease-out), box-shadow var(--motion-fast) var(--ease-out);
+}
+.fld--compact .fld__box { min-height: var(--field-height-compact); }
+.fld--area .fld__box, .fld--select .fld__box { border-radius: var(--radius-field-area); }
+.fld--area .fld__box { align-items: stretch; }
+
+.fld__box > input, .fld__box > select, .fld__box > textarea {
+  flex: 1;
+  min-width: 0;
+  align-self: stretch;
+  margin: 0;
+  padding: 0 18px;
+  border: 0;
+  border-radius: inherit;
+  outline: 0; /* the box shows focus instead: ink border + --focus-ring (below) */
+  background: transparent;
+  color: var(--ink);
+  caret-color: var(--ink);
+  font: inherit;
+  font-size: 16px; /* at least 16px: no zoom on iPhone */
+}
+.fld--compact .fld__box > input, .fld--compact .fld__box > select { padding: 0 14px; font-size: 16px; }
+.fld__box > select { cursor: pointer; }
+.fld__box > textarea { min-height: 120px; padding: 14px 18px; resize: vertical; line-height: 1.5; }
+.fld__box > :is(input, textarea)::placeholder { color: var(--muted-text); opacity: 1; }
+
+/* No spinner arrows over the digits (arrow keys still step the value). */
+.fld__box > input[type="number"] { appearance: textfield; -moz-appearance: textfield; }
+.fld__box > input[type="number"]::-webkit-inner-spin-button,
+.fld__box > input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+
+/* Browser autofill keeps ink on white (no yellow). */
+.fld__box > input:-webkit-autofill,
+.fld__box > input:-webkit-autofill:hover,
+.fld__box > input:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--ink);
+  caret-color: var(--ink);
+  box-shadow: 0 0 0 1000px var(--surface) inset;
+  transition: background-color 600000s 0s;
+}
+
+.fld__unit { flex: none; padding: 0 16px 0 4px; font-size: 15px; font-weight: 500; color: var(--ink); }
+
+.fld__btn {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  margin-right: 3px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+}
+.fld__btn svg { width: 20px; height: 20px; }
+.fld__btn:hover { background: var(--line); }
+.fld__btn:focus-visible { outline: 2px solid var(--ink); outline-offset: -2px; box-shadow: 0 0 0 3px var(--focus-ring); }
+
+/* ---------- states ---------- */
+.fld__box:hover { border-color: var(--ink); }
+.fld__box:focus-within { border-color: var(--ink); }
+/* The ring: on keyboard focus (:focus-visible), and on any focus of a text entry (where the
+   browser itself treats focus as visible). Never removed. */
+.fld__box:has(> :focus-visible),
+.fld__box:has(> input:focus, > textarea:focus) { box-shadow: 0 0 0 3px var(--focus-ring); }
+
+.fld--error .fld__box, .fld__box:has(> [aria-invalid="true"]) { border-color: var(--danger); }
+.fld--error .fld__box:has(> :focus-visible),
+.fld--error .fld__box:has(> input:focus, > textarea:focus) { border-color: var(--danger); }
+
+.fld__box:has(> :disabled) {
+  border-color: var(--line);
+  background: var(--line);
+  color: var(--muted-text);
+  cursor: not-allowed;
+}
+.fld__box:has(> :disabled) > * { color: var(--muted-text); -webkit-text-fill-color: var(--muted-text); cursor: not-allowed; }
+
+.fld__box:has(> [readonly]) { border-color: var(--line); box-shadow: none; }
+.fld__box:has(> [readonly]):hover { border-color: var(--line); }
+
+/* ---------- helper text and messages ---------- */
+.fld__help { font-size: 14px; color: var(--muted-text); }
+.fld__msg { display: flex; align-items: flex-start; gap: 6px; font-size: 14px; font-weight: 500; }
+.fld__msg svg { flex: none; width: 18px; height: 18px; margin-top: 1px; }
+.fld__msg--error { color: var(--danger-text); }
+.fld__msg--ok { color: var(--ink); }
+.fld__msg--ok svg { color: var(--green-text); }
+
+/* A message for the whole form (e.g. a refused log-in), same icon + text pattern. */
+.form-msg {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 12px 16px;
+  border: 1.5px solid var(--danger);
+  border-radius: var(--radius-card-sm);
+  color: var(--danger-text);
+  font-size: 15px;
+  font-weight: 500;
+}
+.form-msg svg { flex: none; width: 20px; height: 20px; margin-top: 1px; }

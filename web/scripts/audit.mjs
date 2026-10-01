@@ -76,6 +76,46 @@ export function audit() {
     if (el.scrollWidth > el.clientWidth + 1 && s.overflowX !== 'visible') issues.push({ kind: 'clipped', label, by: 'self' });
     if (rect.right > innerWidth + 1 || rect.left < -1) issues.push({ kind: 'off-screen', label });
   }
+  // Text fields (inputs, selects, textareas): a visible label; a resting boundary of at least 3:1
+  // against what is behind it (WCAG 1.4.11); and a visible focus indicator on keyboard focus
+  // (outline or ring) of at least 3:1, never removed without a replacement.
+  const over = (c, bg) => (c.a >= 1 ? c : { r: Math.round(c.r * c.a + bg.r * (1 - c.a)), g: Math.round(c.g * c.a + bg.g * (1 - c.a)),
+    b: Math.round(c.b * c.a + bg.b * (1 - c.a)), a: 1 });
+  const SKIP = new Set(['checkbox', 'radio', 'range', 'file', 'hidden', 'submit', 'button', 'reset', 'image', 'color']);
+  const fields = [...document.querySelectorAll('input, select, textarea')]
+    .filter((f) => !SKIP.has(f.type) && f.getClientRects().length && !f.closest('.visually-hidden,[hidden],[aria-hidden="true"]'));
+  for (const f of fields) {
+    const name = `<${f.tagName.toLowerCase()}#${f.id || '?'}>`;
+    const labelled = [...(f.labels ?? [])].some((l) => l.innerText.trim() && l.getClientRects().length && getComputedStyle(l).visibility !== 'hidden'
+      && !l.closest('.visually-hidden'))
+      || (f.getAttribute('aria-labelledby') ?? '').split(/\s+/).some((id) => document.getElementById(id)?.innerText.trim());
+    if (!labelled) issues.push({ kind: 'field-no-label', label: `${name} has no visible label` });
+    if (f.disabled || f.readOnly) continue;
+    const box = f.closest('.fld__box') ?? f;
+    const bg = backgrounds(box.parentElement ?? box)[0];
+    const bs = getComputedStyle(box);
+    const border = parse(bs.borderTopColor);
+    const borderRatio = border && parseFloat(bs.borderTopWidth) > 0 ? ratio(over(border, bg), bg) : 0;
+    if (borderRatio < 3) issues.push({ kind: 'field-border', label: `${name} border ${borderRatio.toFixed(2)}:1 (needs 3:1)` });
+    // Keyboard focus: what shows it, on the field or its box.
+    const before = document.activeElement;
+    f.focus({ preventScroll: true, focusVisible: true });
+    let shown = 0;
+    for (const el of [f, box]) {
+      const cs = getComputedStyle(el);
+      if (cs.outlineStyle !== 'none' && parseFloat(cs.outlineWidth) >= 2) {
+        const c = parse(cs.outlineColor);
+        if (c) shown = Math.max(shown, ratio(over(c, bg), bg));
+      }
+      if (cs.boxShadow && cs.boxShadow !== 'none') {
+        const c = parse(cs.boxShadow);
+        if (c) shown = Math.max(shown, ratio(over(c, bg), bg));
+      }
+    }
+    if (before && before !== document.body && before.focus) before.focus({ preventScroll: true }); else f.blur();
+    if (shown < 3) issues.push({ kind: 'field-focus', label: `${name} keyboard focus shows no outline or ring of 3:1 (best ${shown.toFixed(2)}:1)` });
+  }
+
   if (document.documentElement.scrollWidth > innerWidth) {
     issues.push({ kind: 'horizontal-scroll', label: `page is ${document.documentElement.scrollWidth}px wide` });
   }

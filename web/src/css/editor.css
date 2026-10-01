@@ -429,18 +429,7 @@ body.editor {
 .tool-hint p, .edit-error p { flex: 1 1 220px; min-width: 0; }
 .edit-error { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); }
 .tool-hint__actions, .edit-error__actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.tool-hint__colour { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; }
-.tool-hint__colour select {
-  min-height: 36px;
-  max-width: 190px;
-  padding: 0 8px;
-  border: 1px solid var(--muted);
-  border-radius: var(--radius-control);
-  background: var(--surface);
-  color: var(--ink);
-  font: inherit;
-  font-weight: 500;
-}
+.tool-hint__colour { flex: 0 1 220px; }
 .tool-done { justify-self: start; padding: 4px 12px; border-radius: var(--radius-pill); background: var(--line); font-size: 13px; font-weight: 700; }
 
 .segmented--view { grid-template-columns: repeat(2, auto); }
@@ -450,37 +439,12 @@ body.editor {
 .pull .label { margin-bottom: 0; }
 .pull .btn--ghost { justify-self: start; }
 .pull__row { display: flex; gap: 8px; align-items: center; }
-.pull__input {
-  display: flex;
-  align-items: center;
-  flex: 1;
-  min-width: 0;
-  min-height: 40px;
-  border: 1px solid var(--muted);
-  border-radius: var(--radius-control);
-  background: var(--surface);
-}
-.pull__input:focus-within { outline: 2px solid var(--ink); outline-offset: 1px; }
-.pull__input input { flex: 1; min-width: 0; height: 38px; padding: 0 10px; border: 0; outline: 0; background: transparent; font: inherit; font-size: 16px; color: var(--ink); }
-.pull__input .unit { padding: 0 10px; font-size: 14px; font-weight: 500; }
 .panel__note--error { font-weight: 700; }
 
 /* Fabric preset picker, with the Unverified mark right next to it. */
 .fabric { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.fabric__select {
-  flex: 1 1 160px;
-  min-width: 0;
-  min-height: 40px;
-  padding: 0 10px;
-  border: 1px solid var(--muted);
-  border-radius: var(--radius-control);
-  background: var(--surface);
-  color: var(--ink);
-  font: inherit;
-  font-size: 15px;
-  font-weight: 500;
-}
-.fabric__select:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
+.fabric { align-items: flex-end; }
+.fabric__field { flex: 1 1 180px; }
 .fabric__status {
   padding: 4px 12px;
   border-radius: var(--radius-pill);
@@ -561,7 +525,7 @@ body.editor {
   background: var(--surface);
   box-shadow: var(--shadow-float);
 }
-.close-dialog:focus { outline: none; }
+.close-dialog:focus:not(:focus-visible) { outline: none; } /* keyboard focus keeps the outline */
 .close-dialog__title { font-size: 17px; font-weight: 700; margin-bottom: 6px; }
 .close-dialog p { font-size: 14px; }
 .close-dialog__actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
