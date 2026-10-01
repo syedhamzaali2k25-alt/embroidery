@@ -1483,5 +1483,23 @@
       "serif": "unused"
     },
     "issues": []
+  },
+  {
+    "page": "editor-field-group",
+    "viewport": "phone",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "editor-field-group",
+    "viewport": "laptop-1366x768",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
   }
 ]
