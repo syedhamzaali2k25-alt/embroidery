@@ -166,6 +166,11 @@ try {
     const moving = await open('/', { motion: 'no-preference' });
     check(await moving.evaluate(() => getComputedStyle(document.documentElement).scrollBehavior) === 'smooth', 'with motion: smooth scroll to #pricing');
     await moving.close();
+    const elsewhere = await open('/pricing', { motion: 'no-preference' });
+    await elsewhere.locator('.plan').first().waitFor();
+    check(await elsewhere.evaluate(() => getComputedStyle(document.documentElement).scrollBehavior) === 'auto',
+      'other pages keep immediate scrolling (the editor relies on it)');
+    await elsewhere.close();
   }
 
   console.log('-- 360 px wide: no sideways scroll, audit');
