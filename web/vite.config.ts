@@ -7,11 +7,14 @@ export default defineConfig(({ mode }) => {
   // the build at another folder: only the page tests use it, with a fixture post (none is shipped).
   const env = loadEnv(mode, "..", "STITCHBOOK_");
   const blogDir = new URL(`${(env.STITCHBOOK_BLOG_DIR || "content/blog").replace(/\/$/, "")}/`, new URL("./", import.meta.url));
-  // Sign-in (Supabase Auth). Only these two values reach the browser, named one by one: the
-  // project URL and the publishable key. The secret key is never read here (see
-  // scripts/check-bundle-secrets.mjs). `--mode offline` (the browser tests) builds without
+  // Sign-in (Supabase Auth). Only these values reach the browser, named one by one: the project
+  // URL, the publishable key and the public Google client ID. The secret key is never read here
+  // (see scripts/check-bundle-secrets.mjs). `--mode offline` (the browser tests) builds without
   // sign-in, matching the API's local mode.
   const supabase = loadEnv(mode, "..", "SUPABASE_");
+  // Google One Tap: the OAuth client ID is public. The Google client secret is never read here
+  // (it lives only in the Supabase dashboard).
+  const google = loadEnv(mode, "..", "VITE_GOOGLE_");
   const offline = mode === "offline";
   return {
     plugins: [react()],
@@ -20,6 +23,7 @@ export default defineConfig(({ mode }) => {
     define: {
       "import.meta.env.STITCHBOOK_SUPABASE_URL": JSON.stringify(offline ? "" : supabase.SUPABASE_URL || ""),
       "import.meta.env.STITCHBOOK_SUPABASE_PUBLISHABLE_KEY": JSON.stringify(offline ? "" : supabase.SUPABASE_PUBLISHABLE_KEY || ""),
+      "import.meta.env.VITE_GOOGLE_CLIENT_ID": JSON.stringify(offline ? "" : google.VITE_GOOGLE_CLIENT_ID || ""),
     },
     server: { port: 8080, strictPort: true },
     preview: { port: 8080, strictPort: true },

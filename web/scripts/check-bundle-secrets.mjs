@@ -30,8 +30,10 @@ async function files(dir) {
   return out;
 }
 
-// Server-only key shapes: the new secret keys, and the name of the variable itself.
-const PATTERNS = [/sb_secret_[A-Za-z0-9_-]+/, /SUPABASE_SECRET_KEY/, /SUPABASE_SERVICE_ROLE_KEY/];
+// Server-only key shapes: the new secret keys, the Google client secret, and the variable names.
+// Google: OAuth client secrets start with GOCSPX-; the client ID (public) is allowed.
+const PATTERNS = [/sb_secret_[A-Za-z0-9_-]+/, /SUPABASE_SECRET_KEY/, /SUPABASE_SERVICE_ROLE_KEY/, /GOCSPX-[A-Za-z0-9_-]{10,}/,
+  /GOOGLE_CLIENT_SECRET/];
 let found = 0;
 let scanned = 0;
 for (const file of await files(dist)) {

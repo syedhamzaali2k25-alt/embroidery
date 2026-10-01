@@ -193,3 +193,28 @@ def test_401_says_how_to_sign_in(setup):
     assert response.status_code == 401
     assert response.headers["www-authenticate"] == "Bearer"
     assert "Sign in" in response.json()["error"]
+
+
+def test_a_google_sign_in_token_is_accepted_like_any_other(setup):
+    """A user who signed in with Google gets the same kind of Supabase access token (same issuer,
+    audience and signing key); only its provider claims differ. No Google call is made."""
+    client, storage, _ = setup
+    google_user = str(uuid.uuid4())
+    google = token(google_user, amr=[{"method": "oauth", "timestamp": int(time.time())}],
+                   app_metadata={"provider": "google", "providers": ["google"]},
+                   user_metadata={"email": "g@example.com", "full_name": "Test Person", "picture": "https://example.com/p.png",
+                                  "iss": "https://accounts.google.com", "provider_id": "1234567890"},
+                   email="g@example.com")
+    headers = {"Authorization": f"Bearer {google}"}
+    assert client.get("/designs", headers=headers).json() == []
+    body = (SAMPLES / "two_colour.png").read_bytes()
+    made = client.post("/designs", headers=headers, files={"file": ("two.png", body, "image/png")},
+                       data={"settings": json.dumps({"width_mm": 40})})
+    assert made.status_code == 201
+    design_id = made.json()["id"]
+    assert [d["id"] for d in client.get("/designs", headers=headers).json()] == [design_id]
+    assert LocalDesigns(storage, google_user).get(design_id) is not None
+    assert client.get(f"/designs/{design_id}", headers=as_user(B)).status_code == 404  # still private
+    # Same rules as any token: a Google user's token from another project is refused.
+    other = token(google_user, iss="https://other.supabase.co/auth/v1", app_metadata={"provider": "google"})
+    assert client.get("/designs", headers={"Authorization": f"Bearer {other}"}).status_code == 401

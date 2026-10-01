@@ -62,12 +62,69 @@ These are your choices. The code works with either setting.
 - **Authentication → Sign In / Providers → Email**:
   - With **Confirm email** on (the default), a new account must open the emailed link before logging in. The Sign up screen says so.
   - With it off, a new account is logged in straight away.
-- **Authentication → URL Configuration**:
-  - Set **Site URL** to the address of the web app, e.g. `http://localhost:8080` while developing.
-  - Add `http://localhost:8080/login` to **Redirect URLs**, so the confirmation link comes back to the Log in screen.
+- **Authentication → URL Configuration**: see 4c (Site URL `http://localhost:8080`; Redirect URLs `http://localhost:8080/login` and `http://localhost:8080/`).
 - **Password rules**: set in the same Email provider settings. The Sign up screen shows Supabase's own message when a password is refused.
 
-## 4. Run the live isolation tests
+## 4. Google sign-in
+
+The Log in and Sign up screens have a **Continue with Google** button and, when a Google client ID is set, the Google One Tap prompt. Both end in an ordinary Supabase session, so the API needs no change.
+
+- **Continue with Google**: the browser goes to Google through Supabase and comes back to `/login`, which finishes the sign-in and goes on to the page the visitor came from.
+- **One Tap**: Google's ID token is checked by Supabase with a nonce. Keep Supabase's nonce check on.
+
+The Google client secret lives only in the Supabase dashboard. Never put it in `.env`, `web/` or anywhere in the repo. `npm run check:secrets` and `api/tests/test_env_example.py` look for one (`GOCSPX-...`).
+
+### 4a. Google Cloud: the OAuth client
+
+1. Open https://console.cloud.google.com/apis/credentials and choose the project for Stitchbook.
+2. **OAuth consent screen** (Google Auth Platform → Branding / Audience / Data access):
+   - App name, support email and developer contact email.
+   - Scopes: only `openid`, `.../auth/userinfo.email` and `.../auth/userinfo.profile`. Nothing else is used.
+3. **Credentials → Create credentials → OAuth client ID → Web application**:
+   - **Authorized JavaScript origins**: `http://localhost:8080`. Add the real site's origin later, when it has one.
+   - **Authorized redirect URIs**: `https://vnfvgotzjbfikgcivrmn.supabase.co/auth/v1/callback`
+   - Click **Create**. Copy the **Client ID** (public) and the **Client secret** (secret: it goes only in step 4b).
+4. **Test users**: while the app's publishing status is **Testing**, only the Google accounts listed under **Audience → Test users** can sign in. Add your own account, and anyone else who should try it. Others see Google's "access blocked" page.
+
+### 4b. Supabase: the Google provider
+
+You said this is already done. To check it:
+
+- Go to **Authentication → Sign In / Providers → Google**.
+- **Enable Sign in with Google** is on.
+- **Client IDs** contains the Client ID from 4a. **Client Secret (for OAuth)** is the secret from 4a.
+- Leave **Skip nonce checks** off. One Tap sends a nonce, and Supabase must check it.
+- The **Callback URL (for OAuth)** shown there is the redirect URI in 4a.
+
+### 4c. Supabase: URL Configuration
+
+Go to **Authentication → URL Configuration**:
+
+- **Site URL**: `http://localhost:8080`
+- **Redirect URLs**: add both of these, then click **Save**:
+  - `http://localhost:8080/login` (Google and the confirmation email return here)
+  - `http://localhost:8080/`
+
+When the site gets its real address, add the same two paths for it.
+
+### 4d. `.env`
+
+```
+VITE_GOOGLE_CLIENT_ID=<the Client ID from 4a>.apps.googleusercontent.com
+```
+
+This turns on the One Tap prompt. Without it, **Continue with Google** still works and no Google script is loaded. Rebuild or restart the web app (`make web`) after changing it.
+
+### 4e. What the browser loads
+
+The Log in and Sign up pages load `https://accounts.google.com/gsi/client` (only with a client ID, and only for someone not signed in). No other page loads it. The repo has no Content-Security-Policy today. If one is added where the site is hosted, it needs:
+
+- `script-src https://accounts.google.com/gsi/client`
+- `frame-src https://accounts.google.com/gsi/`
+- `connect-src https://accounts.google.com/gsi/` plus the Supabase URL
+- `style-src https://accounts.google.com/gsi/style`
+
+## 5. Run the live isolation tests
 
 These tests run against the real project:
 
@@ -88,5 +145,7 @@ The tests read the three keys from `.env` or the environment, and never print th
 
 ## Known limits
 
+- A Google sign-in started from the Upload screen comes back without the chosen file (the page reloads on the way back). Choose the file again; email/password log-in keeps it.
+- The Google sign-in was tested here only against stand-ins for Google and Supabase (`npm run test:auth`), never against real Google. Try it once yourself after 4a-4d.
 - Deleting a user in **Authentication → Users** deletes their profile, designs, jobs and exports rows (cascade). It does not delete their files in Storage; delete the user's folder in both buckets by hand. There is no "delete my account" feature in the app yet.
 - The SQL was tested on a local PostgreSQL 16 with a small stand-in for Supabase's `auth` and `storage` schemas (`supabase/tests/test_rls.py`), not on Supabase itself. Section 4 is the test on the real project.

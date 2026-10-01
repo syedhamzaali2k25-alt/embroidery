@@ -1,7 +1,10 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
-import { logIn, logOut, safeNext, signInEnabled, signUp, useSession } from "../lib/auth";
+import {
+  finishGoogleReturn, logIn, logOut, oauthReturnError, safeNext, signInEnabled, signInWithGoogle, signUp, startOneTap,
+  takeSavedNext, useSession,
+} from "../lib/auth";
 import { SiteFooter, SiteHeader } from "../lib/SiteChrome";
 import { usePage } from "../lib/usePage";
 import "../css/auth.css";
@@ -44,11 +47,48 @@ function Field({ id, label, type, value, onChange, autoComplete, help }: {
   );
 }
 
+/** "Continue with Google" and the "or" divider above the email form; One Tap runs alongside. */
+function GoogleChoice({ next, error }: { next: string; error: string | null }) {
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+  const { ready, session } = useSession();
+  // One Tap only for someone not signed in, only on these screens; cancelled when leaving.
+  useEffect(() => {
+    if (!ready || session) return;
+    return startOneTap(() => {}, setFailed);
+  }, [ready, session]);
+  const go = () => {
+    setBusy(true);
+    setFailed(null);
+    signInWithGoogle(next).then((r) => {
+      if (!r.ok) { setBusy(false); setFailed(r.message); }
+    });
+  };
+  const message = failed ?? error;
+  return (
+    <div className="auth__google">
+      <button className="btn btn--ink btn--lg auth__submit" type="button" onClick={go} disabled={busy}>
+        {busy ? "Opening Google…" : "Continue with Google"}
+      </button>
+      {message && <p className="auth__error" role="alert">{message}</p>}
+      <p className="auth__or"><span>or</span></p>
+    </div>
+  );
+}
+
 export function Login() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
-  const next = safeNext(params.get("next"));
+  // Back from Google: the page saved before leaving (the redirect itself carries no "next").
+  const [returned] = useState(() => (params.get("code") || params.get("error") || location.hash.includes("error=")
+    ? { next: takeSavedNext(), error: oauthReturnError(location.search, location.hash) } : null));
+  const next = safeNext(params.get("next") ?? returned?.next ?? null);
   const { ready, session } = useSession();
+  const [googleError, setGoogleError] = useState<string | null>(returned?.error ?? null);
+  useEffect(() => {
+    if (returned && !returned.error && params.get("code")) finishGoogleReturn().then((e) => e && setGoogleError(e));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -75,6 +115,7 @@ export function Login() {
       {params.get("next") && <p className="auth__lede">Log in to save your design. You'll come straight back.</p>}
       {!signInEnabled ? <NoSignIn /> : (
         <form className="auth__form" onSubmit={submit} noValidate={false}>
+          <GoogleChoice next={next} error={googleError} />
           <Field id="email" label="Email" type="email" value={email} onChange={setEmail} autoComplete="email" />
           <Field id="password" label="Password" type="password" value={password} onChange={setPassword} autoComplete="current-password" />
           {error && <p className="auth__error" role="alert">{error}</p>}
@@ -95,6 +136,10 @@ export function Signup() {
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
   const [busy, setBusy] = useState(false);
+  const { ready, session } = useSession();
+  useEffect(() => { // signed in with Google One Tap from here
+    if (ready && session) navigate(next, { replace: true });
+  }, [ready, session, next, navigate]);
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
@@ -118,6 +163,7 @@ export function Signup() {
         </div>
       ) : (
         <form className="auth__form" onSubmit={submit}>
+          <GoogleChoice next={next} error={null} />
           <Field id="email" label="Email" type="email" value={email} onChange={setEmail} autoComplete="email" />
           <Field id="password" label="Password" type="password" value={password} onChange={setPassword}
                  autoComplete="new-password" />

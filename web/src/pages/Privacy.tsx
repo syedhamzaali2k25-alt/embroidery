@@ -6,7 +6,7 @@
 // data in Supabase) and without (local mode: no accounts, data on the server's disk).
 import { Link } from "react-router-dom";
 
-import { signInEnabled } from "../lib/auth";
+import { GOOGLE_CLIENT_ID, signInEnabled } from "../lib/auth";
 import { DraftBanner, NotChosen, SitePage, SiteValue, useSite } from "../lib/SiteChrome";
 import { usePage } from "../lib/usePage";
 
@@ -61,6 +61,20 @@ export default function Privacy() {
             itself), when the account was made and when you last logged in, and a log of sign-in events that includes
             the IP address each came from. It also sends the email that confirms your address. Stitchbook keeps a profile row for your account with no other details.
           </p>
+          <h2>Signing in with Google</h2>
+          <p>
+            If you choose "Continue with Google"{GOOGLE_CLIENT_ID ? " or the Google sign-in prompt" : ""}, Google tells
+            Stitchbook (through Supabase Auth) your email address, your name and your profile picture, and the ID of your
+            Google account that ties them together. Nothing else: no contacts, files, calendar or other Google data. No
+            password is kept for a Google sign-in.
+          </p>
+          {GOOGLE_CLIENT_ID && (
+            <p>
+              The Log in and Sign up pages load a script from Google (accounts.google.com) to offer the sign-in prompt.
+              Loading it lets Google see the request from your browser (such as your IP address), and the script can use
+              Google's own cookies on Google's site. No other page loads it.
+            </p>
+          )}
         </>
       )}
 
@@ -121,12 +135,12 @@ export default function Privacy() {
         <li>Cookies: none. The web app does not set any, and the server does not send any.</li>
         <li>
           {signInEnabled
-            ? "Browser storage: while you are logged in, your browser's local storage keeps your sign-in session (set by Supabase Auth), so you stay logged in. Logging out removes it. Nothing else."
+            ? "Browser storage: while you are logged in, your browser's local storage keeps your sign-in session (set by Supabase Auth), so you stay logged in. Logging out removes it. During a Google sign-in, a one-time check value is kept there too, and this tab's session storage remembers the page to return to; both are removed when you come back. Nothing else."
             : "Browser storage (local storage, session storage): none."}
         </li>
         <li>Analytics, advertising or tracking: none.</li>
         <li>Requests to other services: {signInEnabled
-          ? "the web app talks to the Stitchbook server, to Supabase Auth (signing up, logging in and out), and to Supabase file storage when you download a file; its fonts and icons come from the site itself."
+          ? `the web app talks to the Stitchbook server, to Supabase Auth (signing up, logging in and out), to Google when you sign in with Google${GOOGLE_CLIENT_ID ? " (and, on the Log in and Sign up pages, to load Google's sign-in script)" : ""}, and to Supabase file storage when you download a file; its fonts and icons come from the site itself.`
           : "the web app only talks to the Stitchbook server, and its fonts and icons come from the site itself."}{" "}
           {state.site
             ? video
