@@ -193,7 +193,3 @@
 .design__name { overflow-wrap: anywhere; }
 .design__type { font-weight: 700; font-size: 22px; letter-spacing: 0.04em; }
 .designs__empty { display: grid; justify-items: start; gap: 12px; font-size: 16px; }
-
-/* Account line under the sidebar nav (with sign-in only). */
-.side__account { font-size: 14px; overflow-wrap: anywhere; }
-@media (max-width: 959px) { .side__account { width: 100%; } }

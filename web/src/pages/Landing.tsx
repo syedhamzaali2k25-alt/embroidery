@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 
 import { api, type SiteInfo } from "../lib/api";
 import { HeroStitches } from "../lib/HeroStitches";
+import { AccountControl } from "../lib/AccountMenu";
 import { Icon } from "../lib/Icon";
 import { setPendingUpload } from "../lib/pendingUpload";
 import { SiteFooter } from "../lib/SiteChrome";
@@ -78,9 +79,7 @@ export default function Landing() {
           <a href="#demo">Demo</a>
           <a href="#faq">FAQ</a>
         </nav>
-        <div className="nav__actions">
-          <a className="btn btn--ink btn--sm" href="/upload">Upload a logo</a>
-        </div>
+        <div className="nav__actions"><AccountControl /></div>
       </header>
 
       <main>

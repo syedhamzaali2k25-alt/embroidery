@@ -8,6 +8,8 @@ import {
 import {
   DesignShapesLayer, fitTo, OverlapSeams, RingPicker, StitchLines, ToolMarks, TracedColumns, unfitFrom, type RingPick,
 } from "../lib/DesignCanvas";
+import { AccountControl } from "../lib/AccountMenu";
+import { signInEnabled } from "../lib/auth";
 import { DownloadLink } from "../lib/DownloadLink";
 import { SelectField } from "../lib/Field";
 import { TraceCard } from "../lib/TraceCard";
@@ -235,8 +237,9 @@ export default function DesignEditor({ designId }: { designId: string }) {
               <span className="chip chip--private" tabIndex={0} aria-describedby="private-tip">
                 <svg aria-hidden="true"><use href="/assets/sprite.svg#i-lock"/></svg>Private
                 <span className="tip" role="tooltip" id="private-tip">
-                  Only you work on this design; there is no sharing yet. There are no accounts yet either, so
-                  anyone who has this page's address can open it.
+                  {signInEnabled
+                    ? "Only your account can open this design; there is no sharing."
+                    : "Only you work on this design; there is no sharing yet. There are no accounts on this server, so anyone who has this page's address can open it."}
                 </span>
               </span>
             </div>
@@ -254,6 +257,7 @@ export default function DesignEditor({ designId }: { designId: string }) {
             <svg aria-hidden="true"><use href="/assets/sprite.svg#i-redo"/></svg>
           </button>
           <Link className="btn btn--ghost btn--sm bar__preview" to={`/preview/${designId}`}>Preview</Link>
+          <AccountControl />
         </div>
       </header>
       {closing && (

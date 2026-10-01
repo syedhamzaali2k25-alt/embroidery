@@ -10,6 +10,7 @@
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { createServer } from 'node:http';
+import { readFileSync } from 'node:fs';
 import { cp, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { extname, join, resolve } from 'node:path';
 import { chromium } from 'playwright';
@@ -171,10 +172,28 @@ const GSI = `(() => {
   } } };
 })();`;
 
-async function fresh({ width = 1440, height = 900, gis = 'dismissed', authorize = 'ok' } = {}) {
+/** A session already stored in the browser, as after an earlier log-in (supabase-js's own key). */
+const storedSession = (u = user) => ({ ...session(), user: u });
+
+async function fresh({ width = 1440, height = 900, gis = 'dismissed', authorize = 'ok', signedInAs = null } = {}) {
   const context = await browser.newContext({ viewport: { width, height }, reducedMotion: 'reduce' });
   const page = await context.newPage();
   const calls = [], seen = [], gisLoads = [];
+  if (signedInAs) {
+    await page.addInitScript((value) => { try { localStorage.setItem('sb-stub-auth-token', value); } catch {} },
+      JSON.stringify(storedSession(signedInAs)));
+  }
+  // Every state the account slot shows, in order, with its width (to catch flicker and jumps).
+  await page.addInitScript(() => {
+    window.__acct = [];
+    const note = () => {
+      const el = document.querySelector('.nav .acct, .flow-bar .acct, .bar .acct, .topbar .acct');
+      const last = window.__acct[window.__acct.length - 1];
+      const now = el ? `${el.dataset.state}` : 'none';
+      if (!last || last.state !== now) window.__acct.push({ state: now, width: el ? Math.round(el.getBoundingClientRect().width) : 0 });
+    };
+    new MutationObserver(note).observe(document, { subtree: true, childList: true, attributes: true, attributeFilter: ['data-state'] });
+  });
   await page.addInitScript((mode) => { try { localStorage.setItem('gis-mode', mode); } catch {} }, gis);
   await page.route('https://accounts.google.com/gsi/client', (r) => {
     gisLoads.push(page.url());
@@ -184,6 +203,10 @@ async function fresh({ width = 1440, height = 900, gis = 'dismissed', authorize 
   await stubApi(page, seen);
   return { context, page, calls, seen, gisLoads };
 }
+const logOutViaMenu = async (page) => {
+  await page.getByRole('button', { name: 'Account menu' }).click();
+  await page.getByRole('menuitem', { name: 'Log out' }).click();
+};
 const logInWith = async (page, password) => {
   await page.getByLabel('Email').fill(USER.email);
   await page.getByLabel('Password', { exact: true }).fill(password);
@@ -205,7 +228,9 @@ try {
     await page.locator('.design').first().waitFor();
     check(await page.locator('.design__name').innerText() === 'bird.png', 'logged in: back on My designs, the list shows the design');
     check(seen.includes('GET /designs with token') && !seen.includes('GET /designs no token'), 'the list was asked for with the access token only');
-    check(await page.getByText(`Logged in as ${USER.email}`).isVisible(), 'the sidebar says who is logged in');
+    await page.getByRole('button', { name: 'Account menu' }).click();
+    check(await page.getByRole('menu').getByText(USER.email).isVisible(), 'the account menu says who is logged in');
+    await page.keyboard.press('Escape');
     await context.close();
   }
 
@@ -270,7 +295,7 @@ try {
     await page.goto(`${base}/login`);
     await logInWith(page, 'right-password');
     await page.waitForURL(`${base}/home`);
-    await page.getByRole('link', { name: 'Log out' }).click();
+    await logOutViaMenu(page);
     await page.getByText("You're logged out").waitFor();
     check(calls.some((c) => c.startsWith('POST /auth/v1/logout')), 'Log out tells Supabase Auth');
     check(await page.locator('.nav').getByRole('link', { name: 'Log in' }).isVisible(), 'the header offers Log in again');
@@ -311,7 +336,7 @@ try {
     check(calls.authorize?.provider === 'google' && calls.authorize?.redirectTo === `${base}/login`, 'asks Supabase for Google, coming back to /login');
     check(Boolean(calls.authorize?.challenge) && Boolean(calls.pkce?.code_verifier), 'PKCE: a code challenge going out, the verifier on the way back');
     check(seen.includes('GET /designs with token'), 'a Google user\'s token reaches the API like any other (My designs loads)');
-    await page.getByRole('link', { name: 'Log out' }).click();
+    await logOutViaMenu(page);
     await page.getByText("You're logged out").waitFor();
     check(calls.some((c) => c.startsWith('POST /auth/v1/logout')), 'a Google user can log out');
     await page.goto(`${base}/home`);
@@ -368,7 +393,7 @@ try {
     check(body?.provider === 'google' && claims?.aud === GOOGLE_ID, 'signInWithIdToken(provider google) with the configured client ID');
     await page.locator('.design').first().waitFor();
     check(true, 'success: signed in and on the saved page (My designs)');
-    await page.getByRole('link', { name: 'Log out' }).click();
+    await logOutViaMenu(page);
     await page.getByText("You're logged out").waitFor();
     const after = await gisState(page);
     check(after && after.cancels > 0, 'One Tap is cancelled on log out');
@@ -449,6 +474,118 @@ try {
     await context.close();
   }
 
+  console.log('-- header: one account control on the right (no "Upload a logo" button)');
+  {
+    const header = (page) => page.locator('header').first();
+    const { context, page } = await fresh();
+    await page.goto(`${base}/`);
+    await header(page).locator('.acct[data-state="out"]').waitFor();
+    check(await header(page).getByRole('link', { name: 'Log in' }).isVisible() && await header(page).getByRole('link', { name: 'Sign up' }).isVisible(),
+      'landing, signed out: Log in and Sign up in the header');
+    check(await header(page).getByText('Upload a logo').count() === 0 && await page.locator('main').getByRole('link', { name: /Upload a logo/ }).first().isVisible(),
+      'no "Upload a logo" in the header; the hero button stays');
+    const classes = [await header(page).getByRole('link', { name: 'Log in' }).getAttribute('class'), await header(page).getByRole('link', { name: 'Sign up' }).getAttribute('class')];
+    check(classes[0].includes('btn--ghost') && classes[1].includes('btn--ink'), 'Log in is the outline pill, Sign up the dark pill');
+    for (const [path, shown, hidden] of [['/login', 'Sign up', 'Log in'], ['/signup', 'Log in', 'Sign up']]) {
+      await page.goto(`${base}${path}`);
+      await header(page).locator('.acct[data-state="out"]').waitFor();
+      check(await header(page).getByRole('link', { name: shown }).isVisible() && await header(page).getByRole('link', { name: hidden }).count() === 0,
+        `${path}: the header shows only "${shown}"`);
+    }
+    for (const path of ['/privacy', '/terms', '/contact', '/blog', '/upload', '/home', '/editor']) {
+      await page.goto(`${base}${path}`);
+      if (path === '/home') { await page.waitForURL(/\/login/); continue; } // signed out: sent to log in
+      await page.locator('.acct[data-state="out"]').first().waitFor();
+      check(await page.locator('header').getByText('Upload a logo').count() === 0 && await page.locator('header .acct').count() === 1,
+        `${path}: one account control, no header Upload button`);
+    }
+    await context.close();
+  }
+  {
+    const { context, page } = await fresh({ width: 390, height: 844 });
+    await page.goto(`${base}/`);
+    await page.locator('header .acct[data-state="out"]').waitFor();
+    check(await page.locator('header').getByRole('link', { name: 'Log in' }).isVisible() && !await page.locator('header').getByRole('link', { name: 'Sign up' }).isVisible(),
+      'phone, signed out: just "Log in"');
+    await context.close();
+  }
+  {
+    // Signed in with a Google picture: the picture; no "Log in" ever shown on the way (no flicker).
+    const picture = { ...googleUser, id: '5d0c3b6e-1f2a-4b7c-9d8e-0a1b2c3d4e5f', user_metadata: { ...googleUser.user_metadata, avatar_url: 'https://pictures.example/me.png' } };
+    const { context, page } = await fresh({ signedInAs: picture });
+    await page.route('https://pictures.example/**', (r) => r.fulfill({ contentType: 'image/png', body: readFileSync(testImage) }));
+    await page.goto(`${base}/`);
+    await page.locator('header .acct[data-state="in"]').waitFor();
+    const img = page.getByRole('button', { name: 'Account menu' }).locator('img');
+    await page.waitForFunction(() => document.querySelector('.acct__img')?.complete);
+    check(await img.getAttribute('src') === 'https://pictures.example/me.png' && await img.evaluate((i) => i.naturalWidth > 0), 'signed in: the Google picture in the avatar');
+    const states = await page.evaluate(() => window.__acct);
+    check(!states.some((x) => x.state === 'out') && states.at(-1).state === 'in', `no flicker: ${states.map((x) => x.state).join(' -> ')}`);
+    const widths = [...new Set(states.filter((x) => x.state !== 'none').map((x) => x.width))];
+    check(widths.length === 1, `the slot keeps its size while the session is checked (${widths.join(', ')} px)`);
+    await context.close();
+  }
+  {
+    // A picture that fails to load, and no picture at all: the first letter on a thumbnail colour.
+    const broken = { ...googleUser, id: '7e1f2a3b-4c5d-4e6f-8a9b-0c1d2e3f4a5b', user_metadata: { full_name: 'Ada Lovelace', avatar_url: 'https://pictures.example/gone.png' } };
+    const { context, page } = await fresh({ signedInAs: broken });
+    await page.route('https://pictures.example/**', (r) => r.fulfill({ status: 404, body: '' }));
+    await page.goto(`${base}/privacy`);
+    const letter = page.locator('header .acct__letter');
+    await letter.waitFor();
+    check(await letter.innerText() === 'A' && /acct__letter--[1-4]/.test(await letter.getAttribute('class')), 'picture fails to load: falls back to the letter "A"');
+    await context.close();
+    const plain = { ...user, id: '9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d', email: 'zoe@example.com', user_metadata: {} };
+    const second = await fresh({ signedInAs: plain });
+    await second.page.goto(`${base}/upload`);
+    const l2 = second.page.locator('header .acct__letter');
+    await l2.waitFor();
+    const colour = Number((await l2.getAttribute('class')).match(/--(\d)/)[1]);
+    const bg = await l2.evaluate((el) => getComputedStyle(el).backgroundColor);
+    const ink = await l2.evaluate((el) => getComputedStyle(el).color);
+    check(await l2.innerText() === 'Z' && colour >= 1 && colour <= 4 && bg !== 'rgba(0, 0, 0, 0)', `no picture: "Z" from the email on thumbnail colour ${colour}`);
+    await second.page.reload();
+    await l2.waitFor();
+    check(Number((await l2.getAttribute('class')).match(/--(\d)/)[1]) === colour && ink === await l2.evaluate((el) => getComputedStyle(el).color),
+      'the same colour every time for the same user; letter in ink');
+    await second.context.close();
+  }
+  {
+    // The menu: opens, keyboard, Escape, outside click, route change, Log out.
+    const { context, page, calls } = await fresh({ signedInAs: { ...googleUser, user_metadata: { full_name: 'Test Person', email: 'g@example.com' } } });
+    await page.goto(`${base}/`);
+    const avatar = page.getByRole('button', { name: 'Account menu' });
+    await avatar.waitFor();
+    check(await avatar.getAttribute('aria-expanded') === 'false' && await avatar.getAttribute('aria-haspopup') === 'menu', 'avatar: aria-label "Account menu", a menu button');
+    await avatar.click();
+    const menu = page.getByRole('menu');
+    const text = await menu.innerText();
+    check(text.includes('Test Person') && text.includes('g@example.com') && await avatar.getAttribute('aria-expanded') === 'true',
+      'open: name and email, then the items');
+    const focused = () => page.evaluate(() => document.activeElement?.textContent?.trim());
+    check(await focused() === 'My designs', 'focus moves into the menu (My designs)');
+    await page.keyboard.press('ArrowDown');
+    check(await focused() === 'Log out', 'ArrowDown: Log out');
+    await page.keyboard.press('Escape');
+    check(await menu.count() === 0 && await page.evaluate(() => document.activeElement?.getAttribute('aria-label')) === 'Account menu',
+      'Escape closes it and returns focus to the avatar');
+    await page.keyboard.press('Enter');
+    check(await menu.isVisible(), 'Enter on the avatar opens it again (keyboard)');
+    await page.mouse.click(10, 500);
+    check(await menu.count() === 0, 'a click outside closes it');
+    await avatar.click();
+    await page.getByRole('menuitem', { name: 'My designs' }).click();
+    await page.waitForURL(`${base}/home`);
+    check(await page.getByRole('menu').waitFor({ state: 'detached', timeout: 3000 }).then(() => true, () => false),
+      'choosing My designs goes there and the menu closes (route change)');
+    await logOutViaMenu(page);
+    await page.getByText("You're logged out").waitFor();
+    check(calls.some((c) => c.startsWith('POST /auth/v1/logout')), 'Log out in the menu logs out');
+    await page.locator('header .acct[data-state="out"]').waitFor();
+    check(await page.locator('header').getByRole('link', { name: 'Log in' }).isVisible(), 'after logging out the header offers Log in again');
+    await context.close();
+  }
+
   console.log('-- text fields: labels, field errors, Show / Hide password, input types');
   {
     const { context, page } = await fresh({ width: 390, height: 844 });
@@ -490,6 +627,8 @@ try {
   await mkdir(shots, { recursive: true });
   for (const [vp, width, height] of [['desktop', 1440, 900], ['laptop-1366x768', 1366, 768], ['phone', 390, 844]]) {
     const screens = [
+      ['landing-signed-out', '/', 'landing'],
+      ['landing-menu-open', '/', 'menu'],
       ['login', '/login', 'h1'],
       ['login-error', '/login', 'error'],
       ['login-focused', '/login', 'focused'],
@@ -504,7 +643,7 @@ try {
     ];
     for (const [name, path, state] of screens) {
       const { context, page } = await fresh({ width, height });
-      if (state === 'home' || state === 'out') {
+      if (state === 'home' || state === 'out' || state === 'menu') {
         await page.goto(`${base}/login`);
         await logInWith(page, 'right-password');
         await page.waitForURL(`${base}/home`);
@@ -519,7 +658,8 @@ try {
         await page.getByLabel('Password', { exact: true }).fill('a-long-password');
         await page.getByRole('button', { name: 'Sign up', exact: true }).click();
       }
-      const ready = { h1: 'h1', error: '[role=alert]', focused: '#email:focus', fielderror: '.fld__msg--error', filled: '#password', sent: 'text=Check your email', out: "text=You're logged out", home: '.design' }[state];
+      if (state === 'menu') { await page.locator('header .acct[data-state="in"]').waitFor(); await page.getByRole('button', { name: 'Account menu' }).click(); }
+      const ready = { landing: 'header .acct[data-state="out"]', menu: '[role=menu]', h1: 'h1', error: '[role=alert]', focused: '#email:focus', fielderror: '.fld__msg--error', filled: '#password', sent: 'text=Check your email', out: "text=You're logged out", home: '.design' }[state];
       await page.locator(ready).first().waitFor();
       await page.evaluate(() => document.fonts.ready);
       if (state !== 'focused') await page.mouse.move(0, 0);

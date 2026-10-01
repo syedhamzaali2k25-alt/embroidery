@@ -66,6 +66,8 @@ try {
       const page = await open(browser, base, path, { width, height: width === 390 ? 844 : 768 });
       check((await h1(page)) === title && await noSideScroll(page) && await page.locator('footer .footer__link').count() === 7,
         `${width}px ${path}: "${title}", footer with 7 links, no sideways scroll`);
+      check(await page.locator('header .acct').count() === 0 && await page.locator('header').getByText('Upload a logo').count() === 0,
+        `${width}px ${path}: offline build: no account control and no Upload button in the header`);
       await page.close();
     }
   }

@@ -13,12 +13,12 @@ import "../css/auth.css";
 
 // Log in, Sign up and Log out. Plain white page, one centred column, Supabase Auth behind it.
 
-function AuthPage({ title, children }: { title: string; children: ReactNode }) {
+function AuthPage({ title, page, children }: { title: string; page?: "login" | "signup"; children: ReactNode }) {
   usePage(`${title} · Stitchbook`, "auth-page");
   return (
     <>
       <div className="sheet">
-        <SiteHeader />
+        <SiteHeader page={page} />
         <main className="auth">{children}</main>
       </div>
       <SiteFooter />
@@ -139,7 +139,7 @@ export function Login() {
   };
 
   return (
-    <AuthPage title="Log in">
+    <AuthPage title="Log in" page="login">
       <h1 className="auth__title">Log <span className="accent">in</span></h1>
       {params.get("next") && <p className="auth__lede">Log in to save your design. You'll come straight back.</p>}
       {!signInEnabled ? <NoSignIn /> : (
@@ -193,7 +193,7 @@ export function Signup() {
   };
 
   return (
-    <AuthPage title="Sign up">
+    <AuthPage title="Sign up" page="signup">
       <h1 className="auth__title">Sign <span className="accent">up</span></h1>
       {!signInEnabled ? <NoSignIn /> : sent ? (
         <div className="auth__note" role="status">

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { api, ApiError, needsLogin, type DesignSummary } from "../lib/api";
+import { AccountControl } from "../lib/AccountMenu";
 import { loginPath, signInEnabled, useSession } from "../lib/auth";
 import { usePage } from "../lib/usePage";
 import "../css/home.css";
@@ -42,14 +43,11 @@ export default function Home() {
         <a className="brand" href="/"><svg aria-hidden="true"><use href="/assets/sprite.svg#logo"/></svg>Stitchbook</a>
         <nav className="side__nav" aria-label="Sections">
           <a href="/home" aria-current="page"><svg aria-hidden="true"><use href="/assets/sprite.svg#i-grid"/></svg>My designs</a>
-          {signInEnabled && auth.session && <Link to="/logout">Log out</Link>}
         </nav>
-        {signInEnabled && auth.session?.user.email && (
-          <p className="side__account">Logged in as <strong>{auth.session.user.email}</strong></p>
-        )}
       </aside>
 
       <main className="main">
+        {signInEnabled && <div className="topbar"><div className="topbar__right"><AccountControl /></div></div>}
         <section className="welcome">
           <div>
             <h1>My <span className="accent">designs</span></h1>

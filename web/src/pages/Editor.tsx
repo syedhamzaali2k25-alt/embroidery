@@ -1,5 +1,6 @@
 import { Link, useSearchParams } from "react-router-dom";
 
+import { AccountControl } from "../lib/AccountMenu";
 import { usePage } from "../lib/usePage";
 import DesignEditor from "./DesignEditor";
 import "../css/editor.css";
@@ -22,6 +23,7 @@ export default function Editor() {
             <p className="file__state">No design open</p>
           </div>
         </div>
+        <div className="bar__right"><AccountControl /></div>
       </header>
       <main className="editor-empty">
         <div className="stage__message">

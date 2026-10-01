@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 
 import { api, type SiteInfo } from "./api";
-import { signInEnabled, useSession } from "./auth";
+import { AccountControl } from "./AccountMenu";
 import { Icon } from "./Icon";
 import { useReveal } from "./useReveal";
 import "../css/site.css";
@@ -49,29 +49,15 @@ export const FOOTER_COLUMNS = [
   ["Legal", [["/privacy", "Privacy"], ["/terms", "Terms of Service"]]],
 ] as const;
 
-/** Header for the public pages (Privacy, Terms, Contact, Blog, Log in, Sign up). */
-export function SiteHeader() {
+/** Header for the public pages (Privacy, Terms, Contact, Blog, Log in, Sign up, Log out). The
+ *  right side is the account control (nothing in offline / local mode). */
+export function SiteHeader({ page }: { page?: "login" | "signup" }) {
   return (
     <header className="nav">
       <a className="brand" href="/"><Icon name="logo" />Stitchbook</a>
-      <div className="nav__actions">
-        {signInEnabled && <AccountLinks />}
-        <a className="btn btn--ink btn--sm" href="/upload">Upload a logo</a>
-      </div>
+      <div className="nav__actions"><AccountControl page={page} /></div>
     </header>
   );
-}
-
-/** With sign-in: "My designs" and "Log out" when signed in, "Log in" when not. */
-export function AccountLinks() {
-  const { ready, session } = useSession();
-  if (!ready) return null;
-  return session ? (
-    <>
-      <Link className="btn btn--ghost btn--sm" to="/home">My designs</Link>
-      <Link className="btn btn--ghost btn--sm" to="/logout">Log out</Link>
-    </>
-  ) : <Link className="btn btn--ghost btn--sm" to="/login">Log in</Link>;
 }
 
 /**

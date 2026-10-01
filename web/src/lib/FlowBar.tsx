@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 
+import { AccountControl } from "./AccountMenu";
 import { Icon } from "./Icon";
 
 /** Top bar shared by the Upload and Preview screens: brand, the two steps, and actions. */
@@ -14,7 +15,7 @@ export function FlowBar({ step, children }: { step: 1 | 2; children?: ReactNode 
         </li>
         <li aria-current={step === 2 ? "step" : undefined}><span className="num">2</span>Preview</li>
       </ol>
-      <div className="flow-bar__actions">{children}</div>
+      <div className="flow-bar__actions">{children}<AccountControl /></div>
     </header>
   );
 }
