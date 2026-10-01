@@ -70,7 +70,7 @@ def start_worker(redis_url):
 
 
 def client_for(tmp_path, redis_url, trace_job=REAL) -> TestClient:
-    settings = Settings(redis_url, "digitize", None, str(tmp_path / "store"), False, "info", trace_job)
+    settings = Settings(redis_url, "digitize", None, str(tmp_path / "store"), False, "info", trace_job, free_operations=True)
     return TestClient(create_app(CONFIG, LocalDiskStorage(tmp_path / "store"), settings))
 
 

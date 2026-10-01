@@ -24,7 +24,7 @@ BODY, BRANCH = 1, 7  # bird: navy body (fill), brown branch (satin)
 
 @pytest.fixture
 def client(tmp_path):
-    settings = Settings("redis://unused", "digitize", None, str(tmp_path / "store"), False, "info")
+    settings = Settings("redis://unused", "digitize", None, str(tmp_path / "store"), False, "info", free_operations=True)
     return TestClient(create_app(CONFIG, LocalDiskStorage(tmp_path / "store"), settings))
 
 

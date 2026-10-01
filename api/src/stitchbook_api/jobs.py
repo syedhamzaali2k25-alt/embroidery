@@ -86,8 +86,8 @@ class Jobs:
     # ---------- start ----------
     def start_trace(self, design_id: str, image: bytes, suffix: str, width_mm: float | None,
                     overrides: dict[str, Any], colours: list[str] | None, edits: list[dict], timeout_s: int,
-                    ttl_s: int, retries: int) -> JobOut:
-        job_id = uuid.uuid4().hex
+                    ttl_s: int, retries: int, job_id: str | None = None) -> JobOut:
+        job_id = job_id or uuid.uuid4().hex
         try:
             self.queue.enqueue(
                 self.trace_job, args=(image, suffix, width_mm, overrides, colours, edits), job_id=job_id,

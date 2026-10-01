@@ -174,6 +174,7 @@ class ClientConfig(BaseModel):
     poll_max_s: float
     poll_backoff_factor: float
     status_timeout_s: float = Field(description="How long the editor waits for a job-status answer before saying so")
+    billing: dict | None = Field(default=None, description="Plans, prices and credit costs (also GET /plans)")
 
 
 class QualityWarningOut(BaseModel):

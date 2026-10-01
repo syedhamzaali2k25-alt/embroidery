@@ -21,14 +21,44 @@ class Settings:
     trace_job: str = "stitchbook_worker.jobs.trace_design"  # function the worker runs for a trace
     # Supabase (Auth, database, Storage). Both set = sign-in required on every user route and data
     # kept in Supabase; both empty = local mode (one local user, files on disk) for offline work
-    # and tests. The API never needs the secret key: it acts as the signed-in user, so row level
-    # security applies to every query it makes. repr=False keeps the key out of logs.
+    # and tests. Designs and files are always read and written as the signed-in user, so row level
+    # security applies. repr=False keeps keys out of logs.
     supabase_url: str | None = None
     supabase_publishable_key: str | None = field(default=None, repr=False)
+    # The secret key: used ONLY by the billing module (credits functions, webhooks).
+    supabase_secret_key: str | None = field(default=None, repr=False)
+    # "production" (STITCHBOOK_ENV): the API refuses to start unless sign-in and billing are fully
+    # configured and free operations are off. Fail closed.
+    environment: str = "development"
+    # Local mode only: metered operations (exports) run free with no billing at all. Must be
+    # switched on explicitly (STITCHBOOK_FREE_OPERATIONS=1); refused in production.
+    free_operations: bool = False
+    # Signing secret of the FakeProvider (tests and local development only).
+    fake_provider_secret: str | None = field(default=None, repr=False)
 
     @property
     def supabase(self) -> bool:
         return bool(self.supabase_url and self.supabase_publishable_key)
+
+    @property
+    def production(self) -> bool:
+        return self.environment == "production"
+
+    def check_production(self) -> None:
+        """Refuses to run a production API on anything but full sign-in and billing."""
+        if not self.production:
+            return
+        problems = []
+        if not self.supabase:
+            problems.append("SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY are not set (local mode)")
+        if not self.supabase_secret_key:
+            problems.append("SUPABASE_SECRET_KEY is not set (billing cannot run)")
+        if self.free_operations:
+            problems.append("STITCHBOOK_FREE_OPERATIONS is on")
+        if self.test_run_values:
+            problems.append("STITCHBOOK_TEST_RUN_VALUES is on")
+        if problems:
+            raise RuntimeError("Refusing to start in production: " + "; ".join(problems) + ".")
 
 
 def load_settings() -> Settings:
@@ -55,4 +85,8 @@ def load_settings() -> Settings:
         trace_job=os.environ.get("STITCHBOOK_TRACE_JOB") or "stitchbook_worker.jobs.trace_design",
         supabase_url=supabase_url,
         supabase_publishable_key=publishable,
+        supabase_secret_key=os.environ.get("SUPABASE_SECRET_KEY", "").strip() or None,
+        environment=(os.environ.get("STITCHBOOK_ENV") or "development").strip().lower(),
+        free_operations=os.environ.get("STITCHBOOK_FREE_OPERATIONS", "") == "1",
+        fake_provider_secret=os.environ.get("STITCHBOOK_FAKE_PROVIDER_SECRET", "").strip() or None,
     )

@@ -47,7 +47,7 @@ class WatchedStorage(LocalDiskStorage):
 
 def test_two_previews_of_one_design_both_succeed_one_after_the_other(tmp_path):
     storage = WatchedStorage(tmp_path / "store")
-    settings = Settings("redis://unused", "digitize", None, str(tmp_path / "store"), False, "info")
+    settings = Settings("redis://unused", "digitize", None, str(tmp_path / "store"), False, "info", free_operations=True)
     client = TestClient(create_app(CONFIG, storage, settings))
     body = (SAMPLES / "two_colour.png").read_bytes()
     design_id = client.post("/designs", files={"file": ("two.png", body, "image/png")},

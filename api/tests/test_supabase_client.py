@@ -137,3 +137,25 @@ def test_keys_cannot_leave_the_users_folder():
     for bad in ("../x/original.png", f"{OWNER}/../other/out.dst", "/etc/passwd"):
         with pytest.raises(ValueError):
             storage.put(bad, b"x")
+
+
+def test_billing_rpc_uses_the_secret_key_and_maps_insufficient_credits():
+    """Only the billing module talks with the secret key; PostgREST's error for RAISE
+    'insufficient_credits' becomes InsufficientCredits (the API's 402)."""
+    from stitchbook_api.billing import InsufficientCredits, SupabaseRpc
+
+    seen = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        if request.url.path == "/rest/v1/rpc/reserve_credit":
+            return httpx.Response(400, json={"code": "P0001", "message": "insufficient_credits",
+                                             "details": '{"available": 4, "needed": 10}'})
+        return httpx.Response(200, json=[{"bucket": "plan", "available": 4, "reserved": 0, "consumed": 6}])
+
+    rpc = SupabaseRpc(URL, "sb_secret_test_value_123", lambda: 5, httpx.Client(transport=httpx.MockTransport(handler)))
+    assert rpc.call("credit_balance", {"p_owner": OWNER})[0]["available"] == 4
+    with pytest.raises(InsufficientCredits) as exc:
+        rpc.call("reserve_credit", {"p_owner": OWNER, "p_job": "j", "p_amount": 10})
+    assert (exc.value.available, exc.value.needed) == (4, 10)
+    assert all(r.headers["apikey"] == "sb_secret_test_value_123" for r in seen)

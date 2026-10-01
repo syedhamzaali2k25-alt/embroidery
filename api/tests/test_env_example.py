@@ -48,7 +48,7 @@ def test_env_is_gitignored_and_not_committed():
     assert tracked.strip() == ""
 
 
-FAKES = ("sb_secret_must_never_ship", "GOCSPX-made-up-test-secret")
+FAKES = ("sb_secret_must_never_ship", "GOCSPX-made-up-test-secret", "sb_secret_test_value_123")
 
 
 def test_no_google_client_secret_or_supabase_secret_key_in_the_repo():

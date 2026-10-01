@@ -35,7 +35,8 @@ KEY = ec.generate_private_key(ec.SECP256R1())
 OTHER_KEY = ec.generate_private_key(ec.SECP256R1())  # not in the project's JWKS
 KID = "test-key"
 A, B = str(uuid.uuid4()), str(uuid.uuid4())
-PUBLIC = {"/health", "/site", "/formats", "/config"}  # no user data: no sign-in needed
+PUBLIC = {"/health", "/site", "/formats", "/config", "/plans",  # no user data: no sign-in needed
+          "/webhooks/billing"}  # signed by the payment provider instead (checked before anything is read)
 
 
 def jwks() -> dict:
@@ -70,7 +71,7 @@ def setup(tmp_path):
     http = httpx.Client(transport=httpx.MockTransport(fake))
     auth = SupabaseAuth(URL, "sb_publishable_test", timeout_s=lambda: 5, cache_s=lambda: 300, http=http)
     storage = LocalDiskStorage(tmp_path / "store")
-    settings = Settings("redis://127.0.0.1:1", "digitize", None, str(tmp_path / "store"), False, "info")
+    settings = Settings("redis://127.0.0.1:1", "digitize", None, str(tmp_path / "store"), False, "info", free_operations=True)
     client = TestClient(create_app(CONFIG, storage, settings, auth=auth))
     return client, storage, fake
 
@@ -109,8 +110,11 @@ def call(client, method, path, body=None, headers=None):
 
 def test_public_routes_need_no_sign_in(setup):
     client, _, _ = setup
-    for path in PUBLIC:
+    for path in PUBLIC - {"/webhooks/billing"}:
         assert client.get(path).status_code == 200, path
+    # The webhook takes no sign-in token; it is checked by the provider's signature (503 here:
+    # no payment provider is set up).
+    assert client.post("/webhooks/billing", content=b"{}").status_code == 503
 
 
 def test_every_other_route_answers_401_without_a_good_token(setup):
@@ -151,8 +155,8 @@ def test_user_b_never_sees_user_as_design_or_job(setup):
     assert [d["id"] for d in client.get("/designs", headers=as_user(A)).json()] == [design_id]
     assert client.get("/designs", headers=as_user(B)).json() == []  # B's list does not contain it
     for method, path, body in user_routes(client, design_id, job.id):
-        if path in ("/designs", "/jobs/health"):
-            continue  # B's own list (checked above) and the queue health
+        if path in ("/designs", "/jobs/health", "/me/credits", "/billing/checkout", "/billing/cancel"):
+            continue  # B's own list (checked above), the queue health, and B's own account routes
         response = call(client, method, path, body, as_user(B))
         assert response.status_code == 404, (method, path, response.status_code, response.text)
     assert client.get(f"/jobs/{job.id}", headers=as_user(A)).status_code != 404  # A still has it

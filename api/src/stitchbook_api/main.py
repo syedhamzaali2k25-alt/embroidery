@@ -20,6 +20,7 @@ from __future__ import annotations
 import functools
 import logging
 import re
+from contextlib import asynccontextmanager
 import tempfile
 import threading
 import uuid
@@ -42,7 +43,13 @@ from fastapi.responses import JSONResponse, Response
 from pydantic import ValidationError
 from shapely.ops import unary_union
 
+from fastapi.concurrency import run_in_threadpool
+
+from stitchbook_api import plans as plan_math
 from stitchbook_api import uploads
+from stitchbook_api.billing import Billing, BillingUnavailable, FreeOperations, InsufficientCredits, SupabaseRpc
+from stitchbook_api.payments import BadSignature, Provider, provider_from
+from stitchbook_api.plans import chosen
 from stitchbook_api.auth import LOCAL_USER, Auth, AuthUnavailable, SupabaseAuth, Unauthorized, User
 from stitchbook_api.jobs import TERMINAL, AlreadyFinished, JobNotFound, Jobs, QueueUnavailable
 from stitchbook_api.models import (
@@ -115,10 +122,14 @@ def _plain_validation_message(exc: RequestValidationError | ValidationError) -> 
 
 def create_app(config: Config | None = None, storage: Storage | None = None,
                settings: Settings | None = None, auth: Auth | None = None,
-               http: httpx.Client | None = None) -> FastAPI:
+               http: httpx.Client | None = None, billing: Billing | FreeOperations | None | str = "settings",
+               provider: Provider | None | str = "config") -> FastAPI:
     """`auth` checks sign-in tokens: made from the Supabase settings when they are set; tests may
-    pass their own. With neither, the API is in local mode (no sign-in, one local user)."""
+    pass their own. With neither, the API is in local mode (no sign-in, one local user).
+    `billing` (credits) is made from the settings unless given; `provider` (payments) from
+    billing.provider in config.py unless given."""
     settings = settings or load_settings()
+    settings.check_production()  # fail closed: no production API without sign-in and billing
     config = config or (load_test_run_config() if settings.test_run_values else load_config())
     storage = storage or LocalDiskStorage(settings.storage_dir, config.get("storage.replace_attempts"),
                                           config.get("storage.replace_retry_s"))
@@ -138,6 +149,23 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
 
         def designs_for(user: User) -> Designs:
             return LocalDesigns(storage, user.id)
+
+    # Credits. Supabase with the secret key: real billing. Local mode: free operations only when
+    # switched on (STITCHBOOK_FREE_OPERATIONS=1). Otherwise None: anything that costs credits is
+    # refused with a plain 503.
+    if billing == "settings":
+        if settings.supabase and settings.supabase_secret_key:
+            http = http or httpx.Client()
+            billing = Billing(SupabaseRpc(settings.supabase_url, settings.supabase_secret_key,
+                                          lambda: config.get("auth.http_timeout_s"), http), config)
+        elif not settings.supabase and settings.free_operations:
+            billing = FreeOperations()
+        else:
+            billing = None
+            log.warning("Credits are not set up: operations that cost credits are refused.")
+    if provider == "config":
+        provider = provider_from(chosen(config, "billing.provider"), fake_secret=settings.fake_provider_secret,
+                                 production=settings.production)
 
     def current_user(authorization: Annotated[str | None, Header(include_in_schema=False)] = None) -> User:
         """The signed-in user, from a verified token only. Local mode: the one local user."""
@@ -182,7 +210,28 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
     jobs = Jobs(settings.redis_url, settings.rq_queue, settings.trace_job,
                 redis_timeout_s=lambda: config.get("jobs.redis_timeout_s"))
 
-    app = FastAPI(title=f"{config.app_name} API")
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI):
+        # Release reservations whose job was lost (API restart, worker crash): at start, then
+        # every billing.sweep_interval_s seconds. Skipped while those values are not chosen.
+        stop = threading.Event()
+        timeout, interval = chosen(config, "billing.reservation_timeout_s"), chosen(config, "billing.sweep_interval_s")
+        if isinstance(billing, Billing) and timeout and interval:
+            def sweeper():
+                while True:
+                    try:
+                        released = billing.sweep(timeout)
+                        if released:
+                            log.info("released %s stale credit reservation(s)", released)
+                    except Exception:  # noqa: BLE001 - keep sweeping; the next round retries
+                        log.exception("stale reservation sweep failed")
+                    if stop.wait(interval):
+                        return
+            threading.Thread(target=sweeper, name="credit-sweep", daemon=True).start()
+        yield
+        stop.set()
+
+    app = FastAPI(title=f"{config.app_name} API", lifespan=lifespan)
     if settings.cors_origin:
         app.add_middleware(
             CORSMiddleware,
@@ -194,6 +243,19 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
     @app.exception_handler(HTTPException)
     async def http_error(_: Request, exc: HTTPException):
         return JSONResponse({"error": exc.detail}, status_code=exc.status_code, headers=exc.headers)
+
+    NOT_ENOUGH = "You don't have enough credits for this."
+
+    @app.exception_handler(InsufficientCredits)
+    async def no_credits(_: Request, exc: InsufficientCredits):
+        return JSONResponse({"error": NOT_ENOUGH, "available": exc.available, "needed": exc.needed, "plan": exc.plan},
+                            status_code=402)
+
+    @app.exception_handler(BillingUnavailable)
+    async def billing_down(_: Request, exc: Exception):
+        log.warning("billing unavailable: %s", exc)
+        return JSONResponse({"error": "Credits could not be checked right now, so nothing was started. Try again in a moment."},
+                            status_code=503)
 
     @app.exception_handler(DatabaseUnavailable)
     @app.exception_handler(StorageUnavailable)
@@ -279,7 +341,99 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
             poll_max_s=config.get("jobs.poll_max_s"),
             poll_backoff_factor=config.get("jobs.poll_backoff_factor"),
             status_timeout_s=config.get("jobs.status_timeout_s"),
+            billing=plan_math.plans(config),
         )
+
+    @app.get("/plans")
+    def public_plans() -> dict:
+        """Plans, prices (yearly computed) and credit costs from config.py, for the pricing page.
+        Public, and answers even while other config values are still placeholders."""
+        return plan_math.plans(config)
+
+    # ---------- credits ----------
+
+    PAYMENTS_OFF = "Payments are not available yet."
+
+    def operation_settings(record: DesignRecord, **extra) -> dict:
+        """What is recorded with an operation: the design's settings and editor state."""
+        return {**record.settings.model_dump(exclude_none=True), "edits_applied": record.edits_applied, **extra}
+
+    def settle(fn, *args, **kwargs) -> None:
+        """Consume / release, retried: the functions are idempotent, so a retry is always safe.
+        If all tries fail, the stale sweep releases the reservation later."""
+        for attempt in range(3):
+            try:
+                fn(*args, **kwargs)
+                return
+            except BillingUnavailable:
+                if attempt == 2:
+                    log.error("could not settle credits for %s; the sweep will release them", args[1:2])
+
+    def start_operation(user: User, design_id: str | None, operation: str, fmt: str | None, settings_: dict,
+                        job_id: str | None = None) -> str | None:
+        """Logs the operation and reserves its credits BEFORE any work starts. 402 if there are
+        not enough. Returns the job id to settle later, or None when there is no billing."""
+        cost = plan_math.credit_cost(config, operation)
+        if billing is None:
+            if cost:
+                raise HTTPException(503, "Credits are not set up on this server, so this cannot run.")
+            return None
+        if not billing.enabled:
+            return None
+        job_id = job_id or uuid.uuid4().hex
+        billing.start(user.id, design_id, job_id, operation, fmt, settings_)
+        return job_id
+
+    def operation_ok(user: User, job_id: str | None) -> None:
+        if job_id and billing is not None:
+            settle(billing.succeed, user.id, job_id)
+
+    def operation_failed(user: User, job_id: str | None, reason: str, cancelled: bool = False) -> None:
+        if job_id and billing is not None:
+            settle(billing.fail, user.id, job_id, reason, cancelled=cancelled)
+
+    @app.get("/me/credits", responses=ERRORS)
+    def my_credits(user: User = Depends(current_user)) -> dict:
+        """The signed-in user's plan, credit balances (available / reserved / consumed, per bucket)
+        and operation history. {"enabled": false} when this server has no billing."""
+        if billing is None or not billing.enabled:
+            return {"enabled": False}
+        return billing.account(user.id)
+
+    @app.post("/billing/checkout", responses=ERRORS)
+    def checkout(body: Annotated[dict, Body()], user: User = Depends(current_user)) -> dict:
+        """The provider's checkout page for a plan; 503 until a provider is set up."""
+        plan, interval = body.get("plan"), body.get("interval")
+        if plan not in ("pro", "business") or interval not in ("month", "year"):
+            raise HTTPException(422, "Choose plan pro or business and interval month or year.")
+        if provider is None or not isinstance(billing, Billing):
+            raise HTTPException(503, PAYMENTS_OFF)
+        return {"url": provider.create_checkout(user.id, None, plan, interval)}
+
+    @app.post("/billing/cancel", responses=ERRORS)
+    def cancel_subscription(user: User = Depends(current_user)) -> dict:
+        if provider is None or not isinstance(billing, Billing):
+            raise HTTPException(503, PAYMENTS_OFF)
+        plan = billing.plan(user.id)
+        if not plan.subscription_id:
+            raise HTTPException(409, "There is no paid plan to cancel.")
+        provider.cancel_subscription(plan.subscription_id)
+        return {"status": "cancel requested"}
+
+    @app.post("/webhooks/billing", include_in_schema=False)
+    async def billing_webhook(request: Request) -> dict:
+        """The payment provider's events. The raw body's signature is checked BEFORE anything is
+        parsed; each event is applied once; the user id comes only from the signed metadata."""
+        if provider is None or not isinstance(billing, Billing):
+            raise HTTPException(503, PAYMENTS_OFF)
+        raw = await request.body()
+        try:
+            event = provider.verify_webhook(request.headers, raw)
+        except BadSignature:
+            raise HTTPException(400, "The signature does not match.") from None
+        except (ValueError, KeyError, TypeError):
+            raise HTTPException(400, "The event could not be read.") from None
+        return {"result": await run_in_threadpool(billing.apply_event, provider.name, event)}
 
     @app.post("/designs", response_model=DesignCreated, status_code=201, responses=ERRORS)
     async def create_design(
@@ -547,25 +701,41 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
         return f"{stem}.{fmt}"
 
     @app.get("/designs/{design_id}/download", responses={200: {"content": {"application/octet-stream": {}}}, **ERRORS})
-    def download(design_id: DesignId, query: Annotated[DownloadQuery, Query()], designs: Designs = Depends(my_designs)) -> Response:
+    def download(design_id: DesignId, query: Annotated[DownloadQuery, Query()], designs: Designs = Depends(my_designs),
+                 user: User = Depends(current_user)) -> Response:
+        """An export: costs billing.credit_costs.export credits, reserved first and used only
+        if the file is sent (402 when there are not enough)."""
         record = load_record(designs, design_id)
         filename = machine_file(record, query.format)
-        data = designs.get_file(design_id, f"out.{query.format}")
+        job = start_operation(user, design_id, "export", query.format, operation_settings(record, format=query.format))
+        try:
+            data = designs.get_file(design_id, f"out.{query.format}")
+        except BaseException as exc:
+            operation_failed(user, job, f"the file could not be read ({type(exc).__name__})")
+            raise
+        operation_ok(user, job)
         return Response(data, media_type="application/octet-stream",
                         headers={"Content-Disposition": f'attachment; filename="{filename}"'})
 
     @app.get("/designs/{design_id}/download-url", response_model=DownloadLink, responses=ERRORS)
-    def download_url(design_id: DesignId, query: Annotated[DownloadQuery, Query()], designs: Designs = Depends(my_designs)) -> DownloadLink:
+    def download_url(design_id: DesignId, query: Annotated[DownloadQuery, Query()], designs: Designs = Depends(my_designs),
+                     user: User = Depends(current_user)) -> DownloadLink:
         """A short-lived signed link to the machine file in private Storage (storage.signed_url_ttl_s
         in config.py). Local mode has no signed links and points at /download instead."""
         record = load_record(designs, design_id)
         filename = machine_file(record, query.format)
         ttl = config.get("storage.signed_url_ttl_s")
+        job = start_operation(user, design_id, "export", query.format, operation_settings(record, format=query.format))
         try:
             url = designs.signed_url(design_id, f"out.{query.format}", ttl, filename)
         except NotFound:
+            operation_failed(user, job, "no stitch file yet")
             raise HTTPException(409, f"This design has no stitch file yet. Run POST /designs/{design_id}/preview "
                                      "first, then download.") from None
+        except BaseException as exc:
+            operation_failed(user, job, f"the link could not be made ({type(exc).__name__})")
+            raise
+        operation_ok(user, job)
         if url is None:
             return DownloadLink(url=f"/designs/{design_id}/download?format={query.format}", filename=filename,
                                 expires_in_s=None, signed=False)
@@ -575,6 +745,14 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
     QUEUE_DOWN = "Background jobs are not running, so satin columns cannot be traced right now."
 
     JOB_GONE = "This job no longer exists. Start it again from the editor."
+
+    def settle_job(designs: Designs, job: JobOut) -> None:
+        """A finished job settles its credits: done -> consumed; failed / cancelled -> released."""
+        owner = User(id=designs.owner_id, token=None)
+        if job.status == "done":
+            operation_ok(owner, job.id)
+        elif job.status in ("failed", "cancelled"):
+            operation_failed(owner, job.id, job.error or job.status, cancelled=job.status == "cancelled")
 
     def job_state(designs: Designs, job_id: str) -> JobOut:
         """The user's own job (404 for anyone else's): its last stored state once it has ended,
@@ -592,11 +770,13 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
         except QueueUnavailable:
             raise HTTPException(503, QUEUE_DOWN) from None
         if live.status in TERMINAL:
+            settle_job(designs, live)
             designs.save_job(live)
         return live
 
     @app.post("/designs/{design_id}/trace", response_model=JobOut, status_code=202, responses=ERRORS)
-    def start_trace(design_id: DesignId, designs: Designs = Depends(my_designs)) -> JobOut:
+    def start_trace(design_id: DesignId, designs: Designs = Depends(my_designs),
+                    user: User = Depends(current_user)) -> JobOut:
         """Start "Create satin columns" in the background. If one is already queued or running
         for this design, that job is returned instead of starting a second."""
         record = load_record(designs, design_id)
@@ -610,15 +790,21 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
             except HTTPException:
                 pass
         image = designs.get_file(design_id, f"original.{record.type}")
+        timeout_s, ttl_s, retries = (config.get("jobs.job_timeout_s"), config.get("jobs.result_ttl_s"),
+                                     config.get("jobs.max_retries"))
+        # Credits (billing.credit_costs.satin_columns) are reserved BEFORE the job is queued.
+        job_id = start_operation(user, design_id, "satin_columns", None, operation_settings(record)) or uuid.uuid4().hex
         try:
             started = jobs.start_trace(
                 design_id, image, record.type, record.settings.width_mm, dict(config.overrides), record.settings.colours,
-                applied(record),
-                timeout_s=config.get("jobs.job_timeout_s"), ttl_s=config.get("jobs.result_ttl_s"),
-                retries=config.get("jobs.max_retries"),
+                applied(record), timeout_s=timeout_s, ttl_s=ttl_s, retries=retries, job_id=job_id,
             )
         except QueueUnavailable:
+            operation_failed(user, job_id, "background jobs are not running")  # released at once
             raise HTTPException(503, QUEUE_DOWN) from None
+        except BaseException as exc:
+            operation_failed(user, job_id, f"the job could not be queued ({type(exc).__name__})")
+            raise
         designs.add_job(started)
         designs.save(record.model_copy(update={"trace_job_id": started.id}))
         return started
@@ -642,6 +828,7 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
         try:
             out = jobs.cancel(job_id, current)
             if out.status in TERMINAL:
+                settle_job(designs, out)
                 designs.save_job(out)
             return out
         except AlreadyFinished as exc:

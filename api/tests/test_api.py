@@ -26,7 +26,7 @@ ORIGIN = "http://localhost:8080"
 
 
 def make_client(tmp_path: Path, config=CONFIG) -> TestClient:
-    settings = Settings("redis://unused", "digitize", ORIGIN, str(tmp_path / "store"), False, "info")
+    settings = Settings("redis://unused", "digitize", ORIGIN, str(tmp_path / "store"), False, "info", free_operations=True)
     return TestClient(create_app(config, LocalDiskStorage(tmp_path / "store"), settings))
 
 
