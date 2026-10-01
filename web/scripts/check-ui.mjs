@@ -203,9 +203,10 @@ const pages = {
 const viewports = [
   { name: 'desktop', width: 1440, height: 900 },
   { name: 'phone', width: 390, height: 844 },
-  // Shorter laptop screens: editor screens only (their columns have a fixed height and scroll).
+  // Shorter laptop screens. 1440x800: editor screens only (their columns have a fixed height and
+  // scroll). 1366x768: every page, editor and public pages (their footer) alike.
   { name: 'laptop-1440x800', width: 1440, height: 800, editorOnly: true },
-  { name: 'laptop-1366x768', width: 1366, height: 768, editorOnly: true },
+  { name: 'laptop-1366x768', width: 1366, height: 768 },
 ];
 
 // The editor's tools row must be fully visible (every tool button actually clickable at its
@@ -261,9 +262,15 @@ const report = [];
 function audit() {
   const parse = (c) => {
     const m = c.match(/rgba?\(([^)]+)\)/);
-    if (!m) return null;
-    const [r, g, b, a = 1] = m[1].split(/[ ,/]+/).filter(Boolean).map(Number);
-    return { r, g, b, a };
+    if (m) {
+      const [r, g, b, a = 1] = m[1].split(/[ ,/]+/).filter(Boolean).map(Number);
+      return { r, g, b, a };
+    }
+    // Colours mixed from tokens (color-mix) compute to color(srgb r g b [/ a]) with 0-1 channels.
+    const s = c.match(/color\(srgb ([^)]+)\)/);
+    if (!s) return null;
+    const [r, g, b, a = 1] = s[1].split(/[ /]+/).filter(Boolean).map(Number);
+    return { r: Math.round(r * 255), g: Math.round(g * 255), b: Math.round(b * 255), a };
   };
   const lum = ({ r, g, b }) => {
     const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
@@ -282,7 +289,7 @@ function audit() {
       const bg = parse(s.backgroundColor);
       if (bg && bg.a > 0.5) return [bg];
       if (s.backgroundImage.includes('linear-gradient')) {
-        return [...s.backgroundImage.matchAll(/rgba?\([^)]+\)/g)].map((m) => parse(m[0]));
+        return [...s.backgroundImage.matchAll(/rgba?\([^)]+\)|color\(srgb [^)]+\)/g)].map((m) => parse(m[0]));
       }
     }
     return [white];
@@ -353,6 +360,9 @@ for (const vp of viewports) {
     if (spec.act) await spec.act(page, mock);
     if (spec.editor && vp.width >= 960 && !spec.keepScroll) await page.evaluate(() => { window.scrollTo(0, 0); document.querySelector('.panel')?.scrollTo(0, 0); });
     await page.evaluate(() => document.fonts.ready);
+    // The mouse stays where the last click left it; park it in a corner so nothing shows a stray
+    // hover (states that need one use keyboard focus instead).
+    await page.mouse.move(0, 0);
     const file = join(outDir, `${name}-${vp.name}.png`);
     await page.screenshot({ path: file, fullPage: !name.startsWith('editor') || vp.width < 960 });
     const { issues, fonts } = await page.evaluate(audit);

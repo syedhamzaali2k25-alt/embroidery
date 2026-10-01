@@ -20,20 +20,66 @@
   .nav__links { display: flex; }
 }
 
-/* ---------- Footer ---------- */
+/* ---------- Footer ----------
+   A full-width light band (--surface-soft) under every public page, its content centred at the
+   page width. Ink text; the mint accent appears only as the underline on hover and focus. */
 .footer {
+  background: var(--surface-soft);
+  border-top: 1px solid var(--border);
+  color: var(--ink);
+}
+.footer__inner {
+  width: min(var(--sheet-max), 100%);
+  margin: 0 auto;
+  padding: 48px var(--gutter) 32px;
+}
+@media (min-width: 900px) { .footer__inner { padding: 64px 40px 40px; } }
+
+.footer__top { display: grid; gap: 32px; }
+@media (min-width: 900px) {
+  .footer__top { grid-template-columns: minmax(240px, 1.2fr) 3fr; gap: 48px; }
+}
+.footer__tagline { margin-top: 14px; max-width: 22em; font-size: 17px; line-height: 1.5; }
+
+/* Link columns: one per row on the narrowest screens, two on phones, three from tablets up. */
+.footer__cols { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px 16px; }
+@media (min-width: 340px) { .footer__cols { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (min-width: 640px) { .footer__cols { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 32px; } }
+.footer__heading {
+  margin: 0 0 6px;
+  color: var(--text-soft);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0;
+  line-height: 1.4;
+}
+.footer__list { list-style: none; margin: 0; padding: 0; }
+.footer__link {
+  display: flex;
+  align-items: center;
+  min-height: 44px; /* a full tap target on phones */
+  color: var(--ink);
+  font-size: 17px;
+  font-weight: 500;
+  text-decoration: none;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 6px;
+}
+@media (min-width: 900px) { .footer__link { min-height: 38px; font-size: 16px; } }
+.footer__link:hover, .footer__link:focus-visible { text-decoration-line: underline; text-decoration-color: var(--green); }
+
+.footer__bottom {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 24px 20px 28px;
+  gap: 8px 24px;
+  margin-top: 40px;
+  padding-top: 24px;
   border-top: 1px solid var(--border);
+  font-size: 15px;
 }
-@media (min-width: 900px) { .footer { padding: 28px 40px; } }
-.footer__links { display: flex; flex-wrap: wrap; gap: 8px 20px; }
-.footer__links a { font-size: 15px; font-weight: 500; text-decoration: none; }
-.footer__links a:hover, .footer__links a:focus-visible { text-decoration: underline; text-underline-offset: 4px; }
+.footer__copy .not-chosen { margin-left: 2px; }
 
 /* ---------- Text pages ---------- */
 .doc {

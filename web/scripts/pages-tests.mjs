@@ -48,7 +48,7 @@ async function open(browser, base, path, { site = NOT_CHOSEN, width = 1440, heig
   await page.route(`${API}/config`, (r) => r.fulfill({ json: config }));
   await page.route(`${API}/formats`, (r) => r.fulfill({ json: { formats: ['dst'], labels: {}, unavailable: [] } }));
   await page.goto(`${base}${path}`);
-  await page.locator('footer .footer__links').waitFor(); // every public page has the footer
+  await page.locator('footer .footer__cols').waitFor(); // every public page has the footer
   return page;
 }
 const h1 = (page) => page.locator('h1').first().innerText();
@@ -64,25 +64,92 @@ try {
   for (const width of [390, 1366, 1440]) {
     for (const [path, title] of PAGES) {
       const page = await open(browser, base, path, { width, height: width === 390 ? 844 : 768 });
-      check((await h1(page)) === title && await noSideScroll(page) && await page.locator('footer .footer__links a').count() === 4,
-        `${width}px ${path}: "${title}", footer with 4 links, no sideways scroll`);
+      check((await h1(page)) === title && await noSideScroll(page) && await page.locator('footer .footer__link').count() === 7,
+        `${width}px ${path}: "${title}", footer with 7 links, no sideways scroll`);
       await page.close();
     }
+  }
+
+  // Where each footer link goes, and what shows there.
+  const FOOTER = [
+    ['Product', '/upload', 'Upload a logo', { h1: 'Upload your logo' }],
+    ['Product', '/#how', 'How it works', { section: 'how' }],
+    ['Product', '/#faq', 'FAQ', { section: 'faq' }],
+    ['Company', '/contact', 'Contact', { h1: 'Contact' }],
+    ['Company', '/blog', 'Blog', { h1: 'Blog' }],
+    ['Legal', '/privacy', 'Privacy', { h1: 'Privacy' }],
+    ['Legal', '/terms', 'Terms of Service', { h1: 'Terms of Service' }],
+  ];
+
+  console.log('-- footer layout: about line, three columns, copyright line');
+  for (const [width, columns] of [[1440, 3], [1366, 3], [390, 2], [320, 1]]) {
+    const page = await open(browser, base, '/privacy', { width, height: 800 });
+    const footer = page.locator('footer');
+    const tops = await footer.locator('.footer__col').evaluateAll((cols) => cols.map((c) => Math.round(c.getBoundingClientRect().top)));
+    const perRow = tops.filter((t) => t === tops[0]).length;
+    check(perRow === columns && await noSideScroll(page), `${width}px: ${columns} link column(s) per row, no sideways scroll`);
+    const heights = await footer.locator('.footer__link').evaluateAll((as) => as.map((a) => a.getBoundingClientRect().height));
+    if (width <= 390) check(heights.every((h) => h >= 44), `${width}px: every footer link is at least 44px tall (${Math.min(...heights)}px)`);
+    const size = await footer.locator('.footer__link').first().evaluate((a) => parseFloat(getComputedStyle(a).fontSize));
+    check(size >= 16 && size <= 17, `${width}px: footer link text ${size}px`);
+    await page.close();
+  }
+  {
+    const page = await open(browser, base, '/blog');
+    const footer = page.locator('footer');
+    const headings = await footer.locator('.footer__heading').allInnerTexts();
+    const groups = await footer.locator('.footer__col').evaluateAll((cols) => cols.map((c) => [...c.querySelectorAll('a')].map((a) => a.getAttribute('href'))));
+    check(JSON.stringify(headings) === JSON.stringify(['Product', 'Company', 'Legal'])
+      && JSON.stringify(groups) === JSON.stringify([['/upload', '/#how', '/#faq'], ['/contact', '/blog'], ['/privacy', '/terms']]),
+      'columns: Product (Upload a logo, How it works, FAQ), Company (Contact, Blog), Legal (Privacy, Terms of Service)');
+    check((await footer.locator('.footer__tagline').innerText()) === 'Turn a PNG or JPG logo into an embroidery file.', 'about line: only what the product does today');
+    await footer.locator('.footer__copy .not-chosen').waitFor();
+    check((await footer.locator('.footer__copy').innerText()).replace(/\s+/g, ' ') === `© ${new Date().getFullYear()} Not chosen yet`
+      && (await footer.locator('.footer__note').innerText()) === 'Made for people who sew.', `bottom row: "© ${new Date().getFullYear()} Not chosen yet" marker, "Made for people who sew."`);
+    const style = await footer.evaluate((f) => {
+      const s = getComputedStyle(f), inner = getComputedStyle(f.querySelector('.footer__inner'));
+      return { bg: s.backgroundColor, body: getComputedStyle(document.body).backgroundColor, border: s.borderTopWidth, top: inner.paddingTop, bottom: inner.paddingBottom };
+    });
+    check(style.bg !== style.body && style.border === '1px' && style.top === '64px' && style.bottom === '40px',
+      `desktop: own light background, 1px top border, 64px / 40px padding (${style.top} / ${style.bottom})`);
+    await page.close();
+  }
+  {
+    const page = await open(browser, base, '/contact', { site: CHOSEN });
+    await page.locator('footer .footer__copy').getByText('Example Owner').waitFor();
+    check(await page.locator('footer .footer__copy .not-chosen').count() === 0, `bottom row with company_name chosen: "© ${new Date().getFullYear()} Example Owner"`);
+    await page.close();
+  }
+
+  {
+    const page = await (await browser.newContext()).newPage();
+    await page.route(`${API}/**`, (r) => r.abort());
+    await page.goto(`${base}/editor`);
+    await page.locator('h1').waitFor();
+    check(await page.locator('footer.footer').count() === 0, '/editor: no site footer');
+    await page.close();
   }
 
   console.log('-- footer links work from every public page');
   for (const from of ['/', '/upload', '/preview', '/privacy', '/terms', '/contact', '/blog']) {
     const page = await open(browser, base, from);
-    const links = await page.locator('footer .footer__links a').evaluateAll((as) => as.map((a) => [a.getAttribute('href'), a.textContent]));
-    check(JSON.stringify(links.map((l) => l[0])) === JSON.stringify(['/privacy', '/terms', '/contact', '/blog']), `${from}: footer links Privacy, Terms of Service, Contact, Blog`);
-    for (const [href, label] of links) {
-      await page.locator('footer .footer__links a', { hasText: label }).click();
+    const hrefs = await page.locator('footer .footer__link').evaluateAll((as) => as.map((a) => a.getAttribute('href')));
+    check(JSON.stringify(hrefs) === JSON.stringify(FOOTER.map((f) => f[1])), `${from}: all 7 footer links`);
+    for (const [, href, label, expect] of FOOTER) {
+      await page.locator('footer .footer__link', { hasText: new RegExp(`^${label}$`) }).click();
       await page.waitForURL(`${base}${href}`);
-      // The page is loaded on demand: wait for its own heading, not the one still on screen.
-      const shown = await page.locator('h1', { hasText: new RegExp(`^${label}$`) }).waitFor({ timeout: 10000 }).then(() => true, () => false);
-      check(shown, `${from} -> ${label}: ${href} shows "${label}"`);
+      let shown;
+      if (expect.h1) { // loaded on demand: wait for its own heading, not the one still on screen
+        shown = await page.locator('h1', { hasText: new RegExp(`^${expect.h1}$`) }).waitFor({ timeout: 10000 }).then(() => true, () => false);
+      } else { // a landing section, scrolled into view
+        shown = await page.waitForFunction((id) => {
+          const r = document.getElementById(id)?.getBoundingClientRect();
+          return !!r && r.top < innerHeight && r.bottom > 0 && Math.abs(r.top) < 80;
+        }, expect.section, { timeout: 10000 }).then(() => true, () => false);
+      }
+      check(shown, `${from} -> ${label}: ${href} ${expect.h1 ? `shows "${expect.h1}"` : `scrolls to #${expect.section}`}`);
       await page.goto(`${base}${from}`);
-      await page.locator('footer .footer__links a').first().waitFor();
+      await page.locator('footer .footer__link').first().waitFor();
     }
     await page.close();
   }
@@ -90,9 +157,9 @@ try {
   console.log('-- not chosen yet: a plain marker, never a made-up value');
   for (const path of ['/privacy', '/terms']) {
     const page = await open(browser, base, path);
-    await page.locator('.not-chosen').first().waitFor();
+    await page.locator('main .not-chosen').first().waitFor();
     const banner = await page.locator('.draft-banner').innerText();
-    const markers = await page.locator('.not-chosen').allInnerTexts();
+    const markers = await page.locator('main .not-chosen').allInnerTexts();
     check(banner.includes('Draft: not yet reviewed by a lawyer.') && /Last updated:\s*Not chosen yet/.test(banner),
       `${path}: draft banner, "Last updated: Not chosen yet"`);
     check(markers.length >= 3 && markers.every((m) => m === 'Not chosen yet'), `${path}: ${markers.length} "Not chosen yet" markers`);
@@ -101,8 +168,8 @@ try {
   }
   {
     const page = await open(browser, base, '/contact');
-    await page.locator('.not-chosen').waitFor();
-    check((await page.locator('.not-chosen').innerText()) === 'Contact email not chosen yet'
+    await page.locator('main .not-chosen').waitFor();
+    check((await page.locator('main .not-chosen').innerText()) === 'Contact email not chosen yet'
       && await page.locator('form, input, textarea, a[href^="mailto:"]').count() === 0,
       '/contact: "Contact email not chosen yet", no form, no mailto link');
     await page.close();
@@ -122,14 +189,14 @@ try {
     await page.locator('.draft-banner').getByText('2000-01-01').waitFor();
     const text = await page.locator('main').innerText();
     const expected = path === '/privacy' ? ['Example Owner', 'hello@example.com', '5 MB', '30 days'] : ['Example Owner', 'Exampleland', 'hello@example.com'];
-    check(await page.locator('.not-chosen').count() === 0 && expected.every((v) => text.includes(v)),
+    check(await page.locator('main .not-chosen').count() === 0 && expected.every((v) => text.includes(v)),
       `${path}: chosen values shown (${expected.join(', ')}), no markers`);
     await page.close();
   }
   {
     const page = await open(browser, base, '/privacy', { site: 'down' });
-    await page.locator('.not-chosen').first().waitFor();
-    check((await page.locator('.not-chosen').first().innerText()).startsWith('Not loaded'), '/privacy with the server down: says not loaded, invents nothing');
+    await page.locator('main .not-chosen').first().waitFor();
+    check((await page.locator('main .not-chosen').first().innerText()).startsWith('Not loaded'), '/privacy with the server down: says not loaded, invents nothing');
     await page.close();
   }
 

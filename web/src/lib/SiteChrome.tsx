@@ -40,11 +40,11 @@ export function SiteValue({ state, value, render }: {
   return v === null || v === "" ? <NotChosen /> : <>{render ? render(v) : v}</>;
 }
 
-export const FOOTER_LINKS = [
-  ["/privacy", "Privacy"],
-  ["/terms", "Terms of Service"],
-  ["/contact", "Contact"],
-  ["/blog", "Blog"],
+// Footer link columns. Product links point at the landing page's own sections.
+export const FOOTER_COLUMNS = [
+  ["Product", [["/upload", "Upload a logo"], ["/#how", "How it works"], ["/#faq", "FAQ"]]],
+  ["Company", [["/contact", "Contact"], ["/blog", "Blog"]]],
+  ["Legal", [["/privacy", "Privacy"], ["/terms", "Terms of Service"]]],
 ] as const;
 
 /** Header for the public pages (Privacy, Terms, Contact, Blog). */
@@ -59,15 +59,39 @@ export function SiteHeader() {
   );
 }
 
-/** Footer on every public page (landing, upload, preview, and the pages it links to). */
+/**
+ * Footer on every public page (landing, upload, preview and the text pages; not the editor):
+ * what Stitchbook does (only what it does today), link columns, and the copyright line with
+ * company_name from config.py ("Not chosen yet" until it is chosen).
+ */
 export function SiteFooter() {
+  const state = useSite();
   return (
     <footer className="footer">
-      <a className="brand" href="/"><Icon name="logo" />Stitchbook</a>
-      <nav className="footer__links" aria-label="Site">
-        {FOOTER_LINKS.map(([to, label]) => <Link key={to} to={to}>{label}</Link>)}
-      </nav>
-      <p className="footer__note">Made for people who sew.</p>
+      <div className="footer__inner">
+        <div className="footer__top">
+          <div className="footer__about">
+            <a className="brand" href="/"><Icon name="logo" />Stitchbook</a>
+            <p className="footer__tagline">Turn a PNG or JPG logo into an embroidery file.</p>
+          </div>
+          <nav className="footer__cols" aria-label="Site">
+            {FOOTER_COLUMNS.map(([title, links]) => (
+              <div className="footer__col" key={title}>
+                <h2 className="footer__heading">{title}</h2>
+                <ul className="footer__list">
+                  {links.map(([to, label]) => (
+                    <li key={to}><Link className="footer__link" to={to}>{label}</Link></li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </nav>
+        </div>
+        <div className="footer__bottom">
+          <p className="footer__copy">© {new Date().getFullYear()} <SiteValue state={state} value={(s) => s.company_name} /></p>
+          <p className="footer__note">Made for people who sew.</p>
+        </div>
+      </div>
     </footer>
   );
 }
@@ -85,10 +109,12 @@ export function DraftBanner({ state }: { state: SiteState }) {
 /** Layout of a public text page: header, a centred column, footer. */
 export function SitePage({ children }: { children: ReactNode }) {
   return (
-    <div className="sheet">
-      <SiteHeader />
-      <main className="doc">{children}</main>
+    <>
+      <div className="sheet">
+        <SiteHeader />
+        <main className="doc">{children}</main>
+      </div>
       <SiteFooter />
-    </div>
+    </>
   );
 }

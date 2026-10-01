@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type DragEvent } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 
 import { api, type SiteInfo } from "../lib/api";
 import { Icon } from "../lib/Icon";
@@ -37,6 +37,12 @@ export default function Landing() {
   useEffect(() => {
     api.site().then(setSite, () => setSite(null));
   }, []);
+  // Links such as /#how (the footer's "How it works") scroll to their section once it is drawn:
+  // this page loads on demand, so the browser cannot do it by itself.
+  const location = useLocation();
+  useEffect(() => {
+    if (location.hash) document.getElementById(decodeURIComponent(location.hash.slice(1)))?.scrollIntoView();
+  }, [location.hash, location.key]);
 
   const start = (file: File | undefined) => {
     if (!file) return;
@@ -54,6 +60,7 @@ export default function Landing() {
   const video = site?.demo_video_url ?? "";
 
   return (
+    <>
     <div className="sheet">
       <header className="nav">
         <a className="brand" href="/"><Icon name="logo" />Stitchbook</a>
@@ -177,8 +184,8 @@ export default function Landing() {
           <a className="btn btn--ink btn--lg" href="/upload">Upload a logo</a>
         </section>
       </main>
-
-      <SiteFooter />
     </div>
+    <SiteFooter />
+    </>
   );
 }

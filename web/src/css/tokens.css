@@ -28,6 +28,10 @@
   --accent-text: var(--green-text);
   --on-fill: var(--ink);        /* text on green, lavender, lime, pink */
   --on-ink: var(--white);       /* the only place white text is allowed */
+  /* Mixed from the palette, no new literals: a light band distinct from the white page (the
+     site footer), and a softer ink for small headings on it (about 8:1 on that band). */
+  --surface-soft: color-mix(in srgb, var(--line) 50%, var(--white));
+  --text-soft: color-mix(in srgb, var(--ink) 80%, var(--white));
 
   /* Thumbnail cycle */
   --thumb-1: var(--green);

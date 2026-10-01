@@ -1035,6 +1035,159 @@
     "issues": []
   },
   {
+    "page": "index",
+    "viewport": "laptop-1366x768",
+    "fonts": {
+      "sans": true,
+      "serif": true
+    },
+    "issues": []
+  },
+  {
+    "page": "index-faq-open",
+    "viewport": "laptop-1366x768",
+    "fonts": {
+      "sans": true,
+      "serif": true
+    },
+    "issues": []
+  },
+  {
+    "page": "home",
+    "viewport": "laptop-1366x768",
+    "fonts": {
+      "sans": true,
+      "serif": true
+    },
+    "issues": []
+  },
+  {
+    "page": "editor",
+    "viewport": "laptop-1366x768",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "upload",
+    "viewport": "laptop-1366x768",
+    "fonts": {
+      "sans": true,
+      "serif": true
+    },
+    "issues": []
+  },
+  {
+    "page": "upload-checked",
+    "viewport": "laptop-1366x768",
+    "fonts": {
+      "sans": true,
+      "serif": true
+    },
+    "issues": []
+  },
+  {
+    "page": "upload-colours",
+    "viewport": "laptop-1366x768",
+    "fonts": {
+      "sans": true,
+      "serif": true
+    },
+    "issues": []
+  },
+  {
+    "page": "upload-error",
+    "viewport": "laptop-1366x768",
+    "fonts": {
+      "sans": true,
+      "serif": true
+    },
+    "issues": []
+  },
+  {
+    "page": "preview",
+    "viewport": "laptop-1366x768",
+    "fonts": {
+      "sans": true,
+      "serif": true
+    },
+    "issues": []
+  },
+  {
+    "page": "privacy",
+    "viewport": "laptop-1366x768",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "terms",
+    "viewport": "laptop-1366x768",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "contact",
+    "viewport": "laptop-1366x768",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "contact-chosen",
+    "viewport": "laptop-1366x768",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "blog",
+    "viewport": "laptop-1366x768",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "preview-loading",
+    "viewport": "laptop-1366x768",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "preview-error",
+    "viewport": "laptop-1366x768",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "preview-empty",
+    "viewport": "laptop-1366x768",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
     "page": "editor-trace-loading",
     "viewport": "laptop-1366x768",
     "fonts": {
