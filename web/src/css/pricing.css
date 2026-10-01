@@ -1,0 +1,99 @@
+/* Plan cards (lib/PlanCards.tsx) on /pricing and the home page, the Pricing page and Billing.
+   Pastel fills with ink text; tokens only. */
+
+.plans { display: grid; gap: 22px; }
+
+/* Monthly | Yearly: a segmented pill. */
+.plans__switch {
+  justify-self: center;
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  border: 1.5px solid var(--field-border);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+}
+.plans__option {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--ink);
+  font-weight: 500;
+  cursor: pointer;
+}
+.plans__option[aria-checked="true"] { background: var(--ink); color: var(--on-ink); }
+.plans__option:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; box-shadow: 0 0 0 5px var(--focus-ring); }
+.plans__badge {
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--green);
+  color: var(--on-fill);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.plans__grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 16px;
+  grid-template-columns: 1fr;
+}
+@media (min-width: 900px) { .plans__grid { grid-template-columns: repeat(3, 1fr); } }
+
+.plan {
+  display: grid;
+  grid-template-rows: auto auto auto auto 1fr auto;
+  gap: 10px;
+  padding: 26px 24px 24px;
+  border-radius: var(--radius-card-lg);
+  color: var(--on-fill);
+}
+.plan__name { font-size: 22px; font-weight: 700; }
+.plan__price { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; }
+.plan__amount { font-size: 36px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.1; }
+.plan__per, .plan__equiv { font-size: 15px; font-weight: 500; }
+.plan__credits { font-size: 16px; font-weight: 700; }
+.plan__features { margin: 0; padding-left: 20px; font-size: 15px; }
+.plan__action { display: grid; gap: 8px; align-content: end; }
+.plan__cta { width: 100%; }
+.plan__error { font-size: 14px; font-weight: 500; }
+.plans__note { text-align: center; font-size: 15px; }
+
+/* ---------- /pricing ---------- */
+.pricing { width: min(1080px, 100%); margin: 0 auto; padding: 48px var(--gutter) 80px; display: grid; gap: 40px; }
+.pricing__head { text-align: center; display: grid; gap: 12px; }
+.pricing__head h1 { font-size: clamp(34px, 5vw, 52px); }
+.pricing__lede { font-size: 17px; }
+.pricing__block { display: grid; gap: 14px; max-width: 760px; width: 100%; margin: 0 auto; }
+.pricing__block h2 { font-size: clamp(24px, 3vw, 32px); }
+.pricing__block ul { margin: 0; padding-left: 20px; display: grid; gap: 8px; font-size: 16px; }
+.pricing__faq { display: grid; gap: 16px; }
+.pricing__faq h3 { font-size: 17px; font-weight: 700; }
+.pricing__faq p { font-size: 16px; }
+
+/* ---------- home page section ---------- */
+.home-pricing__more { justify-self: center; }
+
+/* ---------- /billing ---------- */
+.billing { width: min(1000px, 100%); margin: 0 auto; padding: 48px var(--gutter) 80px; display: grid; gap: 28px; }
+.billing h1 { font-size: clamp(32px, 4.5vw, 46px); }
+.billing__cards { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr)); }
+.billing__card { padding: 20px; border: 1px solid var(--border); border-radius: var(--radius-card-sm); display: grid; gap: 4px; }
+.billing__label { font-size: 14px; font-weight: 500; }
+.billing__value { font-size: 26px; font-weight: 700; }
+.billing__sub { font-size: 14px; color: var(--muted-text); }
+.billing__table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius-card-sm); }
+.billing__table { width: 100%; border-collapse: collapse; font-size: 15px; }
+.billing__table th, .billing__table td { padding: 12px 14px; text-align: left; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.billing__table th { font-size: 14px; font-weight: 700; }
+.billing__table tr:last-child td { border-bottom: 0; }
+/* A plan button that cannot be used now ("Current plan", "Payments are not available yet"):
+   outline on the card, plainly not clickable. */
+.plan__cta:disabled { background: var(--surface); color: var(--ink); border-color: var(--ink); cursor: not-allowed; opacity: 1; transform: none; }

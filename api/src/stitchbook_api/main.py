@@ -341,14 +341,18 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
             poll_max_s=config.get("jobs.poll_max_s"),
             poll_backoff_factor=config.get("jobs.poll_backoff_factor"),
             status_timeout_s=config.get("jobs.status_timeout_s"),
-            billing=plan_math.plans(config),
+            billing=public_billing(),
         )
+
+    def public_billing() -> dict:
+        return {**plan_math.plans(config), "payments_available": provider is not None and isinstance(billing, Billing)}
 
     @app.get("/plans")
     def public_plans() -> dict:
-        """Plans, prices (yearly computed) and credit costs from config.py, for the pricing page.
-        Public, and answers even while other config values are still placeholders."""
-        return plan_math.plans(config)
+        """Plans, prices (yearly computed) and credit costs from config.py, for the pricing page,
+        and whether payments can be taken yet. Public, and answers even while other config
+        values are still placeholders."""
+        return public_billing()
 
     # ---------- credits ----------
 

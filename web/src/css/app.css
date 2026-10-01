@@ -4,3 +4,8 @@
 
 /* Download errors next to a signed-download button (Preview, editor Export card). */
 .download-error { display: block; margin-top: 8px; font-size: 14px; font-weight: 500; }
+
+/* The zero-credit message next to an export button. */
+.no-credits { display: flex; align-items: flex-start; gap: 8px; margin-top: 8px; font-size: 14px; font-weight: 500; }
+.no-credits svg { width: 18px; height: 18px; flex: none; margin-top: 1px; }
+.no-credits a { color: var(--accent-text); font-weight: 700; }

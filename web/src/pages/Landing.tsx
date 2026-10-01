@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState, type DragEvent } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 
 import { api, type SiteInfo } from "../lib/api";
 import { HeroStitches } from "../lib/HeroStitches";
 import { AccountControl } from "../lib/AccountMenu";
 import { Icon } from "../lib/Icon";
 import { setPendingUpload } from "../lib/pendingUpload";
+import { usePlans } from "../lib/credits";
+import { PlanCards } from "../lib/PlanCards";
 import { SiteFooter } from "../lib/SiteChrome";
 import { usePage } from "../lib/usePage";
 import { useReveal } from "../lib/useReveal";
@@ -66,6 +68,7 @@ export default function Landing() {
 
   // Only formats that pass the round-trip test (from config via the API); a placeholder until known.
   const formats = site ? site.export_formats.map((f) => f.toUpperCase()).join(", ") : "[Export formats]";
+  const plans = usePlans();
   const video = site?.demo_video_url ?? "";
 
   return (
@@ -78,6 +81,7 @@ export default function Landing() {
           <a href="#how">How it works</a>
           <a href="#demo">Demo</a>
           <a href="#faq">FAQ</a>
+          <a href="#pricing">Pricing</a>
         </nav>
         <div className="nav__actions"><AccountControl /></div>
       </header>
@@ -183,6 +187,13 @@ export default function Landing() {
           </div>
         </section>
 
+        <section className="home-pricing" id="pricing" aria-labelledby="pricing-title">
+          <h2 id="pricing-title">Plans and <span className="accent">credits</span></h2>
+          {plans.plans ? <PlanCards plans={plans.plans} />
+            : <p role={plans.failed ? "alert" : "status"}>{plans.failed ? "The plans could not be loaded: the server could not be reached." : "Loading plans…"}</p>}
+          <Link className="btn btn--ghost home-pricing__more" to="/pricing">See full pricing</Link>
+        </section>
+
         <section className="cta">
           <svg className="shape shape--ink cta__sparkle" aria-hidden="true"><use href="/assets/sprite.svg#sparkle" /></svg>
           <svg className="shape shape--lime cta__star" aria-hidden="true"><use href="/assets/sprite.svg#star" /></svg>
@@ -192,7 +203,7 @@ export default function Landing() {
         </section>
       </main>
     </div>
-    <SiteFooter />
+    <SiteFooter home />
     </>
   );
 }

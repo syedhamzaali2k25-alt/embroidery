@@ -54,3 +54,8 @@
   .btn:hover, .btn:active, .icon-btn:hover, .icon-btn:active, .post-card:hover, .post-card:active,
   .faq__row summary:active, .hero-drop:hover, .nav__links a:active, .footer__link:active { transform: none !important; }
 }
+
+/* Smooth scrolling to #pricing (and other anchors), only when motion is welcome. */
+@media (prefers-reduced-motion: no-preference) {
+  html { scroll-behavior: smooth; }
+}

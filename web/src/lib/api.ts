@@ -164,12 +164,44 @@ export type Preview = {
   stitches: StitchPoint[];
 };
 
-/** Every failure carries a message a person can act on. */
+/** Every failure carries a message a person can act on (and the server's body, e.g. a 402's numbers). */
 export class ApiError extends Error {
-  constructor(message: string, readonly status: number) {
+  constructor(message: string, readonly status: number, readonly body: Record<string, unknown> | null = null) {
     super(message);
   }
 }
+
+/** A plan from config.py (GET /plans). null = not chosen yet: shown as a visible placeholder. */
+export type PlanInfo = {
+  id: "free" | "pro" | "business";
+  name: string | null;
+  price_monthly: string | null;
+  price_yearly: string | null;
+  price_yearly_per_month: string | null;
+  credits: number | null;
+  /** "lifetime" (given once) or "month" (every UTC calendar month). */
+  credit_period: string | null;
+  features: string[] | null;
+};
+export type Plans = {
+  currency: string | null;
+  yearly_discount_percent: number | null;
+  plans: PlanInfo[];
+  credit_costs: Record<string, number | null>;
+  monthly_rollover: boolean | null;
+  credit_packs: { credits: number; price: number }[] | null;
+  refund_policy: string | null;
+  payments_available: boolean;
+};
+export type Balance = { available: number; reserved: number; consumed: number };
+export type Account =
+  | { enabled: false }
+  | {
+      enabled: true; plan: PlanInfo["id"]; plan_name: string | null; interval: "month" | "year" | null; status: string;
+      balances: Record<"plan" | "purchased", Balance>; available: number; costs: Record<string, number>;
+      history: { job_id: string; design_id: string | null; operation: string; format: string | null; status: string;
+        credits: number; created_at: string; finished_at: string | null; error: string | null }[];
+    };
 
 /** Status 0: the server could not be reached. TIMED_OUT: it did not answer within the time allowed. */
 export const TIMED_OUT = -1;
@@ -179,9 +211,11 @@ export const needsLogin = (err: unknown) => signInEnabled && err instanceof ApiE
 /** The log-in address that returns to the page the visitor is on now. */
 export const loginHere = () => loginPath(location.pathname + location.search);
 
-type Options = RequestInit & { timeoutS?: number };
+/** stayOn401: a background request (the credit balance) must not send the visitor to log in
+ *  when it races a log-out; the page itself decides. */
+type Options = RequestInit & { timeoutS?: number; stayOn401?: boolean };
 
-async function request<T>(path: string, { timeoutS, ...init }: Options = {}): Promise<T> {
+async function request<T>(path: string, { timeoutS, stayOn401, ...init }: Options = {}): Promise<T> {
   let response: Response;
   const signal = timeoutS ? AbortSignal.timeout(timeoutS * 1000) : undefined;
   try {
@@ -197,15 +231,16 @@ async function request<T>(path: string, { timeoutS, ...init }: Options = {}): Pr
   }
   if (!response.ok) {
     let message = `The server answered with an error (${response.status}). Try again in a moment.`;
+    let body: Record<string, unknown> | null = null;
     try {
-      const body = await response.json();
+      body = await response.json();
       if (typeof body?.error === "string") message = body.error;
     } catch {
       // keep the generic message
     }
-    const error = new ApiError(message, response.status);
+    const error = new ApiError(message, response.status, body);
     // Signed out (or the session ended): log in, then come back to this page.
-    if (needsLogin(error) && !location.pathname.startsWith("/login")) location.assign(loginHere());
+    if (needsLogin(error) && !stayOn401 && !location.pathname.startsWith("/login")) location.assign(loginHere());
     throw error;
   }
   return response.json() as Promise<T>;
@@ -305,6 +340,9 @@ export const api = {
     return { ...link, url: link.signed ? link.url : `${API_URL}${link.url}` };
   },
   formats: () => request<Formats>("/formats"),
+  plans: () => request<Plans>("/plans"),
+  credits: () => request<Account>("/me/credits", { stayOn401: true }),
+  checkout: (plan: "pro" | "business", interval: "month" | "year") => request<{ url: string }>("/billing/checkout", post({ plan, interval })),
   trace: (designId: string) => request<Job>(`/designs/${designId}/trace`, { method: "POST" }),
   jobsHealth: (timeoutS?: number) => request<JobsHealth>("/jobs/health", { timeoutS }),
   job: (jobId: string, timeoutS?: number) => request<Job>(`/jobs/${jobId}`, { timeoutS }),

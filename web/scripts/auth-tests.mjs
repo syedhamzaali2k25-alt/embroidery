@@ -10,7 +10,7 @@
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { createServer } from 'node:http';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { cp, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { extname, join, resolve } from 'node:path';
 import { chromium } from 'playwright';
@@ -39,6 +39,11 @@ for (const [out, clientId] of [[dist, GOOGLE_ID], [distNoClient, '']]) {
       VITE_GOOGLE_CLIENT_ID: clientId, GOOGLE_CLIENT_SECRET: 'GOCSPX-made-up-test-secret' },
   });
 }
+
+// GET /plans: what the real API code computes from config.py.
+const pythonBin = [join(root, '..', '.venv', 'bin', 'python'), join(root, '..', '.venv', 'Scripts', 'python.exe')].find((p) => existsSync(p)) ?? 'python3';
+const PLANS = { ...JSON.parse(execFileSync(pythonBin, ['-c', 'import json\nfrom digitizer.config import load_config\nfrom stitchbook_api.plans import plans\nprint(json.dumps(plans(load_config())))'],
+  { cwd: join(root, '..') }).toString()), payments_available: false };
 
 let failures = 0;
 const check = (ok, what) => { console.log(`  ${ok ? 'ok  ' : 'FAIL'} ${what}`); if (!ok) failures++; };
@@ -109,9 +114,26 @@ async function stubSupabase(page, calls, { authorize = 'ok' } = {}) {
 // ---------- the API, as the real one behaves: 401 without the signed-in user's token ----------
 const DESIGNS = [{ id: upload.id, filename: 'bird.png', type: 'png', status: 'digitized', created_at: '2026-10-01T09:00:00Z',
   colour_count: 2, stitch_count: 3150, width_mm: 80, height_mm: 60 }];
-async function stubApi(page, seen) {
+// GET /me/credits as the API answers it (numbers are test values, not product values).
+const accountWith = (available, extra = {}) => ({
+  enabled: true, plan: 'pro', plan_name: 'Pro', interval: 'year', status: 'active', available,
+  balances: { plan: { available, reserved: 0, consumed: 20 }, purchased: { available: 0, reserved: 0, consumed: 0 } },
+  costs: { export: 10, satin_columns: 0, auto_digitize: 0 },
+  history: [
+    { job_id: 'j2', design_id: '0b5f2c1e-8a39-4c1d-9a51-2f0e6c7d8b90', operation: 'export', format: 'dst', status: 'succeeded', credits: 10,
+      created_at: '2026-10-01T09:30:00Z', finished_at: '2026-10-01T09:30:02Z', error: null },
+    { job_id: 'j1', design_id: '0b5f2c1e-8a39-4c1d-9a51-2f0e6c7d8b90', operation: 'export', format: 'dst', status: 'failed', credits: 10,
+      created_at: '2026-10-01T09:00:00Z', finished_at: '2026-10-01T09:00:01Z', error: 'the file could not be read' },
+  ],
+  ...extra,
+});
+let ACCOUNT = accountWith(5030);
+
+async function stubApi(page, seen, { account = () => ACCOUNT, downloadUrl = null } = {}) {
   const signedIn = (req) => req.headers().authorization === `Bearer ${TOKEN}`;
   const deny = (route) => route.fulfill({ status: 401, json: { error: 'Sign in to continue: this request has no sign-in token.' } });
+  await page.route(`${API}/me/credits`, (r) => (signedIn(r.request()) ? r.fulfill({ json: account() }) : deny(r)));
+  await page.route(`${API}/plans`, (r) => r.fulfill({ json: PLANS }));
   await page.route(`${API}/config`, (r) => r.fulfill({ json: config }));
   await page.route(`${API}/site`, (r) => r.fulfill({ json: { app_name: 'Stitchbook', demo_video_url: '', export_formats: ['dst'], company_name: null,
     contact_email: null, governing_country: null, data_retention_days: null, last_updated: null, max_upload_bytes: null } }));
@@ -123,6 +145,7 @@ async function stubApi(page, seen) {
     return req.method() === 'GET' ? route.fulfill({ json: DESIGNS }) : route.fulfill({ status: 201, json: upload });
   });
   await page.route(new RegExp(`^${API}/designs/[0-9a-f]{32}/download-url`), (route) => {
+    if (downloadUrl) return downloadUrl(route);
     seen.push(`download-url ${signedIn(route.request()) ? 'with token' : 'no token'}`);
     if (!signedIn(route.request())) return deny(route);
     return route.fulfill({ json: { url: `${SUPABASE}/storage/v1/object/sign/exports/${USER.id}/x/out.dst?token=signed&download=bird.dst`,
@@ -175,7 +198,7 @@ const GSI = `(() => {
 /** A session already stored in the browser, as after an earlier log-in (supabase-js's own key). */
 const storedSession = (u = user) => ({ ...session(), user: u });
 
-async function fresh({ width = 1440, height = 900, gis = 'dismissed', authorize = 'ok', signedInAs = null } = {}) {
+async function fresh({ width = 1440, height = 900, gis = 'dismissed', authorize = 'ok', signedInAs = null, api = {} } = {}) {
   const context = await browser.newContext({ viewport: { width, height }, reducedMotion: 'reduce' });
   const page = await context.newPage();
   const calls = [], seen = [], gisLoads = [];
@@ -200,7 +223,7 @@ async function fresh({ width = 1440, height = 900, gis = 'dismissed', authorize 
     return gis === 'blocked' ? r.abort('blockedbyclient') : r.fulfill({ contentType: 'text/javascript', body: GSI });
   });
   await stubSupabase(page, calls, { authorize });
-  await stubApi(page, seen);
+  await stubApi(page, seen, api);
   return { context, page, calls, seen, gisLoads };
 }
 const logOutViaMenu = async (page) => {
@@ -565,7 +588,9 @@ try {
     const focused = () => page.evaluate(() => document.activeElement?.textContent?.trim());
     check(await focused() === 'My designs', 'focus moves into the menu (My designs)');
     await page.keyboard.press('ArrowDown');
-    check(await focused() === 'Log out', 'ArrowDown: Log out');
+    check(await focused() === 'Credits and plan', 'ArrowDown: Credits and plan');
+    await page.keyboard.press('ArrowDown');
+    check(await focused() === 'Log out', 'ArrowDown again: Log out');
     await page.keyboard.press('Escape');
     check(await menu.count() === 0 && await page.evaluate(() => document.activeElement?.getAttribute('aria-label')) === 'Account menu',
       'Escape closes it and returns focus to the avatar');
@@ -584,6 +609,109 @@ try {
     await page.locator('header .acct[data-state="out"]').waitFor();
     check(await page.locator('header').getByRole('link', { name: 'Log in' }).isVisible(), 'after logging out the header offers Log in again');
     await context.close();
+  }
+
+  console.log('-- credits: header balance, plan in the menu, zero-credit message, 402, /billing');
+  {
+    const docs = join(root, '..', 'docs', 'screenshots');
+    await mkdir(docs, { recursive: true });
+    const { context, page } = await fresh({ width: 1366, height: 768, signedInAs: user });
+    await page.goto(`${base}/`);
+    const pill = page.locator('header .acct__credits');
+    await pill.waitFor();
+    check(await pill.innerText() === '5,030 credits' && await pill.getAttribute('href') === '/billing', 'header: "5,030 credits" next to the avatar, links to /billing');
+    await page.getByRole('button', { name: 'Account menu' }).click();
+    check(await page.getByRole('menu').getByText('Pro plan').isVisible(), 'the account menu shows the plan name');
+    await page.locator('header').screenshot({ path: join(docs, 'header-with-balance.png') });
+    await page.keyboard.press('Escape');
+    const { issues } = await page.evaluate(audit);
+    check(issues.length === 0, `landing signed in, audit: ${issues.length ? JSON.stringify(issues) : 'no issues'}`);
+    await context.close();
+  }
+  {
+    // Unavailable (no billing on this server): nothing shown, no crash.
+    const { context, page } = await fresh({ signedInAs: user, api: { account: () => ({ enabled: false }) } });
+    await page.goto(`${base}/`);
+    await page.locator('header .acct[data-state="in"]').waitFor();
+    await page.waitForTimeout(300);
+    check(await page.locator('header .acct__credits').count() === 0, 'no billing: no balance in the header');
+    await context.close();
+  }
+  {
+    // Zero credits: the export button is disabled and says why, with a link to /pricing; preview untouched.
+    const { context, page, seen } = await fresh({ width: 1366, height: 768, signedInAs: user, api: { account: () => accountWith(0) } });
+    await page.route(new RegExp(`^${API}/designs/[0-9a-f]{32}$`), (r) => r.fulfill({ json: design }));
+    await page.route(`${API}/designs/*/preview`, (r) => r.fulfill({ json: preview }));
+    await page.goto(`${base}/preview/${upload.id}?width=80`);
+    const button = page.getByRole('button', { name: 'Download DST' });
+    await button.waitFor();
+    const message = page.locator('.no-credits');
+    await message.waitFor();
+    check(await button.isDisabled() && (await message.innerText()).includes("You don't have enough credits for this.")
+      && await message.getByRole('link', { name: 'See plans' }).getAttribute('href') === '/pricing',
+      'zero credits: Download disabled, "You don\'t have enough credits for this." with a link to /pricing');
+    check(await page.locator('.flow-summary').isVisible() && !seen.some((s) => s.startsWith('download-url')), 'the preview is untouched; nothing was requested');
+    await message.scrollIntoViewIfNeeded();
+    await page.locator('.flow-card', { has: message }).screenshot({ path: join(join(root, '..', 'docs', 'screenshots'), 'zero-credit-message.png') });
+    const { issues } = await page.evaluate(audit);
+    check(issues.length === 0, `zero-credit preview audit: ${issues.length ? JSON.stringify(issues) : 'no issues'}`);
+    await context.close();
+  }
+  {
+    // The balance said enough, but the server answers 402 (spent elsewhere meanwhile): same message, no crash.
+    const { context, page } = await fresh({ signedInAs: user, api: {
+      downloadUrl: (r) => r.fulfill({ status: 402, json: { error: "You don't have enough credits for this.", available: 0, needed: 10, plan: 'pro' } }) } });
+    await page.route(new RegExp(`^${API}/designs/[0-9a-f]{32}$`), (r) => r.fulfill({ json: design }));
+    await page.route(`${API}/designs/*/preview`, (r) => r.fulfill({ json: preview }));
+    const errors = [];
+    page.on('pageerror', (e) => errors.push(e.message));
+    await page.goto(`${base}/preview/${upload.id}?width=80`);
+    await page.getByRole('button', { name: 'Download DST' }).click();
+    await page.locator('.no-credits').waitFor();
+    check(errors.length === 0 && page.url().includes('/preview/'), 'a 402 shows the same message and nothing breaks');
+    await context.close();
+  }
+  {
+    const { context, page } = await fresh({ width: 1366, height: 768, signedInAs: user });
+    await page.goto(`${base}/billing`);
+    await page.locator('.billing__table').waitFor();
+    const text = await page.locator('main').innerText();
+    check(text.includes('Pro') && text.includes('Billed yearly') && text.includes('5,030') && text.includes('Failed (credits returned)'),
+      '/billing: plan, balances and the operation history');
+    const headers = await page.locator('.billing__table th').allInnerTexts();
+    check(headers.join('|') === 'Time|Design|Operation|Status|Credits', `history columns: ${headers.join(', ')}`);
+    await page.screenshot({ path: join(root, '..', 'docs', 'screenshots', 'billing-page.png'), fullPage: true });
+    const { issues } = await page.evaluate(audit);
+    check(issues.length === 0, `/billing audit: ${issues.length ? JSON.stringify(issues) : 'no issues'}`);
+    await context.close();
+    const out = await fresh();
+    await out.page.goto(`${base}/billing`);
+    await out.page.waitForURL(/\/login\?next=%2Fbilling$/);
+    check(true, '/billing needs a log-in');
+    await out.context.close();
+  }
+  {
+    // Pricing buttons: signed out "Sign up" -> /signup?next=/pricing; signed in on Free "Upgrade"; current plan disabled.
+    const { context, page } = await fresh();
+    await page.goto(`${base}/pricing`);
+    await page.locator('.plan').first().waitFor();
+    const signUps = await page.locator('.plan').getByRole('link', { name: 'Sign up' }).evaluateAll((els) => els.map((e) => e.getAttribute('href')));
+    check(signUps.length === 3 && signUps.every((h) => h === '/signup?next=%2Fpricing'), `signed out: "Sign up" -> /signup?next=/pricing (${signUps.length})`);
+    await context.close();
+    PLANS.payments_available = true;
+    const free = await fresh({ signedInAs: user, api: { account: () => accountWith(30, { plan: 'free', plan_name: 'Free', interval: null }) } });
+    await free.page.route(`${API}/billing/checkout`, (r) => r.fulfill({ status: 503, json: { error: 'Payments are not available yet.' } }));
+    await free.page.goto(`${base}/pricing`);
+    await free.page.locator('header .acct__credits').waitFor();
+    const current = free.page.locator('.plan[data-plan="free"]').getByRole('button', { name: 'Current plan' });
+    check(await current.isDisabled(), 'signed in on Free: "Current plan" (disabled)');
+    const upgrades = free.page.locator('.plan').getByRole('button', { name: 'Upgrade' });
+    check(await upgrades.count() === 2, 'signed in on Free: "Upgrade" on Pro and Business');
+    await upgrades.first().click();
+    await free.page.locator('.plan__error').waitFor();
+    check(await free.page.locator('.plan__error').innerText() === 'Payments are not available yet.', 'a 503 from checkout: "Payments are not available yet."');
+    await free.context.close();
+    PLANS.payments_available = false;
   }
 
   console.log('-- text fields: labels, field errors, Show / Hide password, input types');

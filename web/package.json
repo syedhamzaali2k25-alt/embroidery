@@ -17,6 +17,7 @@
     "test:once": "node scripts/single-request-tests.mjs",
     "test:pages": "npm run build:offline && node scripts/pages-tests.mjs",
     "test:auth": "node scripts/auth-tests.mjs",
+    "test:pricing": "npm run build:offline && node scripts/pricing-tests.mjs",
     "check:secrets": "node scripts/check-bundle-secrets.mjs",
     "test:motion": "npm run build:offline && node scripts/motion-tests.mjs"
   },

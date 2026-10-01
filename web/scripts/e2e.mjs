@@ -51,7 +51,8 @@ const startWorker = () => {
 };
 const apiProc = spawn(python, ['-m', 'uvicorn', 'stitchbook_api.main:app', '--port', String(API_PORT)], {
   cwd: repo,
-  env: { ...withoutSupabase(process.env), STITCHBOOK_TEST_RUN_VALUES: '1', STORAGE_DIR: storage, CORS_ORIGIN: WEB, REDIS_URL,
+  // Local mode: exports run free only with STITCHBOOK_FREE_OPERATIONS=1 (no billing without Supabase).
+  env: { ...withoutSupabase(process.env), STITCHBOOK_TEST_RUN_VALUES: '1', STITCHBOOK_FREE_OPERATIONS: '1', STORAGE_DIR: storage, CORS_ORIGIN: WEB, REDIS_URL,
          STITCHBOOK_TRACE_JOB: 'stitchbook_worker.testing.slow_trace_design' },
   stdio: 'ignore',
 });

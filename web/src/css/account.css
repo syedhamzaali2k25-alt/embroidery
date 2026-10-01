@@ -84,3 +84,20 @@
 }
 .acct__item:hover, .acct__item:focus-visible { background: var(--line); }
 .acct__item:focus-visible { outline: 2px solid var(--ink); outline-offset: -2px; }
+
+/* "N credits" next to the avatar. */
+.acct__credits {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.acct__credits:hover { border-color: var(--ink); }
+.acct__plan { font-size: 13px; font-weight: 700; color: var(--ink); }

@@ -215,3 +215,7 @@ main:where(body.landing *) > section.cta { padding: 56px 24px; }
 }
 
 /* Header (.nav) and footer: src/css/site.css (shared with the other public pages). */
+
+/* Pricing section (the shared plan cards, lib/PlanCards.tsx). */
+.home-pricing { display: grid; gap: 28px; }
+.home-pricing > h2 { text-align: center; }

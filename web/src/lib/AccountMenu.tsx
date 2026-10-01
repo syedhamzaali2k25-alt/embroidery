@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import type { Session } from "@supabase/supabase-js";
 
 import { safeNext, signInEnabled, useSession } from "./auth";
+import { count, useCredits } from "./credits";
 import "../css/account.css";
 
 // The right side of every header: one account control, only when this build has sign-in.
@@ -43,7 +44,7 @@ function Avatar({ person }: { person: Who }) {
   return <span className={`acct__letter acct__letter--${thumbFor(person.id)}`} aria-hidden="true">{initial(person)}</span>;
 }
 
-function Menu({ person }: { person: Who }) {
+function Menu({ person, planName }: { person: Who; planName: string | null }) {
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   const button = useRef<HTMLButtonElement>(null);
@@ -92,8 +93,10 @@ function Menu({ person }: { person: Who }) {
           <div className="acct__who" role="none">
             {person.name && <p className="acct__name">{person.name}</p>}
             {person.email && <p className="acct__email">{person.email}</p>}
+            {planName && <p className="acct__plan">{planName} plan</p>}
           </div>
           <Link className="acct__item" role="menuitem" to="/home" onClick={() => setOpen(false)}>My designs</Link>
+          <Link className="acct__item" role="menuitem" to="/billing" onClick={() => setOpen(false)}>Credits and plan</Link>
           <button className="acct__item" role="menuitem" type="button" onClick={() => { setOpen(false); navigate("/logout"); }}>Log out</button>
         </div>
       )}
@@ -104,11 +107,22 @@ function Menu({ person }: { person: Who }) {
 /** `page`: the Log in and Sign up pages each show only the other choice. */
 export function AccountControl({ page }: { page?: "login" | "signup" }) {
   const { ready, session } = useSession();
+  const account = useCredits();
   const location = useLocation();
   if (!signInEnabled) return null;
   if (!ready) return <div className="acct acct--checking" aria-hidden="true" data-state="checking" />;
   if (session) {
-    return <div className="acct" data-state="in"><Menu person={who(session)} /></div>;
+    const billing = account && account.enabled ? account : null;
+    return (
+      <div className="acct" data-state="in">
+        {billing && (
+          <Link className="acct__credits" to="/billing" aria-label={`${count(billing.available)} credits available: credits and plan`}>
+            {count(billing.available)} {billing.available === 1 ? "credit" : "credits"}
+          </Link>
+        )}
+        <Menu person={who(session)} planName={billing?.plan_name ?? null} />
+      </div>
+    );
   }
   // Come back to this page after logging in (the Log in / Sign up pages pass their own "next" on).
   const here = page ? safeNext(new URLSearchParams(location.search).get("next"), "") : location.pathname + location.search;

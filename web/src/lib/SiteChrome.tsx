@@ -44,7 +44,7 @@ export function SiteValue({ state, value, render }: {
 
 // Footer link columns. Product links point at the landing page's own sections.
 export const FOOTER_COLUMNS = [
-  ["Product", [["/upload", "Upload a logo"], ["/#how", "How it works"], ["/#faq", "FAQ"]]],
+  ["Product", [["/upload", "Upload a logo"], ["/#how", "How it works"], ["/#faq", "FAQ"], ["/pricing", "Pricing"]]],
   ["Company", [["/contact", "Contact"], ["/blog", "Blog"]]],
   ["Legal", [["/privacy", "Privacy"], ["/terms", "Terms of Service"]]],
 ] as const;
@@ -55,6 +55,7 @@ export function SiteHeader({ page }: { page?: "login" | "signup" }) {
   return (
     <header className="nav">
       <a className="brand" href="/"><Icon name="logo" />Stitchbook</a>
+      <nav className="nav__links" aria-label="Main"><Link to="/pricing">Pricing</Link></nav>
       <div className="nav__actions"><AccountControl page={page} /></div>
     </header>
   );
@@ -65,7 +66,7 @@ export function SiteHeader({ page }: { page?: "login" | "signup" }) {
  * what Stitchbook does (only what it does today), link columns, and the copyright line with
  * company_name from config.py ("Not chosen yet" until it is chosen).
  */
-export function SiteFooter() {
+export function SiteFooter({ home = false }: { home?: boolean }) {
   const state = useSite();
   return (
     <footer className="footer">
@@ -81,7 +82,7 @@ export function SiteFooter() {
                 <h2 className="footer__heading">{title}</h2>
                 <ul className="footer__list">
                   {links.map(([to, label]) => (
-                    <li key={to}><Link className="footer__link" to={to}>{label}</Link></li>
+                    <li key={to}><Link className="footer__link" to={home && to === "/pricing" ? "/#pricing" : to}>{label}</Link></li>
                   ))}
                 </ul>
               </div>
