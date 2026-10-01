@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type DragEvent } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { api, type SiteInfo } from "../lib/api";
+import { HeroStitches } from "../lib/HeroStitches";
 import { Icon } from "../lib/Icon";
 import { setPendingUpload } from "../lib/pendingUpload";
 import { SiteFooter } from "../lib/SiteChrome";
@@ -111,7 +112,7 @@ export default function Landing() {
             >
               <input ref={input} className="visually-hidden" type="file" accept={ACCEPT} tabIndex={-1} aria-hidden="true"
                      onChange={(e) => start(e.target.files?.[0])} />
-              <Icon name="i-image" className="hero-drop__icon" />
+              <HeroStitches />
               <p className="hero-drop__title">Drop your logo here</p>
               <p className="hero-drop__hint">PNG or JPG</p>
               <button className="btn btn--ink" type="button" onClick={() => input.current?.click()}>Choose a file</button>

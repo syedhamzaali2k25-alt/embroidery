@@ -75,14 +75,18 @@ h3:where(body.landing *) { font-size: 20px; letter-spacing: -0.01em; }
   transition: background-color .15s ease;
 }
 .hero-drop.is-over { background: var(--lime); }
-.hero-drop__icon {
-  width: 52px; height: 52px;
-  padding: 14px;
-  border-radius: 50%;
-  background: var(--lavender);
-  color: var(--ink);
-}
 .hero-drop__title { font-size: 20px; font-weight: 700; }
+
+/* The hero's stitch drawing (src/lib/HeroStitches.tsx): a sample design's real stitches. */
+.hero-stitches { width: min(100%, 240px); }
+.hero-stitches svg { width: 100%; height: auto; overflow: visible; }
+.hero-stitches__run { fill: none; stroke-width: 1.4px; vector-effect: non-scaling-stroke; stroke-linejoin: round; stroke-linecap: round; }
+.hero-stitches__replay { position: absolute; top: 12px; right: 12px; min-height: 32px; padding: 0 12px; font-size: 13px; }
+.hero-stitches__replay:disabled { opacity: 0.5; cursor: default; }
+@media (max-width: 480px) {
+  .hero-drop { inset: 8% 4% 8% 2%; gap: 6px; padding: 16px; }
+  .hero-stitches { width: min(100%, 180px); }
+}
 .hero-drop__hint { font-size: 15px; }
 
 /* ---------- Features ---------- */

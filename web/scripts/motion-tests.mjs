@@ -166,6 +166,55 @@ try {
       `JavaScript off: nothing is hidden by the reveal; the page says it needs JavaScript (${noscript ? 'noscript shown' : 'no noscript'})`);
     await page.context().close();
   }
+
+  console.log('-- 3. hero stitch drawing');
+  const preview = await fixture('preview.json');
+  {
+    const page = await open(browser, '/', { width: 1440, height: 900 });
+    const hero = page.locator('.hero-stitches');
+    await hero.waitFor();
+    const info = await hero.evaluate((el) => ({ state: el.dataset.state, stitches: Number(el.dataset.stitches), runs: Number(el.dataset.runs), paths: el.querySelectorAll('path').length }));
+    check(info.stitches === preview.stats.stitch_count && info.runs === info.paths,
+      `the hero draws the sample design's real stitches: ${info.stitches} stitches (the recorded DST: ${preview.stats.stitch_count}) in ${info.paths} runs`);
+    check(info.state === 'drawing', 'on load it starts drawing');
+    await wait(1200);
+    const mid = await hero.evaluate((el) => [...el.querySelectorAll('path')].map((p) => [parseFloat(p.style.strokeDashoffset), parseFloat(p.getAttribute('pathLength'))]));
+    const done = mid.filter(([o]) => o === 0).length, untouched = mid.filter(([o, l]) => Math.abs(o - l) < l * 1e-3).length; // values come back rounded
+    check(done > 0 && untouched > 0, `about 1.2s in: ${done} runs drawn, ${untouched} not started yet (drawn in sewing order)`);
+    await page.locator('.hero-stitches[data-state="done"]').waitFor({ timeout: 4000 });
+    const final = await hero.evaluate((el) => [...el.querySelectorAll('path')].every((p) => !p.style.strokeDasharray && !p.style.strokeDashoffset));
+    check(final, 'after about 3s the finished design stays (no dash left on any line)');
+    await page.getByRole('button', { name: 'Replay the stitch drawing' }).click();
+    check((await hero.getAttribute('data-state')) === 'drawing', 'Replay draws it again');
+    await page.locator('.hero-stitches[data-state="done"]').waitFor({ timeout: 4000 });
+    check(true, '...and ends on the finished design');
+    await page.context().close();
+  }
+  {
+    const page = await open(browser, '/', { reduced: true });
+    const hero = page.locator('.hero-stitches');
+    await hero.waitFor();
+    const info = await hero.evaluate((el) => ({ state: el.dataset.state, dashed: [...el.querySelectorAll('path')].some((p) => p.style.strokeDasharray), replay: !!el.querySelector('button') }));
+    check(info.state === 'done' && !info.dashed && !info.replay, 'reduced motion: the finished design at once, no drawing, no Replay');
+    await page.context().close();
+  }
+  {
+    // Frame timing with the CPU slowed 4x (a rough stand-in for a mid-range phone).
+    const page = await open(browser, '/', { width: 390, height: 844 });
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send('Emulation.setCPUThrottlingRate', { rate: 4 });
+    await page.getByRole('button', { name: 'Replay the stitch drawing' }).click({ timeout: 8000 }).catch(() => {});
+    await page.locator('.hero-stitches[data-state="done"]').waitFor({ timeout: 8000 });
+    const frames = await page.evaluate(() => new Promise((done) => {
+      const times = []; let last = performance.now();
+      document.querySelector('.hero-stitches__replay').click();
+      const tick = (now) => { times.push(now - last); last = now; if (document.querySelector('.hero-stitches').dataset.state === 'drawing') requestAnimationFrame(tick); else done(times); };
+      requestAnimationFrame(tick);
+    }));
+    const sorted = [...frames].sort((a, b) => a - b), p95 = sorted[Math.floor(sorted.length * 0.95)];
+    check(p95 <= 34, `4x slower CPU: ${frames.length} frames, 95% within ${p95.toFixed(1)}ms (headless Chromium, not a real phone)`);
+    await page.context().close();
+  }
 } finally {
   await browser.close();
   server.close();
