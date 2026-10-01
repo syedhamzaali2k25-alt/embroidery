@@ -17,5 +17,52 @@
   "poll_start_s": 2,
   "poll_max_s": 15,
   "poll_backoff_factor": 2,
-  "status_timeout_s": 10
+  "status_timeout_s": 10,
+  "billing": {
+    "currency": "USD",
+    "yearly_discount_percent": 10,
+    "plans": [
+      {
+        "id": "free",
+        "name": "Free",
+        "price_monthly": "0.00",
+        "price_yearly": "0.00",
+        "price_yearly_per_month": "0.00",
+        "credits": 30,
+        "credit_period": "lifetime",
+        "features": []
+      },
+      {
+        "id": "pro",
+        "name": "Pro",
+        "price_monthly": "12.00",
+        "price_yearly": "129.60",
+        "price_yearly_per_month": "10.80",
+        "credits": 5000,
+        "credit_period": "month",
+        "features": [
+          "Dashboard"
+        ]
+      },
+      {
+        "id": "business",
+        "name": "Business",
+        "price_monthly": "25.00",
+        "price_yearly": "270.00",
+        "price_yearly_per_month": "22.50",
+        "credits": 10000,
+        "credit_period": "month",
+        "features": null
+      }
+    ],
+    "credit_costs": {
+      "export": 10,
+      "satin_columns": null,
+      "auto_digitize": null
+    },
+    "monthly_rollover": false,
+    "credit_packs": null,
+    "refund_policy": null,
+    "payments_available": false
+  }
 }
