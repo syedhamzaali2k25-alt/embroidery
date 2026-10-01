@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 
 import { api, ApiError, type ClientConfig, type DesignCreated } from "../lib/api";
 import { FlowBar } from "../lib/FlowBar";
+import { SiteFooter } from "../lib/SiteChrome";
 import { takePendingUpload } from "../lib/pendingUpload";
 import { Icon } from "../lib/Icon";
 import { usePage } from "../lib/usePage";
@@ -99,6 +100,7 @@ export default function Upload() {
             </div>
           )}
         </main>
+        <SiteFooter />
       </>
     );
   }
@@ -283,6 +285,7 @@ export default function Upload() {
           </div>
         </div>
       </main>
+      <SiteFooter />
     </>
   );
 }

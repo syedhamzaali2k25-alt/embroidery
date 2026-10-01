@@ -187,6 +187,19 @@ PRODUCT: dict[str, dict[str, Any]] = {
         # Landing-page demo video (a full URL to a video file). Empty = a poster with a play
         # button and the label "[Demo video]".
         "demo_video_url": "",
+        # Shown on the Privacy, Terms and Contact pages. Until chosen, those pages show a visible
+        # "Not chosen yet" marker instead of a value; nothing is made up.
+        # The name of the person or company that runs the service.
+        "company_name": PLACEHOLDER,
+        # The address people can write to (shown as a mailto link; no form, no email is sent).
+        "contact_email": PLACEHOLDER,
+        # The country whose law the Terms of Service fall under.
+        "governing_country": PLACEHOLDER,
+        # How many days uploaded designs are meant to be kept. Shown as the planned retention:
+        # nothing deletes designs automatically yet, and the Privacy page says so.
+        "data_retention_days": PLACEHOLDER,
+        # Date the Privacy and Terms text was last changed, as YYYY-MM-DD.
+        "last_updated": PLACEHOLDER,
     },
     "preview": {
         # Cosmetic only: these change how preview.png looks, never the embroidery file.

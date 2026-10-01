@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom"
 
 import { api, ApiError, type ClientConfig, type DesignSettings, type Preview as PreviewData } from "../lib/api";
 import { FlowBar } from "../lib/FlowBar";
+import { SiteFooter } from "../lib/SiteChrome";
 import { Icon } from "../lib/Icon";
 import { StitchCanvas } from "../lib/StitchCanvas";
 import { usePage } from "../lib/usePage";
@@ -241,6 +242,7 @@ function Shell({ children }: { children: React.ReactNode }) {
     <>
       <FlowBar step={2} />
       <main className="flow-main">{children}</main>
+      <SiteFooter />
     </>
   );
 }

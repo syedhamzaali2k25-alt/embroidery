@@ -277,9 +277,27 @@ def test_preview_rejects_bad_settings_plainly(client, body, phrase):
     assert response.status_code == 422 and phrase in response.json()["error"]
 
 
+NOT_CHOSEN = {"company_name": None, "contact_email": None, "governing_country": None, "data_retention_days": None,
+              "last_updated": None}
+
+
 def test_site_info_works_with_the_product_config(tmp_path):
     client = make_client(tmp_path, load_config())  # no stand-in values needed
-    assert client.get("/site").json() == {"app_name": "Stitchbook", "demo_video_url": "", "export_formats": ["dst"]}
+    assert client.get("/site").json() == {"app_name": "Stitchbook", "demo_video_url": "", "export_formats": ["dst"],
+                                          **NOT_CHOSEN, "max_upload_bytes": None}
+
+
+def test_site_info_says_which_owner_decisions_are_not_chosen_yet(tmp_path):
+    body = make_client(tmp_path, CONFIG).get("/site").json()  # the test values choose none of them either
+    assert {k: body[k] for k in NOT_CHOSEN} == NOT_CHOSEN
+    assert body["max_upload_bytes"] == CONFIG.get("input.max_upload_bytes")
+
+
+def test_site_info_returns_chosen_owner_decisions(tmp_path):
+    chosen = {"site.company_name": "Example Owner", "site.contact_email": "hello@example.com",
+              "site.governing_country": "Exampleland", "site.data_retention_days": 30, "site.last_updated": "2026-01-31"}
+    body = make_client(tmp_path, CONFIG.with_overrides(chosen)).get("/site").json()
+    assert {f"site.{k}": body[k] for k in NOT_CHOSEN} == chosen
 
 
 def test_site_info_passes_the_configured_video_url(tmp_path):

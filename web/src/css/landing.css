@@ -2,24 +2,6 @@
    Element-level rules are scoped with :where(body.landing), which adds no specificity, so they
    cannot leak into other screens after an in-app navigation (the landing opens Upload directly). */
 
-.nav {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 18px 20px;
-  border-bottom: 1px solid var(--border);
-}
-.nav__links { display: none; gap: 28px; }
-.nav__links a { text-decoration: none; font-weight: 500; font-size: 15px; }
-.nav__links a:hover { text-decoration: underline; text-underline-offset: 4px; }
-.nav__actions { display: flex; gap: 8px; }
-
-@media (min-width: 900px) {
-  .nav { padding: 22px 40px; }
-  .nav__links { display: flex; }
-}
-
 main:where(body.landing *) > section { padding: 48px 20px; }
 @media (min-width: 900px) { main:where(body.landing *) > section { padding: 72px 56px; } }
 
@@ -228,14 +210,4 @@ main:where(body.landing *) > section.cta { padding: 56px 24px; }
   .cta__star { right: -24px; bottom: -24px; width: 120px; height: 120px; }
 }
 
-/* ---------- Footer ---------- */
-.footer {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 24px 20px 28px;
-  border-top: 1px solid var(--border);
-}
-@media (min-width: 900px) { .footer { padding: 28px 40px; } }
+/* Header (.nav) and footer: src/css/site.css (shared with the other public pages). */

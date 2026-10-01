@@ -9,7 +9,12 @@ export type QualityWarning = {
   threshold: number;
 };
 
-export type SiteInfo = { app_name: string; demo_video_url: string; export_formats: string[] };
+export type SiteInfo = {
+  app_name: string; demo_video_url: string; export_formats: string[];
+  /** Owner decisions from config.py; null = not chosen yet (pages show "Not chosen yet"). */
+  company_name: string | null; contact_email: string | null; governing_country: string | null;
+  data_retention_days: number | null; last_updated: string | null; max_upload_bytes: number | null;
+};
 
 export type ClientConfig = {
   app_name: string;

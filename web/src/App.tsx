@@ -9,6 +9,11 @@ const Editor = lazy(() => import("./pages/Editor"));
 const Upload = lazy(() => import("./pages/Upload"));
 const Preview = lazy(() => import("./pages/Preview"));
 const NotFound = lazy(() => import("./pages/NotFound"));
+const Privacy = lazy(() => import("./pages/Privacy"));
+const Terms = lazy(() => import("./pages/Terms"));
+const Contact = lazy(() => import("./pages/Contact"));
+const Blog = lazy(() => import("./pages/Blog"));
+const BlogPost = lazy(() => import("./pages/Blog").then((m) => ({ default: m.BlogPost })));
 
 export default function App() {
   return (
@@ -20,6 +25,11 @@ export default function App() {
         <Route path="/upload" element={<Upload />} />
         <Route path="/preview" element={<Preview />} />
         <Route path="/preview/:designId" element={<Preview />} />
+        <Route path="/privacy" element={<Privacy />} />
+        <Route path="/terms" element={<Terms />} />
+        <Route path="/contact" element={<Contact />} />
+        <Route path="/blog" element={<Blog />} />
+        <Route path="/blog/:slug" element={<BlogPost />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
     </Suspense>

@@ -111,9 +111,16 @@ const tools = {
 // app's own /preview page).
 const API = 'http://localhost:8000';
 
-async function mockApi(page, { upload = 'ok', preview = 'ok' } = {}) {
-  // Landing: product values (no demo video yet, DST only).
-  await page.route(`${API}/site`, (r) => r.fulfill({ json: { app_name: 'Stitchbook', demo_video_url: '', export_formats: ['dst'] } }));
+const SITE_TODAY = { // the product config today: no demo video, DST only, no owner decision chosen yet
+  app_name: 'Stitchbook', demo_video_url: '', export_formats: ['dst'], company_name: null, contact_email: null,
+  governing_country: null, data_retention_days: null, last_updated: null, max_upload_bytes: null,
+};
+const SITE_CHOSEN = { // example values (example.com is reserved for examples), only to show how chosen values look
+  ...SITE_TODAY, company_name: 'Example Owner', contact_email: 'hello@example.com', governing_country: 'Exampleland',
+  data_retention_days: 30, last_updated: '2000-01-01', max_upload_bytes: 5_000_000,
+};
+async function mockApi(page, { upload = 'ok', preview = 'ok', site = 'today' } = {}) {
+  await page.route(`${API}/site`, (r) => r.fulfill({ json: site === 'chosen' ? SITE_CHOSEN : SITE_TODAY }));
   await page.route(`${API}/config`, (r) => r.fulfill({ json: fx.config }));
   await page.route(`${API}/designs`, (r) => upload === 'ok'
     ? r.fulfill({ status: 201, json: fx.upload })
@@ -140,6 +147,12 @@ const pages = {
   'upload-colours': { route: '/upload', api: {}, file: true, ready: '.flow-swatch', click: '.flow-swatches li:nth-child(n+6) input' },
   'upload-error': { route: '/upload', api: { upload: 'error' }, file: true, ready: "text=This file can't be used" },
   preview: { route: previewRoute, api: {}, ready: 'text=Summary' },
+  // Public pages: what ships today (nothing chosen: markers), and Contact with an example address.
+  privacy: { route: '/privacy', api: {}, ready: '.draft-banner .not-chosen' },
+  terms: { route: '/terms', api: {}, ready: '.draft-banner .not-chosen' },
+  contact: { route: '/contact', api: {}, ready: 'text=Contact email not chosen yet' },
+  'contact-chosen': { route: '/contact', api: { site: 'chosen' }, ready: 'a[href^="mailto:"]' },
+  blog: { route: '/blog', api: {}, ready: 'text=No posts yet.' },
   'preview-loading': { route: previewRoute, api: { preview: 'loading' }, ready: 'text=Turning your logo into stitches' },
   'preview-error': { route: previewRoute, api: { preview: 'error' }, ready: "text=The preview couldn't be made" },
   'preview-empty': { route: '/preview', api: {}, ready: 'text=No design to preview yet' },
@@ -347,7 +360,10 @@ for (const vp of viewports) {
     // Claims the product cannot back up today (SVG is not digitized; digitizing runs on the
     // server; the old demo designs and numbers are not real).
     // Nothing may be called tested except in the note that says it is not.
-    const text = (await page.locator('body').innerText()).replaceAll('Unverified: not yet tested on a machine', '');
+    // The Privacy page states the one true thing about SVG: the server stores one sent to it
+    // directly but cannot stitch it. That sentence is the only allowed mention.
+    const text = (await page.locator('body').innerText()).replaceAll('Unverified: not yet tested on a machine', '')
+      .replace(/The server also stores an SVG file if one is sent to it directly, but cannot turn it into stitches\./, '');
     const claim = text.match(/\bSVG\b|nothing to install|runs in your browser|Petals|Centre|Leaves|Daisy|4,210|Hoop space|\btested\b|\bverified\b/i);
     if (claim) issues.push({ kind: 'unbacked-claim', label: `"${claim[0]}" on the page` });
     mock?.release?.(); // let a held change finish before the next page

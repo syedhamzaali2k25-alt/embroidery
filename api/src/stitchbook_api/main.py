@@ -180,8 +180,18 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
 
     @app.get("/site", response_model=SiteInfo)
     def site() -> SiteInfo:
+        def chosen(key: str):
+            """The value, or None while it is still a placeholder (the page says "Not chosen yet")."""
+            try:
+                return config.get(key)
+            except PlaceholderValueError:
+                return None
+
         return SiteInfo(app_name=config.app_name, demo_video_url=config.get("site.demo_video_url"),
-                        export_formats=offered_formats(config)[0])
+                        export_formats=offered_formats(config)[0],
+                        **{k: chosen(f"site.{k}") for k in ("company_name", "contact_email", "governing_country",
+                                                             "data_retention_days", "last_updated")},
+                        max_upload_bytes=chosen("input.max_upload_bytes"))
 
     @app.get("/formats", response_model=FormatsOut)
     def formats() -> FormatsOut:

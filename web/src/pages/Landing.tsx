@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { api, type SiteInfo } from "../lib/api";
 import { Icon } from "../lib/Icon";
 import { setPendingUpload } from "../lib/pendingUpload";
+import { SiteFooter } from "../lib/SiteChrome";
 import { usePage } from "../lib/usePage";
 import "../css/landing.css";
 
@@ -177,10 +178,7 @@ export default function Landing() {
         </section>
       </main>
 
-      <footer className="footer">
-        <a className="brand" href="/"><Icon name="logo" />Stitchbook</a>
-        <p className="footer__note">Made for people who sew.</p>
-      </footer>
+      <SiteFooter />
     </div>
   );
 }

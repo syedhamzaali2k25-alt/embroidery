@@ -44,6 +44,14 @@ class SiteInfo(BaseModel):
     app_name: str
     demo_video_url: str = Field(description="Empty means: show the poster with the [Demo video] label")
     export_formats: list[str] = Field(description="Only formats whose pyembroidery round trip passes")
+    # Owner decisions for the Privacy, Terms and Contact pages. null = not chosen yet in config.py
+    # (the page then shows "Not chosen yet").
+    company_name: str | None = None
+    contact_email: str | None = None
+    governing_country: str | None = None
+    data_retention_days: int | None = None
+    last_updated: str | None = Field(default=None, description="YYYY-MM-DD")
+    max_upload_bytes: int | None = Field(default=None, description="Upload size limit, for the Privacy page")
 
 
 class TraceColumn(BaseModel):

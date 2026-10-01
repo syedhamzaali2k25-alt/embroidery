@@ -81,6 +81,51 @@
     "issues": []
   },
   {
+    "page": "privacy",
+    "viewport": "desktop",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "terms",
+    "viewport": "desktop",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "contact",
+    "viewport": "desktop",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "contact-chosen",
+    "viewport": "desktop",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "blog",
+    "viewport": "desktop",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
     "page": "preview-loading",
     "viewport": "desktop",
     "fonts": {
@@ -428,6 +473,51 @@
     "fonts": {
       "sans": true,
       "serif": true
+    },
+    "issues": []
+  },
+  {
+    "page": "privacy",
+    "viewport": "phone",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "terms",
+    "viewport": "phone",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "contact",
+    "viewport": "phone",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "contact-chosen",
+    "viewport": "phone",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
+    },
+    "issues": []
+  },
+  {
+    "page": "blog",
+    "viewport": "phone",
+    "fonts": {
+      "sans": true,
+      "serif": "unused"
     },
     "issues": []
   },
