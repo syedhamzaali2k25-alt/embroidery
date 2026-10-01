@@ -60,12 +60,13 @@ class Postgres:
         self._run([str(self.bindir / "pg_ctl"), "-D", str(self.dir / "data"), "-m", "fast", "stop"])
         shutil.rmtree(self.dir, ignore_errors=True)
 
-    def sql(self, query: str, user: str | None = None, anon: bool = False) -> list[list[str]]:
-        """Run `query` as the database owner, or as a signed-in `user` / an anon visitor (through
-        the same roles and JWT claims PostgREST uses). Returns rows; raises on any SQL error."""
-        if user or anon:
-            claims = json.dumps({"sub": user, "role": "authenticated"} if user else {"role": "anon"})
-            role = "authenticated" if user else "anon"
+    def sql(self, query: str, user: str | None = None, anon: bool = False, service: bool = False) -> list[list[str]]:
+        """Run `query` as the database owner, as a signed-in `user` / an anon visitor (through
+        the same roles and JWT claims PostgREST uses), or as the server's secret key
+        (`service`: the service_role). Returns rows; raises on any SQL error."""
+        if user or anon or service:
+            claims = json.dumps({"sub": user, "role": "authenticated"} if user else {"role": "service_role" if service else "anon"})
+            role = "authenticated" if user else "service_role" if service else "anon"
             query = (f"begin;\nset local role {role};\nset local request.jwt.claims = '{claims}';\n"
                      f"{query.rstrip().rstrip(';')};\ncommit;")
         done = subprocess.run(["psql", "-h", str(self.dir), "-p", self.port, "-U", "postgres", "-X", "-q", "-A", "-t",
@@ -98,12 +99,14 @@ def new_design(db: Postgres, user: str) -> str:
 
 def test_the_migrations_create_exactly_the_four_tables_and_two_private_buckets(db):
     tables = {r[0] for r in db.sql("select tablename from pg_tables where schemaname = 'public'")}
-    assert tables == {"profiles", "designs", "jobs", "exports"}
+    assert tables == {"profiles", "designs", "jobs", "exports",  # migration 1
+                      "subscriptions", "credit_ledger", "credit_reservations", "credit_allocations",  # migration 5
+                      "operation_log", "processed_webhook_events"}
     rls = db.sql("select tablename, rowsecurity from pg_tables where schemaname = 'public' order by 1")
     assert all(on == "t" for _name, on in rls), "row level security must be on for every table"
     assert db.sql("select id, public from storage.buckets order by id") == [["exports", "f"], ["uploads", "f"]]
     owner_indexes = {r[0] for r in db.sql("select indexdef from pg_indexes where schemaname = 'public'") if "owner_id" in r[0]}
-    for table in ("designs", "jobs", "exports"):
+    for table in ("designs", "jobs", "exports", "credit_ledger", "credit_reservations", "credit_allocations", "operation_log"):
         assert any(f"public.{table} " in d for d in owner_indexes), f"{table}.owner_id is indexed"
 
 
