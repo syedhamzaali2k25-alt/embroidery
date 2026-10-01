@@ -225,6 +225,26 @@ try {
     await context.close();
   }
 
+  console.log('-- Privacy and Terms describe the sign-in build (accounts, Supabase, local storage)');
+  {
+    const { context, page } = await fresh();
+    await page.goto(`${base}/privacy`);
+    await page.locator('footer .footer__cols').waitFor();
+    const privacy = await page.locator('main').innerText();
+    for (const phrase of ['Supabase Auth', 'private folders named by your account', 'Only you, when you are logged in',
+      'local storage keeps your sign-in session', 'Not stated yet', 'The only email is the one that confirms your address']) {
+      check(privacy.includes(phrase), `Privacy says: "${phrase}"`);
+    }
+    for (const gone of ['There are no accounts yet', 'Browser storage (local storage, session storage): none', 'STORAGE_DIR', 'No accounts, no payments']) {
+      check(!privacy.includes(gone), `Privacy no longer says: "${gone}"`);
+    }
+    await page.goto(`${base}/terms`);
+    await page.locator('footer .footer__cols').waitFor();
+    const terms = await page.locator('main').innerText();
+    check(terms.includes('You need an account to save designs') && !terms.includes('There are no accounts'), 'Terms: accounts are described as they are');
+    await context.close();
+  }
+
   console.log('-- screenshots and audit: log in, sign up, log out, My designs (1440, 1366, 390)');
   await mkdir(shots, { recursive: true });
   for (const [vp, width, height] of [['desktop', 1440, 900], ['laptop-1366x768', 1366, 768], ['phone', 390, 844]]) {
@@ -235,6 +255,8 @@ try {
       ['signup-sent', '/signup', 'sent'],
       ['logout', '/logout', 'out'],
       ['home-signed-in', '/home', 'home'],
+      ['privacy', '/privacy', 'h1'],
+      ['terms', '/terms', 'h1'],
     ];
     for (const [name, path, state] of screens) {
       const { context, page } = await fresh({ width, height });

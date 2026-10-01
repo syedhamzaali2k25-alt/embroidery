@@ -12,9 +12,9 @@ from rq import Queue, Worker
 
 def main() -> None:
     config = load_config()
-    logging.basicConfig(level=os.environ.get("LOG_LEVEL", "info").upper())
-    redis = Redis.from_url(os.environ.get("REDIS_URL", "redis://localhost:6379/0"))
-    queue = Queue(os.environ.get("RQ_QUEUE", "digitize"), connection=redis)
+    logging.basicConfig(level=(os.environ.get("LOG_LEVEL") or "info").upper())
+    redis = Redis.from_url(os.environ.get("REDIS_URL") or "redis://localhost:6379/0")
+    queue = Queue(os.environ.get("RQ_QUEUE") or "digitize", connection=redis)
     logging.getLogger(__name__).info("%s worker listening on %r", config.app_name, queue.name)
     Worker([queue], connection=redis).work()
 

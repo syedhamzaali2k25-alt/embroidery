@@ -5,8 +5,9 @@ export
 PYTHON   ?= python3
 VENV     := .venv
 BIN      := $(VENV)/bin
-API_PORT ?= 8000
-WEB_PORT ?= 8080
+# Empty in .env counts as not set.
+API_PORT := $(or $(API_PORT),8000)
+WEB_PORT := $(or $(WEB_PORT),8080)
 
 .PHONY: setup test api worker web
 

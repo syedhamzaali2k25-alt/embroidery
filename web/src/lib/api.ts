@@ -3,7 +3,7 @@
 // means "log in first" (see needsLogin).
 import { accessToken, loginPath, signInEnabled } from "./auth";
 
-export const API_URL: string = (import.meta.env.VITE_API_URL as string | undefined) ?? "http://localhost:8000";
+export const API_URL: string = (import.meta.env.VITE_API_URL as string | undefined) || "http://localhost:8000";
 
 export type QualityWarning = {
   code: "too_small" | "low_contrast" | "blurry_edges" | "many_specks";

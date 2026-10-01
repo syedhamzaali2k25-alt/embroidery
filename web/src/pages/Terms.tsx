@@ -4,6 +4,7 @@
 // and show "Not chosen yet" until set.
 import { Link } from "react-router-dom";
 
+import { signInEnabled } from "../lib/auth";
 import { DraftBanner, SitePage, SiteValue, useSite } from "../lib/SiteChrome";
 import { usePage } from "../lib/usePage";
 
@@ -45,14 +46,24 @@ export default function Terms() {
       <ul>
         <li>Do not upload anything unlawful, or files that are not images of a logo.</li>
         <li>Do not try to break the service, get around its limits, or overload it.</li>
-        <li>Do not open, change or download designs whose address was not given to you.</li>
+        <li>{signInEnabled
+          ? "Do not use someone else's account, or try to reach designs that are not yours."
+          : "Do not open, change or download designs whose address was not given to you."}</li>
       </ul>
 
       <h2>Accounts and payments</h2>
+      {signInEnabled ? (
+        <p>
+          You need an account to save designs. Keep your password to yourself; what is done with your account is your
+          responsibility. Your designs are private to your account (see <Link to="/privacy">Privacy</Link>). There
+          are no payments yet. These terms will change when payments are added.
+        </p>
+      ) : (
       <p>
         There are no accounts and no payments yet. Anyone who has a design's address can open it (see{" "}
         <Link to="/privacy">Privacy</Link>). These terms will change when accounts and payments are added.
       </p>
+      )}
 
       <h2>Law</h2>
       <p>These terms fall under the law of <SiteValue state={state} value={(s) => s.governing_country} />.</p>

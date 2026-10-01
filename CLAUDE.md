@@ -23,6 +23,16 @@ After building any screen, run the screenshot audit and fix clipped text and con
 - `api/`: FastAPI service (`stitchbook_api`). Imports `digitizer/`; never copies or re-implements its logic.
 - `worker/`: RQ job runner (`stitchbook_worker`). Imports `digitizer/`; never copies or re-implements its logic.
 - `web/`: static front end and its checks (`npm start`, `npm run check:tokens`, `npm run check:ui`). Colour tokens live in `web/src/css/tokens.css`.
+- `supabase/`: plain SQL migrations in `supabase/migrations/` (the owner pastes them into the SQL Editor in file-name order; see `docs/supabase-setup.md`) and `supabase/tests/` (the RLS and Storage policies tested on a throwaway local Postgres). Never change the live project from code or an MCP; write a new migration file instead.
 - `docs/`: project documentation.
 - `digitizer/src/digitizer/config.py`: the one config file. All stitch numbers, size limits, timeouts and rate limits live here, each with a comment. Unchosen values stay `"__CHOOSE__"`. Python code reads them only through `digitizer.config`, which refuses to return a placeholder.
-- `.env` / `.env.example`: connection strings and secrets only, never product numbers.
+- `.env` / `.env.example`: connection strings and secrets only, never product numbers. `.env.example` lists every variable the code reads, all empty (`api/tests/test_env_example.py`); `.env` is gitignored and never printed or committed.
+
+## Accounts and data (Supabase)
+
+- Every table has an owner (`owner_id uuid not null references auth.users on delete cascade`; `profiles.id` is the user id), RLS on, four owner-only policies `to authenticated` on `(select auth.uid())`, an index on `owner_id`, and nothing for anon. A new table follows the same pattern and gets a test in `supabase/tests/test_rls.py`.
+- Storage: private buckets only (`uploads`, `exports`), object path `{user_id}/{design_id}/{file}`, owner-folder policies, short-lived signed URLs (`storage.signed_url_ttl_s`), never public URLs.
+- API: the user id comes only from the verified Supabase token, never from the request; missing or bad token 401, someone else's design or job 404. Every route except `/health`, `/site`, `/formats`, `/config` takes `designs: Designs = Depends(my_designs)` (or `current_user`); `api/tests/test_auth.py` walks every route, so a new route without it fails. The API acts as the user (publishable key + their token), never with the secret key.
+- Web: only `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` reach the browser (named in `web/vite.config.ts`); `npm run build` ends with `check:secrets`. Browser tests build with `--mode offline` (no sign-in); `npm run test:auth` covers the sign-in build.
+- Without the Supabase settings the API and web run in local mode (one local user, files on disk) so every offline test passes. Live isolation tests (`api/tests/test_supabase_live.py`) skip with a message when the keys are missing; say so when reporting.
+- Security and Performance Advisors cannot be run from here: findings go in `docs/supabase-advisors.md`; never claim they are clean.

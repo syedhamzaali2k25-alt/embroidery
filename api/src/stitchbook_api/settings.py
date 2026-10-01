@@ -32,6 +32,8 @@ class Settings:
 
 
 def load_settings() -> Settings:
+    """Reads the environment. An empty value counts as not set (so a copied .env.example with
+    empty values runs on the defaults)."""
     origin = os.environ.get("CORS_ORIGIN", "").strip() or None
     if origin == "*":
         raise ValueError("CORS_ORIGIN must be one exact origin such as http://localhost:8080, not '*'")
@@ -44,12 +46,12 @@ def load_settings() -> Settings:
             and "127.0.0.1" not in supabase_url:
         raise ValueError("SUPABASE_URL must start with https:// (http only for a local Supabase)")
     return Settings(
-        redis_url=os.environ.get("REDIS_URL", "redis://localhost:6379/0"),
-        rq_queue=os.environ.get("RQ_QUEUE", "digitize"),
+        redis_url=os.environ.get("REDIS_URL") or "redis://localhost:6379/0",
+        rq_queue=os.environ.get("RQ_QUEUE") or "digitize",
         cors_origin=origin,
-        storage_dir=os.environ.get("STORAGE_DIR", "data/storage"),
+        storage_dir=os.environ.get("STORAGE_DIR") or "data/storage",
         test_run_values=os.environ.get("STITCHBOOK_TEST_RUN_VALUES", "") == "1",
-        log_level=os.environ.get("LOG_LEVEL", "info"),
+        log_level=os.environ.get("LOG_LEVEL") or "info",
         trace_job=os.environ.get("STITCHBOOK_TRACE_JOB") or "stitchbook_worker.jobs.trace_design",
         supabase_url=supabase_url,
         supabase_publishable_key=publishable,
