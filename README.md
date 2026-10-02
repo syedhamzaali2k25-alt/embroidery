@@ -14,7 +14,7 @@ Status: the digitizer turns a PNG/JPG logo into a DST, a preview and a report. T
 | `web/` | Vite + React + TypeScript front end and its screenshot/contrast audit. |
 | `digitizer/src/digitizer/config.py` | The single file for every stitch number, limit, timeout and rate limit. |
 | `supabase/` | SQL migrations (tables, RLS, Storage buckets and policies) and their tests on a local Postgres. |
-| `docs/` | Project documentation, including `supabase-setup.md` and `supabase-advisors.md`. |
+| `docs/` | Project documentation, including `supabase-setup.md`, `supabase-advisors.md`, `billing.md` and `payments-whop.md`. |
 
 ## Requirements
 
@@ -94,7 +94,7 @@ npm run check:secrets    # dist/ contains no Supabase secret key, Google client 
 npm run test:pricing     # /pricing and the home Pricing section: every number from config, price math, toggle, no invented claims, 360 px
 ```
 
-Credits and plans (Step 13, `docs/billing.md`): preview is free; exports cost credits, reserved when they start and used only if they succeed. Plans and prices come from `billing.*` in config.py (`GET /plans`, the /pricing page). Without Supabase there is no billing: run the API with `STITCHBOOK_FREE_OPERATIONS=1` to export locally.
+Credits and plans (Step 13, `docs/billing.md`): preview is free; exports cost credits, reserved when they start and used only if they succeed. Plans and prices come from `billing.*` in config.py (`GET /plans`, the /pricing page). Without Supabase there is no billing: run the API with `STITCHBOOK_FREE_OPERATIONS=1` to export locally. Payments: Whop, sandbox first (Step 13c, `docs/payments-whop.md`); off until its keys and plan ids are set.
 
 To try the Upload and Preview screens locally: `STITCHBOOK_FREE_OPERATIONS=1 STITCHBOOK_TEST_RUN_VALUES=1 make api` in one terminal and `make web` in another, then open http://localhost:8080/upload. Tracing in the editor (`/editor?design=<id>`, reached from Preview) also needs Redis and `make worker`.
 

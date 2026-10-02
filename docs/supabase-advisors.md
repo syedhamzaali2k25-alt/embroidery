@@ -38,6 +38,10 @@ What migration 5 was written to avoid (intentions, not results):
 - Indexes cover `(owner_id, created_at)` and every composite foreign key (including `jobs` and `exports` → `designs (id, owner_id)`).
 - `processed_webhook_events` has RLS on and no policies, on purpose: only the service role uses it. The advisor may flag "RLS enabled, no policy"; record it.
 
+## After migration 6 (Whop)
+
+Migration 6 only adds a unique partial index, `subscriptions_provider_subscription_idx` on `subscriptions (provider, provider_subscription_id)`. Run the advisors again and record any finding; the Performance Advisor may list it as an unused index until webhooks arrive.
+
 ## Security Advisor findings
 
 | # | Level (Error / Warning / Info) | Finding (name as shown) | Object (table, function, bucket) | What it says | Fixed in | Notes |

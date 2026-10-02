@@ -14,6 +14,7 @@ The files are in `supabase/migrations/`. Paste each one whole and run it before 
 | 2nd | `20261001000002_profiles_on_signup.sql` | A trigger on `auth.users` that adds a `profiles` row for each new account. |
 | 3rd | `20261001000003_storage.sql` | Private buckets `uploads` and `exports`. Their policies let a signed-in user read and write only under their own folder: `{user_id}/...`. |
 | 4th | `20261001000005_billing.sql` | Credits and plans (Step 13): `subscriptions`, `credit_ledger`, `credit_reservations`, `credit_allocations`, `operation_log`, `processed_webhook_events`, with RLS (users read their own rows only and write nothing), and the credit functions that only the secret key may run. It also adds `(design_id, owner_id)` indexes to `jobs` and `exports`. See `docs/billing.md`. |
+| 5th | `20261001000006_whop_subscription_owner.sql` | Payments (Step 13c): one Whop membership can belong to one account only (a unique index on `subscriptions`). Paste it before taking payments; see `docs/payments-whop.md`. |
 
 There is no `20261001000004_*.sql` in this repository. If you made a migration 4 yourself, run it before migration 5. Migration 5 does not depend on it; its index statements use `if not exists`, so an index of the same name is not made twice.
 
@@ -27,7 +28,8 @@ What to click:
    - If you see an error, stop and send it to me. Don't run the next file.
 5. Open a new tab with **+** again. Paste and run `20261001000002_profiles_on_signup.sql`.
 6. Open a new tab with **+** again. Paste and run `20261001000003_storage.sql`.
-7. Open a new tab with **+** again. Paste and run `20261001000005_billing.sql`. (If the first three are already in your project, this is the only one to run now.)
+7. Open a new tab with **+** again. Paste and run `20261001000005_billing.sql`. (If the first three are already in your project, start here.)
+8. Open a new tab with **+** again. Paste and run `20261001000006_whop_subscription_owner.sql` (Step 13c). If 1-5 are already in your project, this is the only one to run now.
 
 Each file is meant to run once on the empty project. Running file 1 or 2 a second time fails with "already exists"; that is harmless, nothing is changed. File 3 also stops at its first policy on a second run, after setting both buckets back to private.
 

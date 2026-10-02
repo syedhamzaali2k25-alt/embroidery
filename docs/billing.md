@@ -6,7 +6,7 @@ Preview is always free. Exporting a machine file costs credits.
 2. They are **used** only if it succeeds.
 3. They are **released** (returned) if it fails, is cancelled, or never reports back (the stale sweep).
 
-Plans grant the credits. Payments go through a provider adapter. No real payment provider is set up yet, so the site says "Payments are not available yet".
+Plans grant the credits. Payments go through a provider adapter: **Whop** (`docs/payments-whop.md`), switched on with `billing.provider = "whop"` once its keys and plan ids are set. Until then the site says "Payments are not available yet".
 
 ## Where things are
 
@@ -15,7 +15,8 @@ Plans grant the credits. Payments go through a provider adapter. No real payment
 | Every price, credit amount, cost and switch | `digitizer/src/digitizer/config.py`, section `billing` (comments on each value) |
 | Plan math (yearly price, per-month equivalent) | `api/src/stitchbook_api/plans.py` |
 | Credits: reserve / consume / release, grants, sweep | `api/src/stitchbook_api/billing.py`, the only code that uses `SUPABASE_SECRET_KEY` |
-| Payment provider interface, FakeProvider | `api/src/stitchbook_api/payments.py` |
+| Payment provider interface, FakeProvider, WhopProvider | `api/src/stitchbook_api/payments.py`; setup and event mapping in `docs/payments-whop.md` |
+| One provider subscription per account | `supabase/migrations/20261001000006_whop_subscription_owner.sql` |
 | Tables, RLS, functions | `supabase/migrations/20261001000005_billing.sql` |
 | Pricing page, plan cards, header balance, /billing | `web/src/pages/Pricing.tsx`, `web/src/lib/PlanCards.tsx`, `web/src/lib/credits.ts`, `web/src/pages/Billing.tsx` |
 
@@ -46,7 +47,8 @@ These are all `__CHOOSE__` or flagged in config.py. Until chosen, the UI shows a
 - **Reservation timeout:** `reservation_timeout_s`, and `sweep_interval_s`. While unset, the stale sweep does not run.
 - **Refund policy:** `refund_policy`. The pricing page shows "[Refund policy]".
 - **Currency and tax:** handling, VAT/sales tax, invoices.
-- **Provider:** `provider`. `"fake"` is for local development only and is refused in production.
+- **Provider:** `provider` (`"whop"`; see `docs/payments-whop.md` for its own list). `"fake"` is for local development only and is refused in production.
+- **Refunds:** a provider refund is only logged; credits are never removed automatically. A manual adjustment tool is not built.
 - **Re-downloads:** each export is charged, including downloading the same design again.
 
 ## How credits are counted (migration 5)
@@ -73,7 +75,8 @@ These are all `__CHOOSE__` or flagged in config.py. Until chosen, the UI shows a
 | `GET /designs/{id}/download`, `/download-url` | Metered exports: reserve first (402 `{error, available, needed, plan}` if short, nothing runs), consume on success, release on failure. |
 | `POST /designs/{id}/trace` | Satin columns. Reserves BEFORE enqueuing (once its cost is set); if enqueueing fails, released at once. Settled when the job ends: done → consumed; failed or cancelled → released. |
 | `POST /billing/checkout` (token) `{plan, interval}` | The provider's checkout URL; 503 "Payments are not available yet." without a provider. |
-| `POST /billing/cancel` (token) | Asks the provider to cancel the subscription. |
+| `POST /billing/cancel` (token) | Asks the provider to stop renewal (the plan stays until the paid period ends). |
+| `GET /billing/manage` (token) | The provider's own page to manage the plan and payment details (`{"url": null}` when there is none). |
 | `POST /webhooks/billing` | Provider events. The raw body's signature is checked BEFORE parsing. Each event is applied once (`processed_webhook_events`). The user id comes only from the provider's signed metadata. |
 
 How each mode behaves:
@@ -81,7 +84,9 @@ How each mode behaves:
 - **Local mode (no Supabase):** no billing. Metered operations run free only with `STITCHBOOK_FREE_OPERATIONS=1`; otherwise they are refused (503).
 - **Production (`STITCHBOOK_ENV=production`):** the API refuses to start in local mode, without the secret key, with free operations, or with test-run values (fail closed).
 
-## Adding a payment provider
+## Adding another payment provider
+
+Whop is built this way (`WhopProvider`); follow it for another one.
 
 1. Choose the provider (you need a merchant account; see the lists at the end).
 2. Write an adapter class in `api/src/stitchbook_api/payments.py` with the `Provider` methods:
@@ -89,7 +94,7 @@ How each mode behaves:
    - **`verify_webhook(headers, raw_body) -> Event`:** verify the signature with `PAYMENT_WEBHOOK_SECRET` over the **raw** body, before parsing. Raise `BadSignature` otherwise. Map the provider's event to `Event(id, type, owner_id, plan, interval, status, period_end, customer_id, subscription_id)`.
    - **`cancel_subscription(subscription_id)`.**
 3. Register it in `provider_from()` and set `billing.provider` in config.py to its name.
-4. Put `PAYMENT_PROVIDER_SECRET_KEY` and `PAYMENT_WEBHOOK_SECRET` in `.env` (server only; `npm run check:secrets` refuses them in the web bundle).
+4. Put its secret key and webhook secret in `.env` under its own names (as `WHOP_API_KEY` / `WHOP_WEBHOOK_SECRET`), list them empty in `.env.example`, and add the names to `web/scripts/check-bundle-secrets.mjs`.
 5. Register the webhook URL with the provider: `https://<your API host>/webhooks/billing`. It must be public HTTPS, so it needs a deployed API.
 6. Test in the provider's test mode first. `api/tests/test_billing_api.py` shows the checks to repeat: bad signature, replay, one grant per period.
 
