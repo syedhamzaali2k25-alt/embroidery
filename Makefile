@@ -9,7 +9,7 @@ BIN      := $(VENV)/bin
 API_PORT := $(or $(API_PORT),8000)
 WEB_PORT := $(or $(WEB_PORT),8080)
 
-.PHONY: setup test api worker web
+.PHONY: setup test api worker web check-whop-plans
 
 setup: ## Create the virtualenv, install the Python packages and web tooling
 	$(PYTHON) -m venv $(VENV)
@@ -22,6 +22,9 @@ test: ## Python tests + web colour-token lint (an empty Python suite counts as a
 	if [ $$status -eq 5 ]; then echo "pytest: no tests collected yet (empty suite)"; \
 	elif [ $$status -ne 0 ]; then exit $$status; fi
 	npm --prefix web run -s check:tokens
+
+check-whop-plans: ## Read-only: compare the Whop plans in config.py with our prices (needs WHOP_API_KEY)
+	$(BIN)/python -m stitchbook_api.whop_plans
 
 api: ## FastAPI dev server with reload
 	$(BIN)/uvicorn stitchbook_api.main:app --reload --port $(API_PORT)

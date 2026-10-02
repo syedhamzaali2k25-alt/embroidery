@@ -60,6 +60,8 @@ class FakeWhop:
             return httpx.Response(200, json={"id": path.split("/")[1], "cancel_at_period_end": True})
         if path.startswith("memberships/"):
             return httpx.Response(200, json={"id": path.split("/")[1], "manage_url": "https://whop.com/@me/settings/memberships/"})
+        if path.startswith("plans/") and request.method == "GET":
+            return httpx.Response(200, json={"id": path.split("/")[1], "renewal_price": 12, "currency": "usd"})
         return httpx.Response(404, json={"error": "not found"})
 
 
@@ -359,3 +361,33 @@ def test_the_api_refuses_to_start_with_whop_but_no_keys(tmp_path):
 def test_the_keys_never_show_in_a_repr():
     settings = Settings("r", "q", None, "s", False, "info", whop_api_key="whop-test-api-key", whop_webhook_secret=SECRET)
     assert "whop-test-api-key" not in repr(settings) and SECRET not in repr(settings)
+
+
+# ---------- the plan price check (read only) ----------
+
+def test_the_price_check_compares_whop_with_our_computed_prices():
+    from stitchbook_api.whop_plans import compare, expected_prices
+    assert {k: str(v) for k, v in expected_prices(CONFIG).items()} == {
+        ("pro", "month"): "12.00", ("pro", "year"): "129.60", ("business", "month"): "25.00", ("business", "year"): "270.00"}
+    whop = {"plan_ProMonth": {"renewal_price": 12, "initial_price": 0, "currency": "usd", "plan_type": "renewal", "billing_period": 30},
+            "plan_ProYear": {"renewal_price": 129.6, "initial_price": 129.6, "currency": "usd", "plan_type": "renewal", "billing_period": 365},
+            "plan_BizMonth": {"renewal_price": 25, "currency": "usd", "plan_type": "renewal", "billing_period": 30},
+            "plan_BizYear": {"renewal_price": 270, "currency": "usd", "plan_type": "renewal", "billing_period": 365}}
+    seen = []
+    lines, problems = compare(CONFIG, lambda plan_id: seen.append(plan_id) or whop[plan_id])
+    assert problems == [] and len(lines) == 4 and sorted(seen) == sorted(PLAN_IDS.values())
+    whop["plan_BizYear"] = {**whop["plan_BizYear"], "renewal_price": 300, "currency": "eur"}
+    whop["plan_ProMonth"] = {**whop["plan_ProMonth"], "billing_period": 365, "trial_period_days": 7}
+    _, problems = compare(CONFIG, whop.get)
+    assert any("business / year" in p and "300" in p and "270.00" in p for p in problems)
+    assert any("business / year" in p and "currency" in p for p in problems)
+    assert any("pro / month" in p and "billing period" in p for p in problems)
+    assert any("pro / month" in p and "trial" in p for p in problems)
+
+
+def test_the_price_check_only_reads():
+    whop = FakeWhop()
+    provider = WhopProvider("whop-test-api-key", SECRET, "sandbox", {("pro", "month"): "plan_P"}, None, lambda: 5, 300,
+                            http=httpx.Client(transport=httpx.MockTransport(whop)))
+    provider.plan("plan_P")
+    assert [(m, p) for m, p, _ in whop.requests] == [("GET", "plans/plan_P")]
