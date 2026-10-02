@@ -381,3 +381,18 @@ def test_deleting_a_design_keeps_spent_credits_spent(db):
     db.sql(f"delete from public.designs where id = '{design}'", user=a)
     assert balance(db, a)["plan"] == {"available": 10, "reserved": 0, "consumed": 10}
     assert log_row(db, a, "kept")["design_id"] == ""  # the log row stays, without the design
+
+
+def test_one_provider_subscription_belongs_to_one_account(db):
+    """Migration 6: a Whop membership id can be bound to one account only, even if two events
+    naming different accounts got past the API's own check."""
+    a, b = new_user(db), new_user(db)
+    call = ("select public.apply_billing_event('whop', '{event}', '{owner}', 'pro', 'month', 'active', null, null, "
+            "'mem_shared', 0, null, null)")
+    assert svc(db, call.format(event="m6-1", owner=a))[0][0] == "applied"
+    with pytest.raises(PermissionError, match="subscriptions_provider_subscription_idx"):
+        svc(db, call.format(event="m6-2", owner=b))
+    assert svc(db, "select owner_id from public.subscriptions where provider_subscription_id = 'mem_shared'") == [[a]]
+    assert svc(db, "select count(*) from public.processed_webhook_events where event_id = 'm6-2'") == [["0"]]  # rolled back
+    # Another provider's id that happens to look the same is a different subscription.
+    assert svc(db, call.replace("'whop'", "'fake'").format(event="m6-3", owner=b))[0][0] == "applied"

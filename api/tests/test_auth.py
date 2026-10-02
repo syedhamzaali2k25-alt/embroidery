@@ -155,7 +155,7 @@ def test_user_b_never_sees_user_as_design_or_job(setup):
     assert [d["id"] for d in client.get("/designs", headers=as_user(A)).json()] == [design_id]
     assert client.get("/designs", headers=as_user(B)).json() == []  # B's list does not contain it
     for method, path, body in user_routes(client, design_id, job.id):
-        if path in ("/designs", "/jobs/health", "/me/credits", "/billing/checkout", "/billing/cancel"):
+        if path in ("/designs", "/jobs/health", "/me/credits", "/billing/checkout", "/billing/cancel", "/billing/manage"):
             continue  # B's own list (checked above), the queue health, and B's own account routes
         response = call(client, method, path, body, as_user(B))
         assert response.status_code == 404, (method, path, response.status_code, response.text)

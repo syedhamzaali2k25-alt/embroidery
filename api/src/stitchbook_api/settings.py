@@ -35,6 +35,13 @@ class Settings:
     free_operations: bool = False
     # Signing secret of the FakeProvider (tests and local development only).
     fake_provider_secret: str | None = field(default=None, repr=False)
+    # Whop (billing.provider = "whop"): the company API key and the webhook signing secret.
+    # Server side only, never in the web bundle (npm run check:secrets).
+    whop_api_key: str | None = field(default=None, repr=False)
+    whop_webhook_secret: str | None = field(default=None, repr=False)
+    # Public address of the web app, e.g. https://stitchbook.example: the payment page sends the
+    # buyer back to {site_url}/billing. Empty = CORS_ORIGIN; neither = the provider's default page.
+    site_url: str | None = None
 
     @property
     def supabase(self) -> bool:
@@ -89,4 +96,7 @@ def load_settings() -> Settings:
         environment=(os.environ.get("STITCHBOOK_ENV") or "development").strip().lower(),
         free_operations=os.environ.get("STITCHBOOK_FREE_OPERATIONS", "") == "1",
         fake_provider_secret=os.environ.get("STITCHBOOK_FAKE_PROVIDER_SECRET", "").strip() or None,
+        whop_api_key=os.environ.get("WHOP_API_KEY", "").strip() or None,
+        whop_webhook_secret=os.environ.get("WHOP_WEBHOOK_SECRET", "").strip() or None,
+        site_url=(os.environ.get("STITCHBOOK_SITE_URL", "").strip().rstrip("/") or origin),
     )

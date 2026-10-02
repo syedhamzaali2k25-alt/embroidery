@@ -54,6 +54,12 @@ class PgRpc:
                           f"where owner_id = {literal(owner_id)}{order_sql}{limit_sql}) t", service=True)
         return json.loads(whole(out))
 
+    def select_by(self, table: str, column: str, value: str) -> list[dict]:
+        assert column.isidentifier()
+        out = self.pg.sql(f"select coalesce(json_agg(t), '[]') from (select * from public.{table} "
+                          f"where {column}::text = {literal(value)}) t", service=True)
+        return json.loads(whole(out))
+
 
 def whole(rows: list[list[str]]) -> str:
     """psql prints JSON over several lines and splits on "|": put it back together."""

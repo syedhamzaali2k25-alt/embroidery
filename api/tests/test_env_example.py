@@ -40,6 +40,8 @@ def test_every_variable_the_code_reads_is_in_env_example_with_an_empty_value():
     assert {k: v for k, v in listed.items() if v} == {}, ".env.example values must be empty"
     assert {"SUPABASE_URL", "SUPABASE_PUBLISHABLE_KEY", "SUPABASE_SECRET_KEY", "VITE_GOOGLE_CLIENT_ID"} <= set(listed)
     assert "VITE_GOOGLE_CLIENT_ID" in read, "the web app reads the Google client ID"
+    assert {"WHOP_API_KEY", "WHOP_WEBHOOK_SECRET"} <= read & set(listed), "the Whop adapter reads its two secrets"
+    assert not [k for k in listed if k.startswith("VITE_") and "WHOP" in k], "no Whop value goes to the browser"
 
 
 def test_env_is_gitignored_and_not_committed():

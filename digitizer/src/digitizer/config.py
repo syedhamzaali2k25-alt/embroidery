@@ -323,7 +323,26 @@ PRODUCT: dict[str, dict[str, Any]] = {
         "currency": "USD",
         # Payment provider adapter name (stitchbook_api.payments); PLACEHOLDER = payments off
         # ("Payments are not available yet"). "fake" = the FakeProvider, never in production.
+        # "whop" = Whop (docs/payments-whop.md); accepted only with WHOP_API_KEY and
+        # WHOP_WEBHOOK_SECRET in .env and every whop_* value below chosen.
         "provider": PLACEHOLDER,
+        # Whop: which Whop API the adapter talks to, "sandbox" (sandbox-api.whop.com, test
+        # payments) or "production" (api.whop.com). "sandbox" is refused when STITCHBOOK_ENV=production.
+        "whop_environment": PLACEHOLDER,
+        # Whop plan ids (plan_...), one per plan and billing interval. The owner creates these
+        # four plans in the Whop dashboard and pastes their ids here; code never creates prices.
+        # api/scripts/check_whop_plans.py compares each plan's Whop price with ours.
+        "plans.pro.whop_plan_ids.month": PLACEHOLDER,
+        "plans.pro.whop_plan_ids.year": PLACEHOLDER,
+        "plans.business.whop_plan_ids.month": PLACEHOLDER,
+        "plans.business.whop_plan_ids.year": PLACEHOLDER,
+        # A webhook whose signed timestamp is further than this many seconds from the server's
+        # clock (either way) is refused (replay protection). 300 = the 5 minutes of the Standard
+        # Webhooks spec that Whop signs with (given in the Step 13c request).
+        "webhook_tolerance_s": 300,
+        # The API gives up on a call to the payment provider (create a checkout, cancel, read a
+        # membership or plan) after this many seconds and answers with a plain "try again".
+        "provider_http_timeout_s": PLACEHOLDER,
         # A reservation still open after this many seconds is released (its job is presumed
         # lost) by the sweep, which runs every sweep_interval_s seconds and at API start.
         "reservation_timeout_s": PLACEHOLDER,

@@ -48,7 +48,7 @@ from fastapi.concurrency import run_in_threadpool
 from stitchbook_api import plans as plan_math
 from stitchbook_api import uploads
 from stitchbook_api.billing import Billing, BillingUnavailable, FreeOperations, InsufficientCredits, SupabaseRpc
-from stitchbook_api.payments import BadSignature, Provider, provider_from
+from stitchbook_api.payments import BadSignature, IgnoredEvent, Provider, ProviderError, provider_from
 from stitchbook_api.plans import chosen
 from stitchbook_api.auth import LOCAL_USER, Auth, AuthUnavailable, SupabaseAuth, Unauthorized, User
 from stitchbook_api.jobs import TERMINAL, AlreadyFinished, JobNotFound, Jobs, QueueUnavailable
@@ -165,7 +165,9 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
             log.warning("Credits are not set up: operations that cost credits are refused.")
     if provider == "config":
         provider = provider_from(chosen(config, "billing.provider"), fake_secret=settings.fake_provider_secret,
-                                 production=settings.production)
+                                 production=settings.production, config=config,
+                                 whop_api_key=settings.whop_api_key, whop_webhook_secret=settings.whop_webhook_secret,
+                                 site_url=settings.site_url)
 
     def current_user(authorization: Annotated[str | None, Header(include_in_schema=False)] = None) -> User:
         """The signed-in user, from a verified token only. Local mode: the one local user."""
@@ -357,6 +359,7 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
     # ---------- credits ----------
 
     PAYMENTS_OFF = "Payments are not available yet."
+    PROVIDER_DOWN = "The payment service did not answer. Try again in a minute."
 
     def operation_settings(record: DesignRecord, **extra) -> dict:
         """What is recorded with an operation: the design's settings and editor state."""
@@ -412,7 +415,11 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
             raise HTTPException(422, "Choose plan pro or business and interval month or year.")
         if provider is None or not isinstance(billing, Billing):
             raise HTTPException(503, PAYMENTS_OFF)
-        return {"url": provider.create_checkout(user.id, None, plan, interval)}
+        try:
+            return {"url": provider.create_checkout(user.id, None, plan, interval)}
+        except ProviderError:
+            log.exception("checkout could not be created")
+            raise HTTPException(502, PROVIDER_DOWN) from None
 
     @app.post("/billing/cancel", responses=ERRORS)
     def cancel_subscription(user: User = Depends(current_user)) -> dict:
@@ -421,8 +428,29 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
         plan = billing.plan(user.id)
         if not plan.subscription_id:
             raise HTTPException(409, "There is no paid plan to cancel.")
-        provider.cancel_subscription(plan.subscription_id)
+        try:
+            provider.cancel_subscription(plan.subscription_id)
+        except ProviderError:
+            log.exception("cancel could not be sent")
+            raise HTTPException(502, PROVIDER_DOWN) from None
         return {"status": "cancel requested"}
+
+    @app.get("/billing/manage", responses=ERRORS)
+    def manage_billing(user: User = Depends(current_user)) -> dict:
+        """The payment provider's own page where the buyer manages or cancels their plan and
+        payment details (we never see card data). {"url": null} when there is none."""
+        if provider is None or not isinstance(billing, Billing):
+            raise HTTPException(503, PAYMENTS_OFF)
+        plan = billing.plan(user.id)
+        rows = billing.rpc.select("subscriptions", user.id)
+        subscription = plan.subscription_id or (rows[0].get("provider_subscription_id") if rows else None)
+        if not subscription:
+            return {"url": None}
+        try:
+            return {"url": provider.manage_url(subscription)}
+        except ProviderError:
+            log.exception("manage link could not be read")
+            raise HTTPException(502, PROVIDER_DOWN) from None
 
     @app.post("/webhooks/billing", include_in_schema=False)
     async def billing_webhook(request: Request) -> dict:
@@ -435,6 +463,9 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
             event = provider.verify_webhook(request.headers, raw)
         except BadSignature:
             raise HTTPException(400, "The signature does not match.") from None
+        except IgnoredEvent as exc:
+            log.info("billing webhook not used: %s", exc)
+            return {"result": "ignored"}
         except (ValueError, KeyError, TypeError):
             raise HTTPException(400, "The event could not be read.") from None
         return {"result": await run_in_threadpool(billing.apply_event, provider.name, event)}

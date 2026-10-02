@@ -43,6 +43,7 @@ class Rpc(Protocol):
     """Calls one of migration 5's functions, or reads a billing table, as the service role."""
     def call(self, fn: str, args: dict[str, Any]) -> Any: ...
     def select(self, table: str, owner_id: str, order: str | None = None, limit: int | None = None) -> list[dict]: ...
+    def select_by(self, table: str, column: str, value: str) -> list[dict]: ...
 
 
 class SupabaseRpc:
@@ -80,6 +81,12 @@ class SupabaseRpc:
         if limit:
             params["limit"] = limit
         response = self._send("GET", table, params=params)
+        if response.status_code >= 300:
+            raise BillingUnavailable(f"reading {table} failed ({response.status_code})")
+        return response.json()
+
+    def select_by(self, table: str, column: str, value: str) -> list[dict]:
+        response = self._send("GET", table, params={column: f"eq.{value}", "select": "*"})
         if response.status_code >= 300:
             raise BillingUnavailable(f"reading {table} failed ({response.status_code})")
         return response.json()
@@ -179,14 +186,45 @@ class Billing:
 
     # ---------- provider events ----------
     def apply_event(self, provider: str, event: Any) -> str:
-        """A verified provider event: subscription update + this period's plan credits, once."""
-        monthly = plan_math.plan_credits(self.config, event.plan) if event.plan != "free" and event.status == "active" else None
-        start = plan_math.month_start()
+        """A verified provider event: subscription update + this period's plan credits, once.
+
+        The owner is the user id in the provider's signed metadata. An event without one (a
+        renewal payment, say) belongs to whoever that subscription was first bound to, by an
+        earlier signed event. Never applied:
+          - an event whose owner is not a Stitchbook account ("ignored: unknown owner");
+          - an event naming another owner than the one its subscription is bound to
+            ("ignored: owner mismatch"): credits never move to a different user;
+          - a cancel / failure of a subscription that is no longer the owner's current one
+            ("ignored: not the current subscription"), so an old plan cannot end the new one.
+        """
+        bound = [r for r in (self.rpc.select_by("subscriptions", "provider_subscription_id", event.subscription_id)
+                             if event.subscription_id else []) if r.get("provider") == provider]
+        bound_owner = bound[0]["owner_id"] if bound else None
+        if event.owner_id and bound_owner and str(bound_owner) != event.owner_id:
+            log.warning("billing event %s names another owner than its subscription's: ignored", event.id)
+            return "ignored: owner mismatch"
+        owner = event.owner_id or (str(bound_owner) if bound_owner else None)
+        if not owner or not self.rpc.select_by("profiles", "id", owner):
+            log.warning("billing event %s (%s) has no known owner: nothing applied", event.id, event.type)
+            return "ignored: unknown owner"
+        rows = self.rpc.select("subscriptions", owner)
+        current = rows[0] if rows else None
+        same = bool(current) and current.get("provider_subscription_id") == event.subscription_id
+        if current and not same and current.get("provider_subscription_id") and current.get("status") == "active" \
+                and event.status != "active":
+            log.info("billing event %s is for an earlier subscription: ignored", event.id)
+            return "ignored: not the current subscription"
+        period_end = event.period_end
+        if not getattr(event, "has_period", True):  # payment events: keep the period we know
+            period_end = _time(current.get("current_period_end")) if same else None
+        grant = getattr(event, "grant", True)
+        monthly = plan_math.plan_credits(self.config, event.plan) if grant and event.plan != "free" and event.status == "active" else None
+        start = plan_math.month_start(getattr(event, "period_start", None))
         rollover = plan_math.chosen(self.config, "billing.monthly_rollover")
         return self.rpc.call("apply_billing_event", {
-            "p_provider": provider, "p_event_id": event.id, "p_owner": event.owner_id, "p_plan": event.plan,
+            "p_provider": provider, "p_event_id": event.id, "p_owner": owner, "p_plan": event.plan,
             "p_interval": event.interval, "p_status": event.status,
-            "p_period_end": event.period_end.isoformat() if event.period_end else None,
+            "p_period_end": period_end.isoformat() if period_end else None,
             "p_customer": event.customer_id, "p_subscription": event.subscription_id,
             "p_grant_amount": monthly or 0,
             "p_grant_ref": grant_ref(event.subscription_id, start) if monthly and event.subscription_id else None,

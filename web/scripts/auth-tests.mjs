@@ -820,6 +820,21 @@ try {
     await writeFile(join(google, 'assets', 'leak.js'), 'const s = "GOCSPX-made-up-test-secret";');
     check(run('dist-leak-test', {}).status === 1, 'a planted Google client secret (GOCSPX-...) is caught');
     await rm(google, { recursive: true, force: true });
+    // Whop: the two server-side secrets, by value, by name and by the webhook secret's shape.
+    const whopEnv = { WHOP_API_KEY: 'made-up-whop-api-key-0001', WHOP_WEBHOOK_SECRET: 'ws_madeuptestsecretvalue0000000000' };
+    check(run('dist-auth-fixture', whopEnv).status === 0, 'the sign-in build passes with Whop keys in its environment');
+    for (const [label, planted] of [['the WHOP_API_KEY value', whopEnv.WHOP_API_KEY], ['the WHOP_WEBHOOK_SECRET value', whopEnv.WHOP_WEBHOOK_SECRET],
+      ['the name WHOP_API_KEY', 'WHOP_API_KEY'], ['the name WHOP_WEBHOOK_SECRET', 'WHOP_WEBHOOK_SECRET'],
+      ['a Whop webhook secret shape (ws_...)', 'ws_anothermadeupsecret000000000000']]) {
+      const whop = join(root, 'dist-leak-test');
+      await rm(whop, { recursive: true, force: true });
+      await cp(dist, whop, { recursive: true });
+      await writeFile(join(whop, 'assets', 'leak.js'), `const w = "${planted}";`);
+      const out = run('dist-leak-test', whopEnv);
+      check(out.status === 1 && !out.stdout.includes(whopEnv.WHOP_API_KEY) && !out.stdout.includes(whopEnv.WHOP_WEBHOOK_SECRET),
+        `a planted copy of ${label} is caught (values not printed)`);
+      await rm(whop, { recursive: true, force: true });
+    }
     const shipped = (await readdir(join(dist, 'assets'))).map((f) => f);
     let hasId = false;
     for (const f of shipped) if ((await readFile(join(dist, 'assets', f), 'utf8')).includes(GOOGLE_ID)) hasId = true;

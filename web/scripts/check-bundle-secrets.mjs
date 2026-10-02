@@ -20,7 +20,8 @@ async function envFile() {
 const env = { ...(await envFile()), ...process.env };
 const secret = (env.SUPABASE_SECRET_KEY || '').trim();
 // Every other server-side secret whose value is known here: none of them may be in the bundle.
-const otherSecrets = ['PAYMENT_PROVIDER_SECRET_KEY', 'PAYMENT_WEBHOOK_SECRET', 'STITCHBOOK_FAKE_PROVIDER_SECRET']
+const otherSecrets = ['WHOP_API_KEY', 'WHOP_WEBHOOK_SECRET', 'PAYMENT_PROVIDER_SECRET_KEY', 'PAYMENT_WEBHOOK_SECRET',
+  'STITCHBOOK_FAKE_PROVIDER_SECRET']
   .map((k) => [k, (env[k] || '').trim()]).filter(([, v]) => v.length >= 8);
 
 async function files(dir) {
@@ -36,10 +37,13 @@ async function files(dir) {
 // Server-only key shapes: the new secret keys, the Google client secret, and the variable names.
 // Google: OAuth client secrets start with GOCSPX-; the client ID (public) is allowed.
 // Payments: the provider's secret key and webhook secret (by name, and their values when set here),
-// plus well-known secret-key shapes (sk_live_/sk_test_/whsec_).
+// plus well-known secret-key shapes (sk_live_/sk_test_/whsec_). Whop: WHOP_API_KEY and WHOP_WEBHOOK_SECRET
+// (names and values), and the shape of a Whop webhook secret (ws_...). No Whop value is public:
+// the browser is only sent to the checkout URL the API returns.
 const PATTERNS = [/sb_secret_[A-Za-z0-9_-]+/, /SUPABASE_SECRET_KEY/, /SUPABASE_SERVICE_ROLE_KEY/, /GOCSPX-[A-Za-z0-9_-]{10,}/,
   /GOOGLE_CLIENT_SECRET/, /PAYMENT_PROVIDER_SECRET_KEY/, /PAYMENT_WEBHOOK_SECRET/, /STITCHBOOK_FAKE_PROVIDER_SECRET/,
-  /\b(sk|rk)_(live|test)_[A-Za-z0-9]{10,}/, /\bwhsec_[A-Za-z0-9]{10,}/];
+  /\b(sk|rk)_(live|test)_[A-Za-z0-9]{10,}/, /\bwhsec_[A-Za-z0-9]{10,}/, /WHOP_API_KEY/, /WHOP_WEBHOOK_SECRET/,
+  /\bws_[A-Za-z0-9]{24,}/];
 let found = 0;
 let scanned = 0;
 for (const file of await files(dist)) {
