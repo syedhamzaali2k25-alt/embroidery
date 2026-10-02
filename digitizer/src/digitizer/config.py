@@ -340,6 +340,12 @@ PRODUCT: dict[str, dict[str, Any]] = {
         # clock (either way) is refused (replay protection). 300 = the 5 minutes of the Standard
         # Webhooks spec that Whop signs with (given in the Step 13c request).
         "webhook_tolerance_s": 300,
+        # Back from the payment page, /billing asks for the plan and credits every
+        # checkout_return_poll_s seconds, for at most checkout_return_wait_s seconds, until the
+        # payment's webhook has arrived; then it says plainly that it can take longer.
+        # PLACEHOLDER = no automatic checks, only a "Check again" button.
+        "checkout_return_poll_s": PLACEHOLDER,
+        "checkout_return_wait_s": PLACEHOLDER,
         # The API gives up on a call to the payment provider (create a checkout, cancel, read a
         # membership or plan) after this many seconds and answers with a plain "try again".
         "provider_http_timeout_s": PLACEHOLDER,

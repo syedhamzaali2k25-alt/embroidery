@@ -191,6 +191,8 @@ export type Plans = {
   monthly_rollover: boolean | null;
   credit_packs: { credits: number; price: number }[] | null;
   refund_policy: string | null;
+  /** /billing, back from the payment page: check every poll_s seconds for at most wait_s (null = not chosen). */
+  checkout_return: { poll_s: number | null; wait_s: number | null };
   payments_available: boolean;
 };
 export type Balance = { available: number; reserved: number; consumed: number };
@@ -343,6 +345,9 @@ export const api = {
   plans: () => request<Plans>("/plans"),
   credits: () => request<Account>("/me/credits", { stayOn401: true }),
   checkout: (plan: "pro" | "business", interval: "month" | "year") => request<{ url: string }>("/billing/checkout", post({ plan, interval })),
+  /** The payment provider's own page to manage or cancel the plan (null when there is none). */
+  manageBilling: () => request<{ url: string | null }>("/billing/manage"),
+  cancelPlan: () => request<{ status: string }>("/billing/cancel", { method: "POST" }),
   trace: (designId: string) => request<Job>(`/designs/${designId}/trace`, { method: "POST" }),
   jobsHealth: (timeoutS?: number) => request<JobsHealth>("/jobs/health", { timeoutS }),
   job: (jobId: string, timeoutS?: number) => request<Job>(`/jobs/${jobId}`, { timeoutS }),

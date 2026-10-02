@@ -90,6 +90,9 @@ def plans(config: Config) -> dict[str, Any]:
         "monthly_rollover": chosen(config, "billing.monthly_rollover"),
         "credit_packs": packs if isinstance(packs, list) and packs else None,
         "refund_policy": chosen(config, "billing.refund_policy"),
+        # /billing, back from the payment page: how often and how long to look for the payment.
+        "checkout_return": {"poll_s": chosen(config, "billing.checkout_return_poll_s"),
+                            "wait_s": chosen(config, "billing.checkout_return_wait_s")},
     }
 
 

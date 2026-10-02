@@ -714,6 +714,125 @@ try {
     PLANS.payments_available = false;
   }
 
+  console.log('-- payments: checkout, return from the payment page, past due, Manage billing, Cancel plan');
+  const CHECKOUT_PAGE = 'https://checkout.example.test/pay';
+  const MANAGE_PAGE = 'https://billing.example.test/manage';
+  const outside = async (page) => {
+    for (const u of [CHECKOUT_PAGE, MANAGE_PAGE]) await page.route(`${u}**`, (r) => r.fulfill({ contentType: 'text/html', body: '<title>provider</title>' }));
+  };
+  PLANS.payments_available = true;
+  try {
+    {
+      // Upgrade opens the provider's checkout page returned by the API.
+      const free = { plan: 'free', plan_name: 'Free', interval: null };
+      const { context, page } = await fresh({ signedInAs: user, api: { account: () => accountWith(30, free) } });
+      await outside(page);
+      let asked = null;
+      await page.route(`${API}/billing/checkout`, (r) => { asked = r.request().postDataJSON(); return r.fulfill({ json: { url: CHECKOUT_PAGE } }); });
+      await page.goto(`${base}/pricing`);
+      await page.locator('header .acct__credits').waitFor();
+      await page.locator('.plan[data-plan="pro"]').getByRole('button', { name: 'Upgrade' }).click();
+      await page.waitForURL(`${CHECKOUT_PAGE}**`);
+      check(asked?.plan === 'pro' && !('user_id' in asked), `Upgrade asks the API for a checkout (${JSON.stringify(asked)}) and opens the page it returns`);
+      await context.close();
+    }
+    {
+      // Back from the payment page: polls /me/credits until the plan shows up.
+      PLANS.checkout_return = { poll_s: 0.2, wait_s: 5 };
+      let calls = 0;
+      const account = () => (++calls >= 8 ? accountWith(5030) : accountWith(30, { plan: 'free', plan_name: 'Free', interval: null }));
+      const { context, page } = await fresh({ width: 1366, height: 768, signedInAs: user, api: { account } });
+      await page.goto(`${base}/billing?checkout=done`);
+      await page.getByText('Checking for your payment…').waitFor();
+      check(true, 'back from checkout: "Checking for your payment…"');
+      await page.getByText('Your payment went through. Your plan is now Pro.').waitFor({ timeout: 5000 });
+      check(calls >= 8, `it asked /me/credits again until the plan arrived (${calls} calls)`);
+      await page.screenshot({ path: join(root, '..', 'docs', 'screenshots', 'billing-after-checkout.png'), fullPage: true });
+      const { issues } = await page.evaluate(audit);
+      check(issues.length === 0, `/billing after checkout, audit: ${issues.length ? JSON.stringify(issues) : 'no issues'}`);
+      await context.close();
+    }
+    {
+      // Never arrives within the wait: a plain message and Check again; polling stops.
+      PLANS.checkout_return = { poll_s: 0.2, wait_s: 1 };
+      let calls = 0;
+      const account = () => { calls++; return accountWith(30, { plan: 'free', plan_name: 'Free', interval: null }); };
+      const { context, page } = await fresh({ signedInAs: user, api: { account } });
+      await page.goto(`${base}/billing?checkout=done`);
+      await page.getByText('Your payment has not shown up here yet. It can take a few minutes.').waitFor({ timeout: 5000 });
+      const after = calls;
+      await page.waitForTimeout(700);
+      check(calls === after, `after the wait it stops asking (${after} calls, then none)`);
+      await page.getByRole('button', { name: 'Check again' }).click();
+      await page.waitForTimeout(300);
+      check(calls === after + 1, '"Check again" asks once more');
+      await context.close();
+      // Unchosen poll values: no automatic checks, only the button.
+      PLANS.checkout_return = { poll_s: null, wait_s: null };
+      const manual = await fresh({ signedInAs: user, api: { account: () => accountWith(30, { plan: 'free', plan_name: 'Free', interval: null }) } });
+      await manual.page.goto(`${base}/billing?checkout=done`);
+      await manual.page.getByRole('button', { name: 'Check again' }).waitFor();
+      check(await manual.page.getByText('Checking for your payment…').count() === 0, 'poll values not chosen: no automatic checks, only "Check again"');
+      await manual.context.close();
+    }
+    {
+      // payment.failed -> past_due: shown on /billing.
+      const { context, page } = await fresh({ width: 390, height: 844, signedInAs: user,
+        api: { account: () => accountWith(5030, { plan: 'free', plan_name: 'Free', interval: null, status: 'past_due' }) } });
+      await page.goto(`${base}/billing`);
+      const alert = page.locator('.billing__notice[role=alert]');
+      await alert.waitFor();
+      check((await alert.innerText()).includes('Your last payment did not go through'), '/billing: past due is shown plainly');
+      check(await page.getByText('[Payments, tax and invoices: owner to confirm]').isVisible(), '/billing: who handles payments and tax is a visible placeholder');
+      await page.screenshot({ path: join(root, '..', 'docs', 'screenshots', 'billing-past-due-390.png'), fullPage: true });
+      const { issues } = await page.evaluate(audit);
+      check(issues.length === 0, `/billing past due at 390px, audit: ${issues.length ? JSON.stringify(issues) : 'no issues'}`);
+      await context.close();
+    }
+    {
+      // Manage billing: the provider's own page; failures are a plain message.
+      const { context, page } = await fresh({ signedInAs: user });
+      await outside(page);
+      let answer = { status: 502, json: { error: 'The payment service did not answer. Try again in a minute.' } };
+      await page.route(`${API}/billing/manage`, (r) => r.fulfill(answer));
+      await page.goto(`${base}/billing`);
+      await page.getByRole('button', { name: 'Manage billing' }).click();
+      await page.locator('.billing__error').waitFor();
+      check(await page.locator('.billing__error').innerText() === 'The payment service did not answer. Try again in a minute.', 'Manage billing failing: a plain message');
+      answer = { json: { url: null } };
+      await page.getByRole('button', { name: 'Manage billing' }).click();
+      await page.getByText('There is no payment account to manage yet.').waitFor();
+      check(true, 'Manage billing without a payment account: says so');
+      answer = { json: { url: MANAGE_PAGE } };
+      await page.getByRole('button', { name: 'Manage billing' }).click();
+      await page.waitForURL(`${MANAGE_PAGE}**`);
+      check(true, "Manage billing opens the provider's own page");
+      await context.close();
+    }
+    {
+      // Cancel plan: asks first, then stops renewal.
+      const { context, page } = await fresh({ width: 1366, height: 768, signedInAs: user });
+      let cancelled = 0;
+      await page.route(`${API}/billing/cancel`, (r) => { cancelled++; return r.fulfill({ json: { status: 'cancel requested' } }); });
+      await page.goto(`${base}/billing`);
+      await page.getByRole('button', { name: 'Cancel plan' }).click();
+      check(cancelled === 0 && await page.getByRole('group', { name: 'Cancel plan' }).isVisible(), 'Cancel plan asks first (nothing sent yet)');
+      await page.screenshot({ path: join(root, '..', 'docs', 'screenshots', 'billing-cancel-confirm.png'), fullPage: true });
+      const { issues } = await page.evaluate(audit);
+      check(issues.length === 0, `/billing cancel confirm, audit: ${issues.length ? JSON.stringify(issues) : 'no issues'}`);
+      await page.getByRole('button', { name: 'Keep my plan' }).click();
+      check(cancelled === 0, '"Keep my plan" sends nothing');
+      await page.getByRole('button', { name: 'Cancel plan' }).click();
+      await page.getByRole('button', { name: 'Yes, stop renewal' }).click();
+      await page.getByText('Renewal is stopped.').first().waitFor();
+      check(cancelled === 1, 'confirmed: one cancel request, and a plain confirmation');
+      await context.close();
+    }
+  } finally {
+    PLANS.payments_available = false;
+    PLANS.checkout_return = { poll_s: null, wait_s: null };
+  }
+
   console.log('-- text fields: labels, field errors, Show / Hide password, input types');
   {
     const { context, page } = await fresh({ width: 390, height: 844 });

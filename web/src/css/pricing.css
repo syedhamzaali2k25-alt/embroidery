@@ -82,7 +82,7 @@
 .home-pricing__more { justify-self: center; }
 
 /* ---------- /billing ---------- */
-.billing { width: min(1000px, 100%); margin: 0 auto; padding: 48px var(--gutter) 80px; display: grid; gap: 28px; }
+.billing { width: min(1000px, 100%); margin: 0 auto; padding: 48px var(--gutter) 80px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 28px; }
 .billing h1 { font-size: clamp(32px, 4.5vw, 46px); }
 .billing__cards { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr)); }
 .billing__card { padding: 20px; border: 1px solid var(--border); border-radius: var(--radius-card-sm); display: grid; gap: 4px; }
@@ -97,3 +97,16 @@
 /* A plan button that cannot be used now ("Current plan", "Payments are not available yet"):
    outline on the card, plainly not clickable. */
 .plan__cta:disabled { background: var(--surface); color: var(--ink); border-color: var(--ink); cursor: not-allowed; opacity: 1; transform: none; }
+.billing__notice { padding: 16px 20px; border: 1px solid var(--border); border-radius: var(--radius-card-sm); display: grid; gap: 12px; justify-items: start; }
+.billing__notice p { margin: 0; }
+.billing__actions { display: grid; gap: 14px; justify-items: start; }
+.billing__buttons { display: flex; flex-wrap: wrap; gap: 10px; }
+.billing__confirm { display: grid; gap: 12px; }
+.billing__confirm p, .billing__provider, .billing__error, .billing__done { margin: 0; }
+.billing__error { font-weight: 500; color: var(--danger-text); }
+.billing__provider { font-size: 14px; }
+@media (max-width: 600px) {
+  /* Phones: the history wraps instead of scrolling sideways. */
+  .billing__table { font-size: 14px; }
+  .billing__table th, .billing__table td { padding: 10px 8px; white-space: normal; }
+}

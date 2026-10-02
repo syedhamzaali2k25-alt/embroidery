@@ -54,6 +54,23 @@ console.log('-- source: no price or credit amount typed into the pricing compone
   }
 }
 
+// Payment-provider claims stay placeholders until the owner confirms them (docs/payments-whop.md).
+const PROVIDER_CLAIM = /whop|handles? (the )?(tax|vat|invoices?)|processed by|merchant of record|secure(ly)? (payments?|checkout)/i;
+console.log('-- source: no payment-provider or tax claims in the app');
+{
+  const { readdir } = await import('node:fs/promises');
+  const walk = async (dir) => (await Promise.all((await readdir(dir, { withFileTypes: true })).map((e) =>
+    e.isDirectory() ? walk(join(dir, e.name)) : [join(dir, e.name)]))).flat();
+  const files = (await walk(join(root, 'src'))).filter((f) => /\.(tsx?|css|html)$/.test(f));
+  const hits = [];
+  for (const f of files) {
+    const code = (await readFile(f, 'utf8')).replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+    const m = code.match(PROVIDER_CLAIM);
+    if (m) hits.push(`${f.slice(root.length + 1)}: "${m[0]}"`);
+  }
+  check(hits.length === 0, `no "Whop", "handles tax", "processed by" etc. in web/src (${hits.join('; ') || 'none'})`);
+}
+
 function serve() {
   const server = createServer(async (req, res) => {
     const path = decodeURIComponent(new URL(req.url, 'http://x').pathname);
@@ -114,8 +131,9 @@ try {
     check((await page.locator('.plans__badge').innerText()) === '10% off', 'the "10% off" badge comes from yearly_discount_percent');
     const text = await page.locator('main').innerText();
     check(!FORBIDDEN.test(text), `no invented claims (${text.match(FORBIDDEN)?.[0] ?? 'none'})`);
+    check(!PROVIDER_CLAIM.test(text), `no payment-provider or tax claim on the page (${text.match(PROVIDER_CLAIM)?.[0] ?? 'none'})`);
     for (const phrase of ['Credits are set aside when an export starts, and used only if it succeeds.', 'If it fails or is cancelled, the credits come back.',
-      'Previewing and editing a design is free.', 'do not carry over', '[Refund policy]']) {
+      'Previewing and editing a design is free.', 'do not carry over', '[Refund policy]', 'Who handles payments, tax and invoices?', '[Owner to confirm]']) {
       check(text.includes(phrase), `says: "${phrase}"`);
     }
     check(await page.getByRole('button', { name: 'Payments are not available yet' }).count() === 2, 'offline build: paid plans say "Payments are not available yet" (disabled)');

@@ -54,6 +54,10 @@ function Faq({ plans }: { plans: Plans }) {
           <h3>What is the refund policy?</h3>
           <p>{plans.refund_policy ?? <NotChosen what="[Refund policy]" />}</p>
         </div>
+        <div>
+          <h3>Who handles payments, tax and invoices?</h3>
+          <p><NotChosen what="[Owner to confirm]" /></p>
+        </div>
       </div>
     </section>
   );
