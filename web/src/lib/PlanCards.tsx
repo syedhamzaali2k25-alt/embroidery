@@ -93,7 +93,11 @@ export function PlanCards({ plans, headingLevel = 3 }: { plans: Plans; headingLe
             {plan.features === null
               ? <p className="plan__features-none"><NotChosen what="Features not chosen yet" /></p>
               : plan.features.length > 0 && (
-                <ul className="plan__features">{plan.features.map((f) => <li key={f}>{f}</li>)}</ul>
+                <ul className="plan__features">
+                  {plan.features.map((f) => (
+                    <li key={f.key}>{f.name}{f.status === "coming_soon" && <span className="plan__soon">Coming soon</span>}</li>
+                  ))}
+                </ul>
               )}
             <div className="plan__action"><PlanButton plan={plan} interval={interval} plans={plans} /></div>
           </li>

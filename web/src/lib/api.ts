@@ -181,7 +181,8 @@ export type PlanInfo = {
   credits: number | null;
   /** "lifetime" (given once) or "month" (every UTC calendar month). */
   credit_period: string | null;
-  features: string[] | null;
+  /** From config.py; "coming_soon" shows a tag and unlocks nothing yet. null = not chosen. */
+  features: { key: string; name: string; status: "available" | "coming_soon" }[] | null;
 };
 export type Plans = {
   currency: string | null;

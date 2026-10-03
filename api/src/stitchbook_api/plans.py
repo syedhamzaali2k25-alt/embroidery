@@ -67,7 +67,7 @@ def plans(config: Config) -> dict[str, Any]:
     out = []
     for plan in PLAN_IDS:
         monthly = chosen(config, f"billing.plans.{plan}.price_monthly")
-        features = chosen(config, f"billing.plans.{plan}.features")
+        features = plan_features(config, plan)
         priced = monthly is not None and discount is not None
         out.append({
             "id": plan,
@@ -78,7 +78,7 @@ def plans(config: Config) -> dict[str, Any]:
                 ("0.00" if monthly == 0 else None),
             "credits": plan_credits(config, plan),
             "credit_period": chosen(config, "billing.plans.free.credit_period") if plan == "free" else "month",
-            "features": features if isinstance(features, list) else None,
+            "features": features,
         })
     costs = {kind: (chosen(config, f"billing.credit_costs.{kind}")) for kind in operation_kinds(config)}
     packs = chosen(config, "billing.credit_packs")
@@ -96,6 +96,28 @@ def plans(config: Config) -> dict[str, Any]:
     }
 
 
+def plan_features(config: Config, plan: str) -> list[dict[str, str]] | None:
+    """The plan's features from config: [{"key", "name", "status"}] ("available" or
+    "coming_soon"); None while not chosen."""
+    raw = chosen(config, f"billing.plans.{plan}.features")
+    if not isinstance(raw, list):
+        return None
+    out = []
+    for item in raw:
+        if not isinstance(item, dict) or not item.get("key") or not item.get("name"):
+            raise ValueError(f"billing.plans.{plan}.features: every entry needs a key and a name")
+        status = item.get("status", "available")
+        if status not in ("available", "coming_soon"):
+            raise ValueError(f"billing.plans.{plan}.features: unknown status {status!r}")
+        out.append({"key": str(item["key"]), "name": str(item["name"]), "status": status})
+    return out
+
+
+def has_feature(config: Config, plan: str, key: str) -> bool:
+    """True if the plan lists this feature as available (a "coming_soon" one does not count)."""
+    return any(f["key"] == key and f["status"] == "available" for f in plan_features(config, plan) or [])
+
+
 def month_start(now: datetime | None = None) -> datetime:
     """Start of the current UTC calendar month (the plan allowance period)."""
     now = now or datetime.now(timezone.utc)
@@ -107,5 +129,5 @@ def month_end(start: datetime) -> datetime:
     return start.replace(year=start.year + 1, month=1) if start.month == 12 else start.replace(month=start.month + 1)
 
 
-__all__ = ["PLACEHOLDER", "PLAN_IDS", "chosen", "credit_cost", "month_end", "month_start", "operation_kinds",
+__all__ = ["PLACEHOLDER", "PLAN_IDS", "chosen", "credit_cost", "has_feature", "plan_features", "month_end", "month_start", "operation_kinds",
            "per_month_of_yearly", "plan_credits", "plan_name", "plans", "yearly_price"]

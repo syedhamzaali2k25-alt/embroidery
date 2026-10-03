@@ -26,9 +26,12 @@ def test_plans_are_read_from_config_with_owner_values():
     by_id = {p["id"]: p for p in data["plans"]}
     assert [p["id"] for p in data["plans"]] == ["free", "pro", "business"]
     assert by_id["pro"] == {**by_id["pro"], "name": "Pro", "price_monthly": "12.00", "price_yearly": "129.60",
-                            "price_yearly_per_month": "10.80", "credits": 5000, "features": ["Dashboard"]}
+                            "price_yearly_per_month": "10.80", "credits": 5000}
+    names = {p["id"]: [(f["name"], f["status"]) for f in p["features"]] for p in data["plans"]}
+    assert names["free"] == [("Saved designs", "available")]
+    assert names["pro"] == [("Saved designs", "available"), ("Export history", "available"), ("Credit usage", "available")]
+    assert names["business"][:3] == names["pro"]
     assert by_id["business"]["price_yearly"] == "270.00" and by_id["business"]["credits"] == 10000
-    assert by_id["business"]["features"] is None  # placeholder: nothing claimed
     assert by_id["free"]["credits"] == 30 and by_id["free"]["credit_period"] == "lifetime"
     assert data["yearly_discount_percent"] == 10 and data["currency"] == "USD"
     assert data["credit_costs"] == {"export": 10, "satin_columns": None, "auto_digitize": None}
@@ -52,3 +55,14 @@ def test_utc_month_window():
     start = plans.month_start(datetime(2026, 12, 31, 23, 59, tzinfo=timezone.utc))
     assert start == datetime(2026, 12, 1, tzinfo=timezone.utc)
     assert plans.month_end(start) == datetime(2027, 1, 1, tzinfo=timezone.utc)
+
+
+def test_features_decide_what_a_plan_may_use():
+    assert not plans.has_feature(CONFIG, "free", "export_history")
+    assert plans.has_feature(CONFIG, "pro", "export_history") and plans.has_feature(CONFIG, "pro", "credit_usage")
+    assert plans.has_feature(CONFIG, "business", "credit_usage")
+    soon = CONFIG.with_overrides({"billing.plans.pro.features": [{"key": "export_history", "name": "Export history",
+                                                                   "status": "coming_soon"}]})
+    assert not plans.has_feature(soon, "pro", "export_history")  # "coming soon" unlocks nothing
+    unset = CONFIG.with_overrides({"billing.plans.pro.features": plans.PLACEHOLDER})
+    assert plans.plan_features(unset, "pro") is None and not plans.has_feature(unset, "pro", "export_history")

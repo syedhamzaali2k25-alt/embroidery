@@ -46,7 +46,12 @@ console.log('-- source: no price or credit amount typed into the pricing compone
   const landing = await readFile(join(root, 'src/pages/Landing.tsx'), 'utf8');
   const sources = await Promise.all(files.map(async (f) => [f, await readFile(join(root, f), 'utf8')]));
   sources.push(['src/pages/Landing.tsx (pricing section)', landing.slice(landing.indexOf('id="pricing"'), landing.indexOf('className="cta"'))]);
+  const featureNames = [...new Set(PLANS.plans.flatMap((p) => (p.features || []).map((f) => f.name)))];
   for (const [file, text] of sources) {
+    const plain = text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+    const typed = featureNames.filter((n) => plain.includes(`"${n}"`) || plain.includes(`'${n}'`) || plain.includes(`>${n}<`));
+    // Plan cards and pricing only (the Billing page has its own "Credit usage" heading).
+    if (/PlanCards|Pricing|Landing/.test(file)) check(typed.length === 0, `${file}: no feature text typed in${typed.length ? ` (found ${typed.join(', ')})` : ''}`);
     const code = text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '').replace(/\{\/\*[\s\S]*?\*\/\}/g, '');
     const found = [...code.matchAll(/(?<![\w.#$-])(\d+(?:\.\d+)?)(?![\w-])/g)].map((m) => Number(m[1])).filter((n) => numbers.has(n));
     const money = code.match(/[$€£]\s?\d|\d+\s?(credits|%)\b/);
@@ -103,6 +108,10 @@ async function open(path, { width = 1366, height = 768, plans = PLANS, motion = 
 }
 const cards = (page, scope = 'body') => page.locator(`${scope} .plan`).evaluateAll((els) => els.map((e) => e.innerText.replace(/\s+/g, ' ').trim()));
 const noSideScroll = (page) => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth);
+// Text that comes from config.py (the owner's own feature names) is allowed; everything else on
+// the page is checked against FORBIDDEN.
+const fromConfigRemoved = (text) => PLANS.plans.flatMap((p) => (p.features || []).map((f) => f.name))
+  .reduce((t, name) => t.split(name).join(' '), text);
 const FORBIDDEN = /unlimited|cheapest|\bteam\b|multiple accounts|testimonial|best value|\bseats?\b|most popular/i;
 
 try {
@@ -114,9 +123,19 @@ try {
     const [free, pro, business] = monthly;
     check(monthly.length === 3 && free.startsWith('Free') && pro.startsWith('Pro') && business.startsWith('Business'), 'three cards: Free, Pro, Business (names from config)');
     check(free.includes('$0.00') && free.includes('30 credits when you sign up, not renewed'), `Free: $0.00, 30 credits once ("${free}")`);
-    check(pro.includes('$12.00 per month') && pro.includes('5,000 credits per month') && pro.includes('Dashboard'), `Pro monthly ("${pro}")`);
-    check(business.includes('$25.00 per month') && business.includes('10,000 credits per month') && business.includes('Features not chosen yet'),
-      `Business monthly, features a visible placeholder ("${business}")`);
+    check(pro.includes('$12.00 per month') && pro.includes('5,000 credits per month'), `Pro monthly ("${pro}")`);
+    check(business.includes('$25.00 per month') && business.includes('10,000 credits per month'), `Business monthly ("${business}")`);
+    // Features: exactly the names in config.py, in order; a "coming_soon" one carries the tag.
+    for (const plan of PLANS.plans) {
+      const items = await page.locator(`.plan[data-plan="${plan.id}"] .plan__features li`).allInnerTexts();
+      const want = plan.features.map((f) => f.name + (f.status === 'coming_soon' ? 'Coming soon' : ''));
+      check(items.map((t) => t.replace(/\s+/g, '')).join('|') === want.map((t) => t.replace(/\s+/g, '')).join('|'),
+        `${plan.id} features from config: ${items.join(' / ')}`);
+    }
+    const soon = PLANS.plans.flatMap((p) => p.features.filter((f) => f.status === 'coming_soon').map((f) => f.name));
+    check(await page.locator('.plan__soon').count() === soon.length, `"Coming soon" tags only on ${soon.join(', ') || 'nothing'}`);
+    const all = await page.locator('main').innerText();
+    check(!all.includes('Dashboard') && !all.includes('Features not chosen yet'), 'no "Dashboard" and no "Features not chosen yet"');
     check((await page.locator('.plans__note').innerText()).includes('1 export = 10 credits'), '"1 export = 10 credits" from credit_costs.export');
     const fills = await page.locator('.plan').evaluateAll((els) => els.map((e) => [...e.classList].find((c) => c.startsWith('card--'))));
     check(fills.join() === 'card--lavender,card--lime,card--pink', 'fills: lavender, lime, pink');
@@ -130,7 +149,7 @@ try {
     check(yearly[2].includes('$270.00 per year') && yearly[2].includes('That is $22.50 per month'), `Business yearly: $270.00 ("${yearly[2]}")`);
     check((await page.locator('.plans__badge').innerText()) === '10% off', 'the "10% off" badge comes from yearly_discount_percent');
     const text = await page.locator('main').innerText();
-    check(!FORBIDDEN.test(text), `no invented claims (${text.match(FORBIDDEN)?.[0] ?? 'none'})`);
+    check(!FORBIDDEN.test(fromConfigRemoved(text)), `no invented claims (${fromConfigRemoved(text).match(FORBIDDEN)?.[0] ?? 'none'})`);
     check(!PROVIDER_CLAIM.test(text), `no payment-provider or tax claim on the page (${text.match(PROVIDER_CLAIM)?.[0] ?? 'none'})`);
     for (const phrase of ['Credits are set aside when an export starts, and used only if it succeeds.', 'If it fails or is cancelled, the credits come back.',
       'Previewing and editing a design is free.', 'do not carry over', '[Refund policy]', 'Who handles payments, tax and invoices?', '[Owner to confirm]']) {
@@ -172,7 +191,7 @@ try {
     check(await pricing.locator('header').getByRole('link', { name: 'Pricing' }).getAttribute('href') === '/pricing', 'other pages: header Pricing -> /pricing');
     const sections = await page.locator('main > section').evaluateAll((els) => els.map((e) => e.id || e.className));
     check(sections.indexOf('pricing') > sections.indexOf('features') && sections.at(-1) === 'cta', `section order: ${sections.join(', ')}`);
-    check(!FORBIDDEN.test(await page.locator('#pricing').innerText()), 'home pricing: no invented claims');
+    check(!FORBIDDEN.test(fromConfigRemoved(await page.locator('#pricing').innerText())), 'home pricing: no invented claims');
     const section = page.locator('#pricing');
     await section.scrollIntoViewIfNeeded();
     await section.screenshot({ path: join(shots, 'home-pricing-1366.png') });

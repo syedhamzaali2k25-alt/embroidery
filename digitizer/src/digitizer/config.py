@@ -299,15 +299,31 @@ PRODUCT: dict[str, dict[str, Any]] = {
         # allowance, granted month by month).
         "plans.pro.credits_per_month": 5000,
         "plans.business.credits_per_month": 10000,
-        # Features listed on a plan's card. Only what exists; nothing else is claimed.
-        "plans.free.features": [],
-        "plans.pro.features": ["Dashboard"],
-        "plans.business.features": PLACEHOLDER,
+        # Features listed on a plan's card, in order, AND what each plan may use: the API checks
+        # a feature's "key" (export_history -> GET /exports, credit_usage -> GET /credits/usage,
+        # teams -> the Team page). "name" is the text shown; "status": "coming_soon" shows a small
+        # "Coming soon" tag and does NOT unlock the feature yet. Only what exists is listed.
+        "plans.free.features": [
+            {"key": "saved_designs", "name": "Saved designs"},
+        ],
+        "plans.pro.features": [
+            {"key": "saved_designs", "name": "Saved designs"},
+            {"key": "export_history", "name": "Export history"},
+            {"key": "credit_usage", "name": "Credit usage"},
+        ],
+        "plans.business.features": [
+            {"key": "saved_designs", "name": "Saved designs"},
+            {"key": "export_history", "name": "Export history"},
+            {"key": "credit_usage", "name": "Credit usage"},
+            {"key": "teams", "name": "Multiple accounts", "status": "coming_soon"},
+        ],
         # Accounts per Business subscription. Not built (Step 13b: Teams); never shown as a claim.
         "plans.business.seats": PLACEHOLDER,
         # Yearly billing: the yearly price is monthly x 12 x (1 - this/100), computed in code
         # (Pro 129.60, Business 270.00), never typed in anywhere.
         "yearly_discount_percent": 10,
+        # Export history and Credit usage: rows per page (the API pages newest first).
+        "history_page_size": PLACEHOLDER,
         # Credits each metered operation costs. 0 or PLACEHOLDER = free and nothing is reserved.
         # The list of operation kinds is the keys here. Preview is never metered.
         "credit_costs.export": 10,
@@ -406,6 +422,7 @@ TEST_RUN_OVERRIDES: dict[str, Any] = {
     "jobs.status_timeout_s": 10,
     "billing.reservation_timeout_s": 600,
     "billing.sweep_interval_s": 60,
+    "billing.history_page_size": 20,
     "auth.jwks_cache_s": 300,
     "auth.http_timeout_s": 10,
     "editor.edit_point_tolerance_mm": 0.5,
