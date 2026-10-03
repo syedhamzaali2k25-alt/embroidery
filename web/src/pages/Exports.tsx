@@ -9,6 +9,7 @@ import { Pager, UpgradeNote, fileSize, TIME } from "../lib/UsageParts";
 import { SiteFooter, SiteHeader } from "../lib/SiteChrome";
 import { usePage } from "../lib/usePage";
 import "../css/pricing.css";
+import { titled } from "../lib/brand";
 
 // /exports: the signed-in user's finished exports, newest first (Pro and Business). A file is
 // downloaded again through the normal download, which asks for a fresh short-lived link; that is
@@ -17,7 +18,7 @@ import "../css/pricing.css";
 type State = { data: ExportsData } | { upgrade: string } | { error: string } | null;
 
 export default function Exports() {
-  usePage("Export history · Stitchbook", "exports-page");
+  usePage(titled("Export history"), "exports-page");
   const { ready, session } = useSession();
   const account = useCredits();
   const { plans } = usePlans();

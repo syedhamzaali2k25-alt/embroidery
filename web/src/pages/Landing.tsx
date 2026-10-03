@@ -1,39 +1,24 @@
-import { useEffect, useRef, useState, type DragEvent, type MouseEvent } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { useEffect, type MouseEvent } from "react";
+import { Link, useLocation } from "react-router-dom";
 
-import { api, type SiteInfo } from "../lib/api";
+import design from "../assets/hero-design.json";
+import { APP_NAME, SHOW_PLACEHOLDERS } from "../lib/brand";
+import { count, usePlans } from "../lib/credits";
 import { HeroStitches } from "../lib/HeroStitches";
-import { AccountControl } from "../lib/AccountMenu";
 import { Icon } from "../lib/Icon";
-import { setPendingUpload } from "../lib/pendingUpload";
-import { usePlans } from "../lib/credits";
 import { PlanCards } from "../lib/PlanCards";
-import { SiteFooter } from "../lib/SiteChrome";
+import { NotChosen, SiteFooter, SiteHeader, useSite, type NavLink } from "../lib/SiteChrome";
 import { usePage } from "../lib/usePage";
 import { useReveal } from "../lib/useReveal";
 import "../css/landing.css";
 
-const ACCEPT = ".png,.jpg,.jpeg,image/png,image/jpeg";
-// (The CTA card clips its contents, and moving the whole card counted as a layout shift in
-// Chrome; its heading, line and button reveal inside it instead.)
-const REVEAL = "main > section:not(.hero):not(.cta) > h2, .features__grid > .feature, .how__intro, .steps > .step, .demo__frame, .faq__row, .cta > h2, .cta > p, .cta > .btn";
+// The public home page. Every sentence says what the product does today; each one appears once
+// (hero = the promise, features = what you get, steps = the order you do it in, FAQ = details).
+// Prices, credits and the export cost come from config (GET /plans); the formats from GET /site.
 
-// Answers state only what the product does today. Unconfirmed terms stay visible placeholders.
-function faq(formats: string) {
-  return [
-    ["What kind of image works best?",
-      "A logo with clear, flat colours on a plain background, or a transparent PNG. After you upload it, the image check tells you if it is too small, low in contrast, blurry or full of small specks, and what to do about it."],
-    ["Which files can I upload?",
-      "PNG and JPG."],
-    ["Which machine files can I download?",
-      `${formats}. A format is only offered after it passes a write-and-read-back check, so the file you download has the same stitches as the preview.`],
-    ["How many thread colours are used?",
-      "One per colour in your logo, with a thread change between colours; the background is left out. On the upload page you choose which of the colours found to keep. Thread names and codes are not chosen yet."],
-    ["Can I change the stitches?",
-      "Yes. In the preview you set the design width and fill density. In the editor you pick a shape and change it to running, satin or fill stitch, set satin pull compensation, split a satin shape, or make a satin column between two edges. Every change shows up in the preview and the download."],
-    ["Is there a free trial?", "[Fill in your trial terms]"],
-  ] as const;
-}
+// Sections, cards, tiles and FAQ rows below the first screen fade and rise into view once.
+// (The CTA band clips its contents, so its parts reveal inside it rather than the band itself.)
+const REVEAL = "main > section:not(.hero):not(.cta) > h2, .features__grid > .feature, .steps > .step, .demo__frame, .faq__row, .cta > h2, .cta > .btn";
 
 /** Smooth only when the visitor has not asked for reduced motion. */
 const scrollMotion = (): ScrollBehavior => (matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth");
@@ -49,17 +34,12 @@ function sectionLink(e: MouseEvent<HTMLAnchorElement>) {
   history.pushState(null, "", `#${id}`);
 }
 
-export default function Landing() {
-  usePage("Stitchbook", "landing");
-  const navigate = useNavigate();
-  const input = useRef<HTMLInputElement>(null);
-  const [over, setOver] = useState(false);
-  const [site, setSite] = useState<SiteInfo | null>(null);
+const STEPS = ["step--green", "step--lavender", "step--lime", "step--pink"];
 
-  useEffect(() => {
-    api.site().then(setSite, () => setSite(null));
-  }, []);
-  // Sections, cards, steps and FAQ rows below the first screen fade and rise into view once.
+export default function Landing() {
+  usePage(APP_NAME, "landing");
+  const site = useSite().site;
+  const plans = usePlans();
   useReveal(REVEAL);
 
   // Links such as /#how (the footer's "How it works") scroll to their section once it is drawn:
@@ -69,135 +49,144 @@ export default function Landing() {
     if (location.hash) document.getElementById(decodeURIComponent(location.hash.slice(1)))?.scrollIntoView({ behavior: scrollMotion() });
   }, [location.hash, location.key]);
 
-  const start = (file: File | undefined) => {
-    if (!file) return;
-    setPendingUpload(file);
-    navigate("/upload");
-  };
-  const onDrop = (e: DragEvent) => {
-    e.preventDefault();
-    setOver(false);
-    start(e.dataTransfer.files[0]);
-  };
-
-  // Only formats that pass the round-trip test (from config via the API); a placeholder until known.
-  const formats = site ? site.export_formats.map((f) => f.toUpperCase()).join(", ") : "[Export formats]";
-  const plans = usePlans();
+  // Only formats that pass the round-trip test (config via GET /site).
+  const formats = site ? site.export_formats.map((f) => f.toUpperCase()).join(", ") : null;
   const video = site?.demo_video_url ?? "";
+  const showDemo = Boolean(video) || SHOW_PLACEHOLDERS;
+  const exportCost = plans.plans?.credit_costs.export ?? null;
+  const costLine = plans.plans ? `Preview is free.${exportCost ? ` 1 export = ${count(exportCost)} credits.` : ""}` : null;
+
+  const links: NavLink[] = [
+    { href: "#features", label: "Features", onClick: sectionLink },
+    { href: "#how", label: "How it works", onClick: sectionLink },
+    ...(showDemo ? [{ href: "#demo", label: "Demo", onClick: sectionLink }] : []),
+    { href: "#faq", label: "FAQ", onClick: sectionLink },
+    { href: "#pricing", label: "Pricing", onClick: sectionLink },
+  ];
+
+  const faq: [string, string][] = [
+    ["Which images work best?",
+      "A logo with flat colours on a plain or transparent background. The image check points out anything too small, blurry, low in contrast or full of specks."],
+    ["Which files can I upload?", "PNG and JPG."],
+    ["Which machine files can I download?",
+      `${formats ?? "The formats listed when you export"}. A format is offered only after its file passes a write-and-read-back check.`],
+    ["How are thread colours handled?",
+      "Each colour you keep becomes one thread, with a colour change between them. The background is not stitched."],
+    ["Can I change the stitches?",
+      "Yes. Set the width and density in the preview; in the editor, change a shape's stitch type, split a satin shape, or draw a satin column."],
+    ...(exportCost ? [["What does an export cost?",
+      `Previews are free. Each export uses ${count(exportCost)} credits; if it fails, the credits come back.`] as [string, string]] : []),
+  ];
 
   return (
     <>
     <div className="sheet">
-      <header className="nav">
-        <a className="brand" href="/"><Icon name="logo" />Stitchbook</a>
-        <nav className="nav__links" aria-label="Main">
-          <a href="#features" onClick={sectionLink}>Features</a>
-          <a href="#how" onClick={sectionLink}>How it works</a>
-          <a href="#demo" onClick={sectionLink}>Demo</a>
-          <a href="#faq" onClick={sectionLink}>FAQ</a>
-          <a href="#pricing" onClick={sectionLink}>Pricing</a>
-        </nav>
-        <div className="nav__actions"><AccountControl /></div>
-      </header>
+      <SiteHeader links={links} />
 
       <main>
-        <section className="hero">
+        <section className="hero" aria-labelledby="hero-title">
           <div className="hero__copy">
-            <p className="eyebrow"><span className="dot" aria-hidden="true"></span>Automatic embroidery digitizing</p>
-            <h1>Turn your logo into <span className="accent">stitches</span></h1>
-            <p className="lede">Upload an image of your logo. Stitchbook lays out the stitches automatically, lets you change them in the editor, and exports an embroidery machine file.</p>
+            <h1 id="hero-title">Turn your logo into <span className="accent">stitches</span></h1>
+            <p className="lede">Get an embroidery file for your machine from a logo image, and see every stitch before you download it.</p>
             <div className="hero__cta">
-              <a className="btn btn--ink btn--lg" href="/upload">Upload a logo <Icon name="i-arrow" /></a>
-              <a className="btn btn--ghost btn--lg" href="#how">See how it works</a>
+              <Link className="btn btn--ink btn--lg" to="/upload">Upload a logo <Icon name="i-arrow" /></Link>
+              <a className="btn btn--ghost btn--lg" href="#how" onClick={sectionLink}>See how it works</a>
             </div>
-            <ul className="hero__facts" aria-label="Highlights">
-              <li><strong>{formats}</strong><span>machine file</span></li>
-              <li><strong>Fill and satin</strong><span>picked for each shape</span></li>
-              <li><strong>Width in mm</strong><span>height follows your logo</span></li>
-            </ul>
+            <p className="hero__note">{costLine ?? " "}</p>
           </div>
 
-          <div className="hero__art">
-            <svg className="shape shape--lavender art-blob-a" aria-hidden="true"><use href="/assets/sprite.svg#blob-a" /></svg>
-            <svg className="shape shape--lime art-blob-b" aria-hidden="true"><use href="/assets/sprite.svg#blob-b" /></svg>
-            <svg className="shape shape--green art-star" aria-hidden="true"><use href="/assets/sprite.svg#star" /></svg>
-            <div
-              className={`hero-drop${over ? " is-over" : ""}`}
-              onDragOver={(e) => { e.preventDefault(); setOver(true); }}
-              onDragLeave={() => setOver(false)}
-              onDrop={onDrop}
-            >
-              <input ref={input} className="visually-hidden" type="file" accept={ACCEPT} tabIndex={-1} aria-hidden="true"
-                     onChange={(e) => start(e.target.files?.[0])} />
-              <HeroStitches />
-              <p className="hero-drop__title">Drop your logo here</p>
-              <p className="hero-drop__hint">PNG or JPG</p>
-              <button className="btn btn--ink" type="button" onClick={() => input.current?.click()}>Choose a file</button>
+          <figure className="hero-sample">
+            <div className="hero-sample__pair">
+              <div className="hero-sample__panel">
+                <span className="hero-sample__tag">Logo</span>
+                <img className="hero-sample__img" src="/assets/sample-bird.png" width={800} height={640} decoding="async"
+                     alt="The sample logo: a bird on a branch, in flat colours" />
+              </div>
+              <Icon name="i-arrow" className="hero-sample__arrow" />
+              <div className="hero-sample__panel hero-sample__panel--after">
+                <span className="hero-sample__tag">Stitches</span>
+                <HeroStitches />
+              </div>
             </div>
-          </div>
+            <figcaption className="hero-sample__caption">
+              A sample logo from {APP_NAME}'s own tests and the {count(design.stitch_count)} stitches it made from it at 90 mm wide (test settings).
+            </figcaption>
+          </figure>
         </section>
 
-        <section className="features" id="features">
-          <h2>From image to <span className="accent">machine</span> file</h2>
+        <section className="features" id="features" aria-labelledby="features-title">
+          <h2 id="features-title">What you <span className="accent">get</span></h2>
           <div className="features__grid">
             <article className="card card--lavender feature">
               <Icon name="i-image" className="feature__icon" />
-              <h3>Upload your logo</h3>
-              <p>Drop in a PNG or JPG. Stitchbook checks its size, contrast, sharpness and specks first and tells you what to fix.</p>
+              <h3>An image check first</h3>
+              <p>Size, contrast, sharpness and stray specks are checked before anything is stitched, with a note on what to fix.</p>
             </article>
             <article className="card card--lime feature">
               <Icon name="i-needle" className="feature__icon" />
-              <h3>Stitches picked for you</h3>
-              <p>Wide shapes get rows of fill, narrow strokes get satin columns with underlay, and jumps and trims are planned between them.</p>
+              <h3>Stitches chosen per shape</h3>
+              <p>Wide areas become fill, narrow strokes become satin with underlay, and jumps and trims are planned between them.</p>
             </article>
             <article className="card card--pink feature">
-              <Icon name="i-download" className="feature__icon" />
-              <h3>Export for your machine</h3>
-              <p>Check every stitch in the preview, then download a {formats} file for your embroidery machine.</p>
+              <Icon name="i-pen" className="feature__icon" />
+              <h3>Yours to adjust</h3>
+              <p>Switch any shape between running, satin and fill stitch, split a satin shape, or draw a satin column between two edges.</p>
             </article>
           </div>
         </section>
 
-        <section className="how" id="how">
-          <div className="how__intro">
-            <h2>Four steps to a <span className="accent">finished</span> file</h2>
-            <p className="lede">The same four steps for every logo.</p>
-          </div>
+        <section className="how" id="how" aria-labelledby="how-title">
+          <h2 id="how-title">How it <span className="accent">works</span></h2>
           <ol className="steps">
-            <li className="step"><span className="step__num">1</span><div><h3>Upload an image</h3><p>Drop your logo as PNG or JPG, choose its colours and set the design width.</p></div></li>
-            <li className="step"><span className="step__num">2</span><div><h3>Get automatic stitches</h3><p>Fill and satin are laid out for you; the preview shows every stitch.</p></div></li>
-            <li className="step"><span className="step__num">3</span><div><h3>Change them in the editor</h3><p>Pick a shape and change its stitch type, split satin, or add satin columns.</p></div></li>
-            <li className="step"><span className="step__num">4</span><div><h3>Export a machine file</h3><p>Download {formats} and send it to your machine.</p></div></li>
+            {[["Upload", "Add a PNG or JPG of your logo."],
+              ["Choose colours and size", "Keep the colours you want and set the width in millimetres."],
+              ["Look it over", "Check the stitches, and change any shape in the editor."],
+              ["Download", `Save the ${formats ?? "machine"} file and load it on your machine.`]].map(([title, text], i) => (
+              <li className={`step ${STEPS[i]}`} key={title}>
+                <span className="step__num" aria-hidden="true">{i + 1}</span>
+                <h3><span className="visually-hidden">Step {i + 1}: </span>{title}</h3>
+                <p>{text}</p>
+              </li>
+            ))}
           </ol>
         </section>
 
-        <section className="demo" id="demo">
-          <h2>See it in <span className="accent">action</span></h2>
-          <div className="demo__frame">
-            {video ? (
-              <video className="demo__video" src={video} controls preload="metadata">
-                Your browser can't play this video. <a href={video}>Download it instead.</a>
-              </video>
-            ) : (
-              <div className="demo__poster">
-                <button className="demo__play" type="button" disabled aria-label="Demo video (not added yet)">
-                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l11-6.5z" fill="currentColor" /></svg>
-                </button>
-                <p className="demo__label">[Demo video]</p>
-              </div>
-            )}
-          </div>
-        </section>
+        {showDemo && (
+          <section className="demo" id="demo" aria-labelledby="demo-title">
+            <h2 id="demo-title">See it in <span className="accent">action</span></h2>
+            <div className="demo__frame">
+              {video ? (
+                <video className="demo__video" src={video} controls preload="none" poster="/assets/sample-bird.png"
+                       width={1280} height={720}>
+                  Your browser can't play this video. <a href={video}>Download it instead.</a>
+                </video>
+              ) : (
+                <div className="demo__poster">
+                  <button className="demo__play" type="button" disabled aria-label="Demo video (not added yet)">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l11-6.5z" fill="currentColor" /></svg>
+                  </button>
+                  <p className="demo__label"><NotChosen what="[Demo video]" /></p>
+                </div>
+              )}
+            </div>
+          </section>
+        )}
 
-        <section className="faq" id="faq">
-          <h2>Questions and <span className="accent">answers</span></h2>
+        <section className="faq" id="faq" aria-labelledby="faq-title">
+          <h2 id="faq-title">Questions and <span className="accent">answers</span></h2>
           <div className="faq__list">
-            {faq(formats).map(([q, a]) => (
+            {faq.map(([q, a]) => (
               <details className="faq__row" key={q}>
                 <summary>{q}<Icon name="i-plus" className="faq__icon" /></summary>
                 <p>{a}</p>
               </details>
             ))}
+            {SHOW_PLACEHOLDERS && (
+              <details className="faq__row">
+                <summary>Is there a free trial?<Icon name="i-plus" className="faq__icon" /></summary>
+                <p><NotChosen what="[Fill in your trial terms]" /></p>
+              </details>
+            )}
           </div>
         </section>
 
@@ -208,12 +197,11 @@ export default function Landing() {
           <Link className="btn btn--ghost home-pricing__more" to="/pricing">See full pricing</Link>
         </section>
 
-        <section className="cta">
+        <section className="cta" aria-labelledby="cta-title">
           <svg className="shape shape--ink cta__sparkle" aria-hidden="true"><use href="/assets/sprite.svg#sparkle" /></svg>
           <svg className="shape shape--lime cta__star" aria-hidden="true"><use href="/assets/sprite.svg#star" /></svg>
-          <h2>Your next patch starts here</h2>
-          <p>Upload a PNG or JPG logo and see its stitches.</p>
-          <a className="btn btn--ink btn--lg" href="/upload">Upload a logo</a>
+          <h2 id="cta-title">Try it with your <span className="accent">logo</span></h2>
+          <Link className="btn btn--ink btn--lg" to="/upload">Upload a logo</Link>
         </section>
       </main>
     </div>

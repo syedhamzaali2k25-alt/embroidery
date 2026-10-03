@@ -11,6 +11,7 @@ import { Icon } from "../lib/Icon";
 import { StitchCanvas } from "../lib/StitchCanvas";
 import { usePage } from "../lib/usePage";
 import "../css/flow.css";
+import { titled } from "../lib/brand";
 
 const LAYER_NAMES = { fill: "Fill", satin: "Satin", running: "Running", "junction patch": "Junction patch" } as const;
 
@@ -23,7 +24,7 @@ function mm(value: number): string {
 }
 
 export default function Preview() {
-  usePage("Preview · Stitchbook", "flow");
+  usePage(titled("Preview"), "flow");
   const { designId } = useParams();
   const [search] = useSearchParams();
   const navigate = useNavigate();

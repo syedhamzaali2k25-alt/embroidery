@@ -1,5 +1,5 @@
 {
-  "id": "f52024dc38714b7ea9738f1b884cc094",
+  "id": "1719e46ee9de495dbad27238776c559b",
   "filename": "bird.png",
   "type": "png",
   "bytes": 35389,
@@ -95,7 +95,7 @@
   },
   "warnings": [],
   "status": "digitized",
-  "created_at": "2026-10-03T12:46:28.033905Z",
+  "created_at": "2026-10-03T18:11:20.270788Z",
   "stats": {
     "stitch_count": 2642,
     "jump_count": 51,

@@ -3,12 +3,13 @@ import { Link } from "react-router-dom";
 
 import { AccountControl } from "./AccountMenu";
 import { Icon } from "./Icon";
+import { APP_NAME } from "./brand";
 
 /** Top bar shared by the Upload and Preview screens: brand, the two steps, and actions. */
 export function FlowBar({ step, children }: { step: 1 | 2; children?: ReactNode }) {
   return (
     <header className="flow-bar">
-      <a className="brand" href="/home"><Icon name="logo" />Stitchbook</a>
+      <a className="brand" href="/home"><Icon name="logo" />{APP_NAME}</a>
       <ol className="flow-steps" aria-label="Steps">
         <li aria-current={step === 1 ? "step" : undefined}>
           {step === 1 ? <><span className="num">1</span>Upload</> : <Link to="/upload"><span className="num">1</span>Upload</Link>}

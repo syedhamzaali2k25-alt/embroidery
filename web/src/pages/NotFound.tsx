@@ -3,9 +3,10 @@ import { Link } from "react-router-dom";
 import { FlowBar } from "../lib/FlowBar";
 import { usePage } from "../lib/usePage";
 import "../css/flow.css";
+import { titled } from "../lib/brand";
 
 export default function NotFound() {
-  usePage("Page not found · Stitchbook", "flow");
+  usePage(titled("Page not found"), "flow");
   return (
     <>
       <FlowBar step={1} />

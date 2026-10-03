@@ -226,7 +226,9 @@ try {
       await pg.evaluate(() => window.scrollTo(0, 0));
       await pg.locator('.nav__links').getByRole('link', { name: 'Pricing' }).click();
       const soon = await pg.evaluate(() => new Promise((r) => setTimeout(() => r(scrollY), 40)));
-      await pg.waitForFunction(() => Math.abs(document.getElementById('pricing').getBoundingClientRect().top) < 2, null, { timeout: 5000 });
+      // The section stops just under the sticky header (scroll-margin-top), not under it.
+      await pg.waitForFunction(() => Math.abs(document.getElementById('pricing').getBoundingClientRect().top
+        - document.querySelector('.nav').getBoundingClientRect().bottom) < 2, null, { timeout: 5000 });
       return { soon, end: await pg.evaluate(() => scrollY), hash: await pg.evaluate(() => location.hash) };
     };
     const still = await jumpTo(page);

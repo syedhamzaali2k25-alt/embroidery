@@ -4,9 +4,10 @@ import { Link, useParams } from "react-router-dom";
 import { findPost, posts, renderMarkdown } from "../lib/blog";
 import { SitePage } from "../lib/SiteChrome";
 import { usePage } from "../lib/usePage";
+import { titled } from "../lib/brand";
 
 export default function Blog() {
-  usePage("Blog · Stitchbook", "site-page");
+  usePage(titled("Blog"), "site-page");
   return (
     <SitePage>
       <h1>Blog</h1>
@@ -32,7 +33,7 @@ export default function Blog() {
 export function BlogPost() {
   const { slug } = useParams();
   const post = findPost(slug);
-  usePage(post ? `${post.title} · Stitchbook` : "Post not found · Stitchbook", "site-page");
+  usePage(post ? titled(post.title) : titled("Post not found"), "site-page");
   if (!post) {
     return (
       <SitePage>

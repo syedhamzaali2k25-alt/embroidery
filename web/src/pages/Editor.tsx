@@ -4,11 +4,12 @@ import { AccountControl } from "../lib/AccountMenu";
 import { usePage } from "../lib/usePage";
 import DesignEditor from "./DesignEditor";
 import "../css/editor.css";
+import { APP_NAME } from "../lib/brand";
 
 // With ?design=<id> the editor works on that design (DesignEditor). Without one there is
 // nothing to edit: the page says how to get a design into the editor.
 export default function Editor() {
-  usePage("Stitchbook Editor", "editor");
+  usePage(`${APP_NAME} Editor`, "editor");
   const [search] = useSearchParams();
   const designParam = search.get("design");
   const designId = designParam && /^[0-9a-f]{32}$/.test(designParam) ? designParam : null;

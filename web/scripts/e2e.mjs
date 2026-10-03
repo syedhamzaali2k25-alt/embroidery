@@ -169,17 +169,17 @@ try {
     // ---------- landing ----------
     console.log('-- landing');
     await page.goto(`${WEB}/`);
-    await page.getByText('machine file', { exact: true }).waitFor();
-    await page.locator('.hero__facts strong', { hasText: 'DST' }).waitFor({ timeout: 10000 }).catch(() => {}); // after GET /site answers
-    check((await page.locator('.hero__facts').innerText()).startsWith('DST'), 'landing lists the formats from the API (DST)');
-    check(await page.getByText('[Demo video]').isVisible(), 'empty demo_video_url shows the [Demo video] poster');
-    const handedOff = page.waitForResponse((r) => r.url() === `${API}/designs` && r.request().method() === 'POST');
-    await page.locator('.hero-drop input[type=file]').setInputFiles(join(web, 'scripts', 'test-images', 'cafe-luna.jpg'));
+    await page.locator('.step').last().getByText(/Save the DST file/).waitFor({ timeout: 10000 }); // after GET /site answers
+    check(true, 'landing lists the formats from the API (DST, in the Download step)');
+    check(await page.getByText('[Demo video]').isVisible(), 'empty demo_video_url shows the [Demo video] poster (test build)');
+    await page.locator('.hero__cta').getByRole('link', { name: 'Upload a logo' }).click();
     await page.waitForURL(`${WEB}/upload`);
-    check((await handedOff).status() === 201, 'a file chosen in the hero upload box opens Upload and is uploaded');
+    const handedOff = page.waitForResponse((r) => r.url() === `${API}/designs` && r.request().method() === 'POST');
+    await page.locator('.flow-drop input[type=file]').setInputFiles(join(web, 'scripts', 'test-images', 'cafe-luna.jpg'));
+    check((await handedOff).status() === 201, 'the hero\'s "Upload a logo" opens Upload, and a chosen file is uploaded');
     await page.locator('.flow-checks li').first().waitFor();
     await page.locator('.flow-drop__image').waitFor();
-    check((await page.locator('.flow-drop__file').innerText()).startsWith('cafe-luna.jpg'), 'Upload shows the handed-off file');
+    check((await page.locator('.flow-drop__file').innerText()).startsWith('cafe-luna.jpg'), 'Upload shows the chosen file');
     await page.route(`${API}/site`, (r) => r.fulfill({ json: { app_name: 'Stitchbook', demo_video_url: 'https://example.com/demo.mp4', export_formats: ['dst'] } }));
     await page.goto(`${WEB}/`);
     await page.locator('video.demo__video').waitFor();

@@ -6,7 +6,7 @@ import { join, relative, resolve } from 'node:path';
 
 const root = resolve(new URL('..', import.meta.url).pathname);
 const allowed = new Set(['src/css/tokens.css']);
-const skip = new Set(['node_modules', '.git', 'screenshots', 'scripts', 'dist', 'dist-blog-fixture', 'dist-auth-fixture', 'dist-auth-noclient', 'dist-leak-test', 'dist-team-fixture']);
+const skip = new Set(['node_modules', '.git', 'screenshots', 'scripts', 'dist', 'dist-blog-fixture', 'dist-auth-fixture', 'dist-auth-noclient', 'dist-leak-test', 'dist-team-fixture', 'dist-landing-fixture', 'dist-landing-dev']);
 const pattern = /#[0-9a-f]{3,8}\b(?![-\w])|\brgba?\(|\bhsla?\(/gi;
 
 async function* files(dir) {

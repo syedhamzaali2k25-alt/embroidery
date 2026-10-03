@@ -10,6 +10,7 @@ import { setPendingUpload, takePendingUpload } from "../lib/pendingUpload";
 import { Icon } from "../lib/Icon";
 import { usePage } from "../lib/usePage";
 import "../css/flow.css";
+import { titled } from "../lib/brand";
 
 type Load<T> = { status: "loading" } | { status: "ready"; data: T } | { status: "error"; message: string };
 type UploadState =
@@ -27,7 +28,7 @@ function message(err: unknown): string {
 }
 
 export default function Upload() {
-  usePage("Upload a logo · Stitchbook", "flow");
+  usePage(titled("Upload a logo"), "flow");
   const navigate = useNavigate();
   const auth = useSession();
   const session = auth.session;

@@ -9,6 +9,7 @@ import { DAY, UpgradeNote } from "../lib/UsageParts";
 import { SiteFooter, SiteHeader } from "../lib/SiteChrome";
 import { usePage } from "../lib/usePage";
 import "../css/pricing.css";
+import { titled } from "../lib/brand";
 
 // /team: a Business owner's team (members, invites, seats, extra seats). Members see that their
 // credits come from the team; Free and Pro see a calm note that teams come with Business.
@@ -18,7 +19,7 @@ type State = { team: TeamData } | { upgrade: string } | { error: string } | null
 const message = (err: unknown, fallback: string) => (err instanceof ApiError ? err.message : fallback);
 
 export default function Team() {
-  usePage("Team · Stitchbook", "team-page");
+  usePage(titled("Team"), "team-page");
   const { ready, session } = useSession();
   const { plans } = usePlans();
   const [state, setState] = useState<State>(null);

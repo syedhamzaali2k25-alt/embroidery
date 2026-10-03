@@ -9,6 +9,7 @@ import { NotChosen, SiteFooter, SiteHeader } from "../lib/SiteChrome";
 import { DAY, Pager, TIME as WHEN, UpgradeNote } from "../lib/UsageParts";
 import { usePage } from "../lib/usePage";
 import "../css/pricing.css";
+import { titled } from "../lib/brand";
 
 // /billing: the signed-in user's plan, credit balances and every metered operation; Manage
 // billing and Cancel plan (the payment provider's own pages: no card form here); and, back from
@@ -204,7 +205,7 @@ function OwnHistory({ account }: { account: Enabled }) {
 }
 
 export default function Billing() {
-  usePage("Credits and plan · Stitchbook", "billing-page");
+  usePage(titled("Credits and plan"), "billing-page");
   const { ready, session } = useSession();
   const account = useCredits();
   const { plans } = usePlans();

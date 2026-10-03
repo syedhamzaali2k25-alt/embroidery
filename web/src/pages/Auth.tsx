@@ -10,11 +10,12 @@ import { Icon } from "../lib/Icon";
 import { SiteFooter, SiteHeader } from "../lib/SiteChrome";
 import { usePage } from "../lib/usePage";
 import "../css/auth.css";
+import { titled } from "../lib/brand";
 
 // Log in, Sign up and Log out. Plain white page, one centred column, Supabase Auth behind it.
 
 function AuthPage({ title, page, children }: { title: string; page?: "login" | "signup"; children: ReactNode }) {
-  usePage(`${title} · Stitchbook`, "auth-page");
+  usePage(titled(title), "auth-page");
   return (
     <>
       <div className="sheet">

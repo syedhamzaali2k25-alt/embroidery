@@ -4,6 +4,7 @@ import { count, usePlans } from "../lib/credits";
 import { usePage } from "../lib/usePage";
 import type { Plans } from "../lib/api";
 import "../css/pricing.css";
+import { SHOW_PLACEHOLDERS, titled } from "../lib/brand";
 
 // /pricing: the plan cards (shared with the home page) and what credits do, stated only as the
 // code does it (api/src/stitchbook_api/billing.py, migration 5). Every number comes from GET /plans.
@@ -50,21 +51,26 @@ function Faq({ plans }: { plans: Plans }) {
           <h3>Can I see what my credits were used for?</h3>
           <p>Yes. The Credits page lists every export with its time, design, status and the credits it used.</p>
         </div>
-        <div>
-          <h3>What is the refund policy?</h3>
-          <p>{plans.refund_policy ?? <NotChosen what="[Refund policy]" />}</p>
-        </div>
-        <div>
-          <h3>Who handles payments, tax and invoices?</h3>
-          <p><NotChosen what="[Owner to confirm]" /></p>
-        </div>
+        {/* Open owner decisions: shown as placeholders in development and test builds only. */}
+        {(plans.refund_policy || SHOW_PLACEHOLDERS) && (
+          <div>
+            <h3>What is the refund policy?</h3>
+            <p>{plans.refund_policy ?? <NotChosen what="[Refund policy]" />}</p>
+          </div>
+        )}
+        {SHOW_PLACEHOLDERS && (
+          <div>
+            <h3>Who handles payments, tax and invoices?</h3>
+            <p><NotChosen what="[Owner to confirm]" /></p>
+          </div>
+        )}
       </div>
     </section>
   );
 }
 
 export default function Pricing() {
-  usePage("Pricing · Stitchbook", "pricing-page");
+  usePage(titled("Pricing"), "pricing-page");
   const { plans, failed } = usePlans();
   return (
     <>

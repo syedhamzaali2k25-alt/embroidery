@@ -7,6 +7,7 @@ import { refreshCredits } from "../lib/credits";
 import { SiteFooter, SiteHeader } from "../lib/SiteChrome";
 import { usePage } from "../lib/usePage";
 import "../css/pricing.css";
+import { titled } from "../lib/brand";
 
 // /team/join#token=...: accept a team invite. The token is in the URL fragment (never sent to a
 // server, so never in a log) and kept in this tab's sessionStorage across logging in.
@@ -28,7 +29,7 @@ function readToken(): string | null {
 }
 
 export default function TeamJoin() {
-  usePage("Join a team · Stitchbook", "team-join-page");
+  usePage(titled("Join a team"), "team-join-page");
   const { ready, session } = useSession();
   const [token] = useState(readToken);
   const [state, setState] = useState<"idle" | "busy" | "joined" | { error: string }>("idle");

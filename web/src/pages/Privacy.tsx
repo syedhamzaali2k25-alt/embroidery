@@ -9,11 +9,12 @@ import { Link } from "react-router-dom";
 import { GOOGLE_CLIENT_ID, signInEnabled } from "../lib/auth";
 import { DraftBanner, NotChosen, SitePage, SiteValue, useSite } from "../lib/SiteChrome";
 import { usePage } from "../lib/usePage";
+import { titled } from "../lib/brand";
 
 export const megabytes = (bytes: number) => `${(bytes / 1_000_000).toLocaleString("en", { maximumFractionDigits: 1 })} MB`;
 
 export default function Privacy() {
-  usePage("Privacy · Stitchbook", "site-page");
+  usePage(titled("Privacy"), "site-page");
   const state = useSite();
   const video = state.site?.demo_video_url ?? "";
   return (

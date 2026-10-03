@@ -3,5 +3,7 @@ dist/
 dist-blog-fixture/
 dist-auth-fixture/
 dist-team-fixture/
+dist-landing-fixture/
+dist-landing-dev/
 dist-leak-test/
 dist-auth-noclient/

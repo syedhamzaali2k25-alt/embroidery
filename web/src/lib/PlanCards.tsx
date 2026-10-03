@@ -4,7 +4,7 @@ import { Link } from "react-router-dom";
 import { api, ApiError, type PlanInfo, type Plans } from "./api";
 import { signInEnabled, useSession } from "./auth";
 import { count, extraSeatLine, money, useCredits } from "./credits";
-import { NotChosen } from "./SiteChrome";
+import { Unset } from "./SiteChrome";
 import "../css/pricing.css";
 
 // The Free / Pro / Business cards with the Monthly | Yearly switch, used by /pricing and the
@@ -18,15 +18,21 @@ function PlanButton({ plan, interval, plans }: { plan: PlanInfo; interval: Inter
   const { session } = useSession();
   const account = useCredits();
   const [state, setState] = useState<"idle" | "busy" | { error: string }>("idle");
-  const unavailable = <button className="btn btn--ink plan__cta" type="button" disabled>Payments are not available yet</button>;
-  if (!signInEnabled) return plan.id === "free" ? null : unavailable;
+  const unavailable = <button className="btn plan__cta plan__cta--off" type="button" disabled>Payments are not available yet</button>;
+  const current = account && account.enabled ? account.plan : null;
+  if (plan.id === "free") {
+    // Free: sign up when signed out; once signed in (or with no accounts at all) straight to work.
+    if (signInEnabled && !session) {
+      return <Link className="btn btn--ink plan__cta" to={`/signup?next=${encodeURIComponent("/upload")}`}>Start free</Link>;
+    }
+    return <Link className="btn btn--ink plan__cta" to="/upload">Open editor</Link>;
+  }
+  // Paid plans: only with a payment provider configured (billing.provider; "fake" in local runs).
+  if (!plans.payments_available || !signInEnabled) return unavailable;
   if (!session) {
     return <Link className="btn btn--ink plan__cta" to={`/signup?next=${encodeURIComponent("/pricing")}`}>Sign up</Link>;
   }
-  const current = account && account.enabled ? account.plan : null;
   if (current === plan.id) return <button className="btn btn--ink plan__cta" type="button" disabled>Current plan</button>;
-  if (plan.id === "free") return null;
-  if (!plans.payments_available) return unavailable;
   const go = () => {
     setState("busy");
     api.checkout(plan.id as "pro" | "business", interval).then(
@@ -46,7 +52,7 @@ function PlanButton({ plan, interval, plans }: { plan: PlanInfo; interval: Inter
 
 function Price({ plan, interval, plans }: { plan: PlanInfo; interval: Interval; plans: Plans }) {
   const monthly = money(plan.price_monthly, plans.currency);
-  if (monthly === null) return <p className="plan__price"><NotChosen what="Price not chosen yet" /></p>;
+  if (monthly === null) return <p className="plan__price"><Unset what="Price not chosen yet" /></p>;
   if (Number(plan.price_monthly) === 0) return <p className="plan__price"><span className="plan__amount">{monthly}</span></p>;
   if (interval === "month") {
     return <p className="plan__price"><span className="plan__amount">{monthly}</span> <span className="plan__per">per month</span></p>;
@@ -55,7 +61,7 @@ function Price({ plan, interval, plans }: { plan: PlanInfo; interval: Interval; 
   const perMonth = money(plan.price_yearly_per_month, plans.currency);
   return (
     <>
-      <p className="plan__price"><span className="plan__amount">{yearly ?? <NotChosen />}</span> <span className="plan__per">per year</span></p>
+      <p className="plan__price"><span className="plan__amount">{yearly ?? <Unset />}</span> <span className="plan__per">per year</span></p>
       {perMonth && <p className="plan__equiv">That is {perMonth} per month.</p>}
     </>
   );
@@ -102,11 +108,11 @@ export function PlanCards({ plans, headingLevel = 3 }: { plans: Plans; headingLe
       <ul className="plans__grid">
         {plans.plans.map((plan) => (
           <li key={plan.id} className={`card ${FILL[plan.id]} plan`} data-plan={plan.id}>
-            <H className="plan__name">{plan.name ?? <NotChosen what="Name not chosen yet" />}</H>
+            <H className="plan__name">{plan.name ?? <Unset what="Name not chosen yet" />}</H>
             <Price plan={plan} interval={interval} plans={plans} />
-            <p className="plan__credits">{credits(plan) ?? <NotChosen what="Credits not chosen yet" />}</p>
+            <p className="plan__credits">{credits(plan) ?? <Unset what="Credits not chosen yet" />}</p>
             {plan.features === null
-              ? <p className="plan__features-none"><NotChosen what="Features not chosen yet" /></p>
+              ? <p className="plan__features-none"><Unset what="Features not chosen yet" /></p>
               : plan.features.length > 0 && (
                 <ul className="plan__features">
                   {plan.features.map((f) => (

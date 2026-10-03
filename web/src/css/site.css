@@ -1,22 +1,63 @@
 /* Shared by the public pages: the header (.nav), the footer with its links, and the text pages
    (Privacy, Terms, Contact, Blog). Neutral: ink on white, no pastel fills. */
 
-/* ---------- Header ---------- */
+/* ---------- Header ----------
+   Sticky at the top of every public page. Sections that links scroll to keep clear of it with
+   scroll-margin-top: var(--header-h) (landing.css). */
 .nav {
+  position: sticky;
+  top: 0;
+  z-index: 20;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 18px 20px;
+  min-height: var(--header-h);
+  padding: 12px 20px;
   border-bottom: 1px solid var(--border);
+  background: var(--surface);
 }
-.nav__links { display: none; gap: 28px; }
-.nav__links a { font-weight: 500; font-size: 15px; text-decoration: underline 2px transparent; text-underline-offset: 6px; }
-.nav__actions { display: flex; gap: 8px; }
+.nav__links { display: none; gap: 8px; }
+.nav__links a {
+  display: inline-flex; align-items: center; min-height: 44px; padding: 0 10px;
+  font-weight: 500; font-size: 15px; text-decoration: underline 2px transparent; text-underline-offset: 6px;
+}
+.nav__actions { display: flex; align-items: center; gap: 8px; }
+.nav .btn--sm, .nav .acct__credits { min-height: 44px; }  /* a full tap target in the header */
+.nav .brand, .footer .brand { min-height: 44px; }
+/* Narrow phones: the Menu button keeps its 44px target but drops its word, so a signed-in header
+   (brand, balance, avatar, Menu) still fits. */
+@media (max-width: 420px) {
+  .nav { gap: 8px; padding-inline: 12px; }
+  .nav__menu-btn { width: 44px; padding: 0; }
+  .nav__menu-btn .nav__menu-word { display: none; }  /* the button keeps its name (aria-label) */
+}
+
+/* Below 900px: a Menu button and a panel under the header. */
+.nav__menu-btn svg { width: 18px; height: 18px; }
+.nav__menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  padding: 8px 20px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  box-shadow: var(--shadow-float);
+}
+.nav__menu[hidden] { display: none; }
+.nav__menu nav { display: grid; }
+.nav__menu-link {
+  display: flex; align-items: center; min-height: 48px;
+  border-bottom: 1px solid var(--border);
+  font-weight: 500; font-size: 17px;
+}
+.nav__menu-link:last-child { border-bottom: 0; }
 
 @media (min-width: 900px) {
-  .nav { padding: 22px 40px; }
+  .nav { padding: 14px 40px; }
   .nav__links { display: flex; }
+  .nav__menu-btn, .nav__menu { display: none; }
 }
 
 /* ---------- Footer ----------
@@ -62,7 +103,7 @@
   font-weight: 500;
   text-underline-offset: 6px;
 }
-@media (min-width: 900px) { .footer__link { min-height: 38px; font-size: 16px; } }
+@media (min-width: 900px) { .footer__link { font-size: 16px; } }  /* 44px tall at every width */
 
 .footer__bottom {
   display: flex;

@@ -77,4 +77,5 @@
   /* Layout */
   --gutter: 16px;
   --sheet-max: 1240px;
+  --header-h: 72px;  /* the sticky header; anchored sections keep clear of it */
 }

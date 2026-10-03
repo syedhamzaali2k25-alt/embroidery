@@ -99,6 +99,8 @@
 /* A plan button that cannot be used now ("Current plan", "Payments are not available yet"):
    outline on the card, plainly not clickable. */
 .plan__cta:disabled { background: var(--surface); color: var(--ink); border-color: var(--ink); cursor: not-allowed; opacity: 1; transform: none; }
+/* Payments not live yet: a clean, plainly inactive pill (solid line, ink text), not a dashed placeholder. */
+.plan__cta--off:disabled { border: 1.5px solid var(--ink); background: var(--surface); color: var(--ink); box-shadow: none; }
 .billing__notice { padding: 16px 20px; border: 1px solid var(--border); border-radius: var(--radius-card-sm); display: grid; gap: 12px; justify-items: start; }
 .billing__notice p { margin: 0; }
 .billing__actions { display: grid; gap: 14px; justify-items: start; }

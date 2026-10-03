@@ -58,7 +58,7 @@ button { font: inherit; color: inherit; }
   width: min(var(--sheet-max), 100%);
   margin: 0 auto;
   background: var(--surface);
-  overflow: hidden;
+  overflow-x: clip; /* clips sideways like "hidden", but keeps the sticky header working */
 }
 
 /* ---------- Brand ---------- */

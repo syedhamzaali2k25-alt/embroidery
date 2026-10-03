@@ -7,9 +7,10 @@ import { Link } from "react-router-dom";
 import { signInEnabled } from "../lib/auth";
 import { DraftBanner, SitePage, SiteValue, useSite } from "../lib/SiteChrome";
 import { usePage } from "../lib/usePage";
+import { titled } from "../lib/brand";
 
 export default function Terms() {
-  usePage("Terms of Service · Stitchbook", "site-page");
+  usePage(titled("Terms of Service"), "site-page");
   const state = useSite();
   return (
     <SitePage>

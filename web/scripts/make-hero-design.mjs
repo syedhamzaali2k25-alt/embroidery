@@ -2,8 +2,10 @@
 // preview recorded from the API (scripts/fixtures/preview.json: the bird sample at 90 mm, sewn with
 // the test-run values). Nothing is invented: the runs are that DST's needle path, in sewing order,
 // split at jumps, trims and colour changes, in DST units (0.1 mm).
+// Also copies that same sample image to public/assets/sample-bird.png: the "before" the hero shows
+// next to these stitches (the "after").
 // Usage: node scripts/make-hero-design.mjs
-import { readFile, writeFile } from 'node:fs/promises';
+import { copyFile, readFile, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 
 const root = resolve(new URL('..', import.meta.url).pathname);
@@ -39,3 +41,5 @@ const out = {
 };
 await writeFile(join(root, 'src', 'assets', 'hero-design.json'), JSON.stringify(out) + '\n');
 console.log(`wrote src/assets/hero-design.json: ${runs.length} runs, ${stitches} stitches (DST: ${preview.stats.stitch_count})`);
+await copyFile(join(root, '..', 'digitizer', 'samples', 'bird.png'), join(root, 'public', 'assets', 'sample-bird.png'));
+console.log('copied digitizer/samples/bird.png to public/assets/sample-bird.png');

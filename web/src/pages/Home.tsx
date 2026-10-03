@@ -6,6 +6,7 @@ import { AccountControl } from "../lib/AccountMenu";
 import { loginPath, signInEnabled, useSession } from "../lib/auth";
 import { usePage } from "../lib/usePage";
 import "../css/home.css";
+import { APP_NAME, titled } from "../lib/brand";
 
 type Load = { status: "loading" } | { status: "ready"; designs: DesignSummary[] } | { status: "error"; message: string };
 
@@ -13,7 +14,7 @@ const DATE = new Intl.DateTimeFormat("en", { day: "numeric", month: "short", yea
 
 /** "My designs": the signed-in user's designs (GET /designs), newest first, and a way to start one. */
 export default function Home() {
-  usePage("My designs · Stitchbook", "home");
+  usePage(titled("My designs"), "home");
   const auth = useSession();
   const [load, setLoad] = useState<Load>({ status: "loading" });
 
@@ -40,7 +41,7 @@ export default function Home() {
   return (
     <div className="sheet app">
       <aside className="side">
-        <a className="brand" href="/"><svg aria-hidden="true"><use href="/assets/sprite.svg#logo"/></svg>Stitchbook</a>
+        <a className="brand" href="/"><svg aria-hidden="true"><use href="/assets/sprite.svg#logo"/></svg>{APP_NAME}</a>
         <nav className="side__nav" aria-label="Sections">
           <a href="/home" aria-current="page"><svg aria-hidden="true"><use href="/assets/sprite.svg#i-grid"/></svg>My designs</a>
         </nav>

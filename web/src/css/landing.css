@@ -1,102 +1,77 @@
 /* Landing page. Pastel fills are allowed here.
    Element-level rules are scoped with :where(body.landing), which adds no specificity, so they
-   cannot leak into other screens after an in-app navigation (the landing opens Upload directly). */
+   cannot leak into other screens after an in-app navigation. */
 
-main:where(body.landing *) > section { padding: 48px 20px; }
-@media (min-width: 900px) { main:where(body.landing *) > section { padding: 72px 56px; } }
+/* ---------- Rhythm: every section the same padding, heading size and gap under its heading ---------- */
+main:where(body.landing *) > section {
+  padding: 56px 20px;
+  scroll-margin-top: var(--header-h);  /* anchored sections never sit under the sticky header */
+}
+@media (min-width: 900px) { main:where(body.landing *) > section { padding: 88px 56px; } }
+main:where(body.landing *) > section + section:not(.cta) { border-top: 1px solid var(--border); }
 
-h1:where(body.landing *) { font-size: clamp(40px, 7vw, 76px); }
-h2:where(body.landing *) { font-size: clamp(30px, 4.4vw, 48px); }
+h1:where(body.landing *) { font-size: clamp(40px, 6.4vw, 72px); line-height: 1.04; }
+h2:where(body.landing *) { font-size: clamp(30px, 4vw, 44px); line-height: 1.1; }
 h3:where(body.landing *) { font-size: 20px; letter-spacing: -0.01em; }
+main:where(body.landing *) > section:not(.hero):not(.cta) > h2 { margin-bottom: 32px; max-width: 18em; }
 
-.lede { font-size: 18px; max-width: 34em; margin-top: 18px; }
+.lede { font-size: 18px; line-height: 1.55; max-width: 32em; margin-top: 18px; }
 
 /* ---------- Hero ---------- */
-.hero {
-  display: grid;
-  gap: 40px;
-  align-items: center;
-}
+.hero { display: grid; gap: 40px; align-items: center; }
+main:where(body.landing *) > section.hero { padding-top: 40px; }
 @media (min-width: 900px) {
-  .hero { grid-template-columns: 1.05fr 1fr; gap: 56px; padding-top: 64px; }
+  .hero { grid-template-columns: 1fr 1fr; gap: 56px; }
+  main:where(body.landing *) > section.hero { padding-top: 64px; }
 }
+.hero__cta { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 28px; }
+.hero__note { margin-top: 16px; font-size: 15px; color: var(--muted-text); }
 
-.eyebrow {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 14px;
-  margin-bottom: 22px;
-  border-radius: var(--radius-pill);
-  background: var(--lime);
+/* Before / after: the sample logo next to the stitches made from it. */
+.hero-sample {
+  margin: 0;
+  padding: 20px;
+  border-radius: var(--radius-card-lg);
+  background: var(--lavender);
   color: var(--on-fill);
-  font-weight: 500;
-  font-size: 14px;
 }
-.eyebrow .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ink); }
-
-.hero__cta { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 30px; }
-
-.hero__facts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px 32px;
-  list-style: none;
-  padding: 0;
-  margin: 36px 0 0;
-}
-.hero__facts li { display: grid; }
-.hero__facts strong { font-size: 16px; }
-.hero__facts span { font-size: 14px; }
-
-.hero__art {
+.hero-sample__pair { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 10px; }
+.hero-sample__panel {
   position: relative;
-  aspect-ratio: 1 / 1;
-  width: min(100%, 520px);
-  justify-self: center;
-}
-.art-blob-a { inset: 0 8% 10% 0; width: 92%; height: 90%; }
-.art-blob-b { right: 0; bottom: 0; width: 56%; height: 56%; }
-.art-star { top: 2%; right: 8%; width: 17%; height: 17%; }
-
-.hero-drop {
-  position: absolute;
-  inset: 14% 10% 14% 8%;
   display: grid;
   place-items: center;
-  align-content: center;
-  gap: 10px;
-  padding: 24px;
-  border: 2px dashed var(--ink);
-  border-radius: var(--radius-card-lg);
+  aspect-ratio: 1 / 1;
+  padding: 36px 12px 12px;
+  border-radius: var(--radius-card-sm);
   background: var(--surface);
-  box-shadow: var(--shadow-float);
-  text-align: center;
-  transition: background-color .15s ease;
 }
-.hero-drop.is-over { background: var(--lime); }
-.hero-drop__title { font-size: 20px; font-weight: 700; }
+.hero-sample__img { width: 100%; height: auto; max-height: 100%; object-fit: contain; }
+.hero-sample__tag {
+  position: absolute; top: 10px; left: 12px;
+  padding: 2px 10px;
+  border-radius: var(--radius-pill);
+  background: var(--lime);
+  font-size: 13px; font-weight: 700;
+}
+.hero-sample__arrow { width: 22px; height: 22px; color: var(--ink); }
+.hero-sample__caption { margin-top: 14px; font-size: 14px; line-height: 1.45; }
 
-/* The hero's stitch drawing (src/lib/HeroStitches.tsx): a sample design's real stitches. */
-.hero-stitches { width: min(100%, 240px); }
+/* The stitch drawing (src/lib/HeroStitches.tsx): a sample design's real stitches. */
+.hero-stitches { width: 100%; }
 .hero-stitches svg { width: 100%; height: auto; overflow: visible; }
 .hero-stitches__run { fill: none; stroke-width: 1.4px; vector-effect: non-scaling-stroke; stroke-linejoin: round; stroke-linecap: round; }
-.hero-stitches__replay { position: absolute; top: 12px; right: 12px; min-height: 32px; padding: 0 12px; font-size: 13px; }
+.hero-stitches__replay { position: absolute; top: 6px; right: 6px; min-height: 32px; padding: 0 12px; font-size: 13px; }
 .hero-stitches__replay:disabled { opacity: 0.5; cursor: default; }
 @media (max-width: 480px) {
-  .hero-drop { inset: 8% 4% 8% 2%; gap: 6px; padding: 16px; }
-  .hero-stitches { width: min(100%, 180px); }
+  .hero-sample { padding: 14px; }
+  .hero-sample__pair { gap: 6px; }
+  .hero-sample__panel { padding: 32px 8px 8px; }
+  .hero-sample__arrow { width: 16px; height: 16px; }
 }
-.hero-drop__hint { font-size: 15px; }
 
 /* ---------- Features ---------- */
-.features__grid {
-  display: grid;
-  gap: 16px;
-  margin-top: 32px;
-}
+.features__grid { display: grid; gap: 16px; }
 @media (min-width: 760px) { .features__grid { grid-template-columns: repeat(3, 1fr); } }
-
 .feature { padding: 28px; display: grid; gap: 10px; align-content: start; }
 .feature__icon {
   width: 48px; height: 48px;
@@ -107,44 +82,43 @@ h3:where(body.landing *) { font-size: 20px; letter-spacing: -0.01em; }
   color: var(--ink);
 }
 
-/* ---------- How it works ---------- */
-.how {
-  display: grid;
-  gap: 32px;
-  border-top: 1px solid var(--border);
-}
-@media (min-width: 900px) { .how { grid-template-columns: 1fr 1fr; align-items: start; } }
-
-.steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+/* ---------- How it works: four numbered tiles, one pastel each ---------- */
+.steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 16px; counter-reset: none; }
+@media (min-width: 640px) { .steps { grid-template-columns: repeat(2, 1fr); } }
+@media (min-width: 1100px) { .steps { grid-template-columns: repeat(4, 1fr); } }
 .step {
-  display: flex;
-  gap: 18px;
-  align-items: flex-start;
-  padding: 22px;
-  border: 1px solid var(--border);
+  display: grid;
+  gap: 10px;
+  align-content: start;
+  padding: 24px;
   border-radius: var(--radius-card);
+  color: var(--on-fill);
 }
-.step h3 { font-size: 18px; margin-bottom: 4px; }
+.step--green { background: var(--green); }
+.step--lavender { background: var(--lavender); }
+.step--lime { background: var(--lime); }
+.step--pink { background: var(--pink); }
+.step h3 { font-size: 19px; }
 .step__num {
-  flex: none;
   display: grid;
   place-items: center;
-  width: 40px; height: 40px;
+  width: 44px; height: 44px;
+  margin-bottom: 6px;
   border-radius: 50%;
-  background: var(--green);
-  color: var(--on-fill);
+  background: var(--ink);
+  color: var(--on-ink);
   font-weight: 700;
+  font-size: 18px;
 }
 
 /* ---------- Demo video ---------- */
 .demo__frame {
-  margin-top: 28px;
   aspect-ratio: 16 / 9;
   border-radius: var(--radius-card-lg);
   overflow: hidden;
   background: var(--lavender);
 }
-.demo__video { width: 100%; height: 100%; background: var(--ink); }
+.demo__video { display: block; width: 100%; height: 100%; object-fit: contain; background: var(--ink); }
 .demo__poster {
   display: grid;
   place-items: center;
@@ -167,7 +141,7 @@ h3:where(body.landing *) { font-size: 20px; letter-spacing: -0.01em; }
 .demo__label { font-weight: 700; font-size: 18px; }
 
 /* ---------- FAQ ---------- */
-.faq__list { display: grid; gap: 10px; margin-top: 28px; max-width: 860px; }
+.faq__list { display: grid; gap: 10px; max-width: 860px; }
 .faq__row {
   border: 1px solid var(--border);
   border-radius: var(--radius-card-sm);
@@ -178,7 +152,8 @@ h3:where(body.landing *) { font-size: 20px; letter-spacing: -0.01em; }
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 18px 22px;
+  min-height: 56px;
+  padding: 14px 22px;
   font-weight: 700;
   font-size: 17px;
   cursor: pointer;
@@ -189,6 +164,11 @@ h3:where(body.landing *) { font-size: 20px; letter-spacing: -0.01em; }
 .faq__row[open] .faq__icon { transform: rotate(45deg); }
 .faq__row p { padding: 0 22px 20px; max-width: 46em; }
 .faq__row:focus-within { border-color: var(--ink); }
+@media (prefers-reduced-motion: reduce) { .faq__icon { transition: none; } }
+
+/* ---------- Pricing (the shared plan cards, lib/PlanCards.tsx) ---------- */
+.home-pricing { display: grid; gap: 0; }
+.home-pricing__more { justify-self: center; margin-top: 28px; }
 
 /* ---------- CTA band ---------- */
 .cta {
@@ -196,17 +176,18 @@ h3:where(body.landing *) { font-size: 20px; letter-spacing: -0.01em; }
   overflow: hidden;
   display: grid;
   justify-items: center;
-  gap: 14px;
+  gap: 20px;
   text-align: center;
   margin: 0 20px 20px;
   border-radius: var(--radius-card-lg);
   background: var(--green);
   color: var(--on-fill);
+  scroll-margin-top: var(--header-h);
 }
 main:where(body.landing *) > section.cta { padding: 56px 24px; }
-@media (min-width: 900px) { .cta { margin: 0 40px 40px; } main:where(body.landing *) > section.cta { padding: 72px 40px; } }
-.cta p { font-size: 18px; margin-bottom: 8px; }
+@media (min-width: 900px) { .cta { margin: 0 56px 56px; } main:where(body.landing *) > section.cta { padding: 72px 40px; } }
 .cta h2 { position: relative; max-width: 16em; text-wrap: balance; }
+.cta .accent { color: var(--on-fill); }  /* ink on the green band (the green text token is for white) */
 .cta__sparkle { left: 20px; top: 20px; width: 26px; height: 26px; }
 .cta__star { right: -36px; bottom: -36px; width: 96px; height: 96px; }
 @media (min-width: 900px) {
@@ -215,7 +196,3 @@ main:where(body.landing *) > section.cta { padding: 56px 24px; }
 }
 
 /* Header (.nav) and footer: src/css/site.css (shared with the other public pages). */
-
-/* Pricing section (the shared plan cards, lib/PlanCards.tsx). */
-.home-pricing { display: grid; gap: 28px; }
-.home-pricing > h2 { text-align: center; }

@@ -696,20 +696,29 @@ try {
     await out.context.close();
   }
   {
-    // Pricing buttons: signed out "Sign up" -> /signup?next=/pricing; signed in on Free "Upgrade"; current plan disabled.
+    // Pricing buttons. Signed out: Free "Start free" -> sign up; Pro/Business a disabled pill while
+    // no payment provider is set, "Sign up" once one is. Signed in: Free "Open editor"; "Upgrade".
     const { context, page } = await fresh();
     await page.goto(`${base}/pricing`);
     await page.locator('.plan').first().waitFor();
-    const signUps = await page.locator('.plan').getByRole('link', { name: 'Sign up' }).evaluateAll((els) => els.map((e) => e.getAttribute('href')));
-    check(signUps.length === 3 && signUps.every((h) => h === '/signup?next=%2Fpricing'), `signed out: "Sign up" -> /signup?next=/pricing (${signUps.length})`);
+    const start = page.locator('.plan[data-plan="free"]').getByRole('link', { name: 'Start free' });
+    check(await start.getAttribute('href') === '/signup?next=%2Fupload', 'signed out: Free "Start free" -> /signup?next=/upload');
+    const off = page.locator('.plan').getByRole('button', { name: 'Payments are not available yet' });
+    check(await off.count() === 2 && await off.first().isDisabled(), 'signed out, no provider: Pro and Business show the disabled "Payments are not available yet" pill');
     await context.close();
     PLANS.payments_available = true;
+    const outWith = await fresh();
+    await outWith.page.goto(`${base}/pricing`);
+    await outWith.page.locator('.plan').first().waitFor();
+    const signUps = await outWith.page.locator('.plan').getByRole('link', { name: 'Sign up' }).evaluateAll((els) => els.map((e) => e.getAttribute('href')));
+    check(signUps.length === 2 && signUps.every((h) => h === '/signup?next=%2Fpricing'), `signed out, provider set: "Sign up" on Pro and Business (${signUps.length})`);
+    await outWith.context.close();
     const free = await fresh({ signedInAs: user, api: { account: () => accountWith(30, { plan: 'free', plan_name: 'Free', interval: null }) } });
     await free.page.route(`${API}/billing/checkout`, (r) => r.fulfill({ status: 503, json: { error: 'Payments are not available yet.' } }));
     await free.page.goto(`${base}/pricing`);
     await free.page.locator('header .acct__credits').waitFor();
-    const current = free.page.locator('.plan[data-plan="free"]').getByRole('button', { name: 'Current plan' });
-    check(await current.isDisabled(), 'signed in on Free: "Current plan" (disabled)');
+    const editor = free.page.locator('.plan[data-plan="free"]').getByRole('link', { name: 'Open editor' });
+    check(await editor.getAttribute('href') === '/upload', 'signed in: Free "Open editor"');
     const upgrades = free.page.locator('.plan').getByRole('button', { name: 'Upgrade' });
     check(await upgrades.count() === 2, 'signed in on Free: "Upgrade" on Pro and Business');
     await upgrades.first().click();

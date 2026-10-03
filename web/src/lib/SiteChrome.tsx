@@ -1,11 +1,12 @@
-import { useEffect, useState, type ReactNode } from "react";
-import { Link } from "react-router-dom";
+import { useEffect, useId, useRef, useState, type MouseEvent, type ReactNode } from "react";
+import { Link, useLocation } from "react-router-dom";
 
 import { api, type SiteInfo } from "./api";
 import { AccountControl } from "./AccountMenu";
 import { Icon } from "./Icon";
 import { useReveal } from "./useReveal";
 import "../css/site.css";
+import { APP_NAME, SHOW_PLACEHOLDERS } from "./brand";
 
 // GET /site once per page load, shared by every page that needs it.
 let siteRequest: Promise<SiteInfo> | null = null;
@@ -32,6 +33,12 @@ export function NotChosen({ what = "Not chosen yet" }: { what?: string }) {
   return <span className="not-chosen">{what}</span>;
 }
 
+/** An open owner decision on a public page: the visible marker in development and test builds,
+ *  nothing in a production build. */
+export function Unset({ what }: { what?: string }) {
+  return SHOW_PLACEHOLDERS ? <NotChosen what={what} /> : null;
+}
+
 /** A value from the site settings: the value, "Not chosen yet", or why it is not shown. */
 export function SiteValue({ state, value, render }: {
   state: SiteState; value: (s: SiteInfo) => string | number | null; render?: (v: string | number) => ReactNode;
@@ -49,14 +56,53 @@ export const FOOTER_COLUMNS = [
   ["Legal", [["/privacy", "Privacy"], ["/terms", "Terms of Service"]]],
 ] as const;
 
-/** Header for the public pages (Privacy, Terms, Contact, Blog, Log in, Sign up, Log out). The
- *  right side is the account control (nothing in offline / local mode). */
-export function SiteHeader({ page }: { page?: "login" | "signup" }) {
+export type NavLink = { href: string; label: string; onClick?: (e: MouseEvent<HTMLAnchorElement>) => void };
+
+/**
+ * The header of the public pages (the landing page passes its section links): sticky at the top,
+ * the links inline from 900px, and a Menu button below that. The menu opens with a click, Enter or
+ * Space, closes with Escape (focus back on the button), a click outside, or choosing a link. The
+ * right side is the account control (nothing in offline / local mode).
+ */
+export function SiteHeader({ page, links = [{ href: "/pricing", label: "Pricing" }] }: { page?: "login" | "signup"; links?: NavLink[] }) {
+  const [open, setOpen] = useState(false);
+  const menu = useRef<HTMLDivElement>(null);
+  const button = useRef<HTMLButtonElement>(null);
+  const id = useId();
+  const location = useLocation();
+  useEffect(() => setOpen(false), [location.pathname, location.hash]);
+  useEffect(() => {
+    if (!open) return;
+    menu.current?.querySelector<HTMLElement>("a")?.focus();
+    const key = (e: KeyboardEvent) => { if (e.key === "Escape") { setOpen(false); button.current?.focus(); } };
+    const outside = (e: PointerEvent) => {
+      if (!menu.current?.contains(e.target as Node) && !button.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("keydown", key);
+    document.addEventListener("pointerdown", outside);
+    return () => { document.removeEventListener("keydown", key); document.removeEventListener("pointerdown", outside); };
+  }, [open]);
+  const item = (l: NavLink, cls?: string) => {
+    const internal = l.href.startsWith("/") && !l.href.startsWith("/#");
+    const onClick = (e: MouseEvent<HTMLAnchorElement>) => { l.onClick?.(e); setOpen(false); };
+    return internal
+      ? <Link key={l.href} className={cls} to={l.href} onClick={onClick}>{l.label}</Link>
+      : <a key={l.href} className={cls} href={l.href} onClick={onClick}>{l.label}</a>;
+  };
   return (
     <header className="nav">
-      <a className="brand" href="/"><Icon name="logo" />Stitchbook</a>
-      <nav className="nav__links" aria-label="Main"><Link to="/pricing">Pricing</Link></nav>
-      <div className="nav__actions"><AccountControl page={page} /></div>
+      <a className="brand" href="/"><Icon name="logo" />{APP_NAME}</a>
+      <nav className="nav__links" aria-label="Main">{links.map((l) => item(l))}</nav>
+      <div className="nav__actions">
+        <AccountControl page={page} />
+        <button ref={button} className="btn btn--ghost btn--sm nav__menu-btn" type="button" aria-expanded={open}
+                aria-controls={id} aria-label={open ? "Close" : "Menu"} onClick={() => setOpen((v) => !v)}>
+          <Icon name={open ? "i-close" : "i-menu"} /><span className="nav__menu-word" aria-hidden="true">{open ? "Close" : "Menu"}</span>
+        </button>
+      </div>
+      <div ref={menu} id={id} className="nav__menu" hidden={!open}>
+        <nav aria-label="Main (menu)">{links.map((l) => item(l, "nav__menu-link"))}</nav>
+      </div>
     </header>
   );
 }
@@ -73,7 +119,7 @@ export function SiteFooter({ home = false }: { home?: boolean }) {
       <div className="footer__inner">
         <div className="footer__top">
           <div className="footer__about">
-            <a className="brand" href="/"><Icon name="logo" />Stitchbook</a>
+            <a className="brand" href="/"><Icon name="logo" />{APP_NAME}</a>
             <p className="footer__tagline">Turn a PNG or JPG logo into an embroidery file.</p>
           </div>
           <nav className="footer__cols" aria-label="Site">
@@ -90,7 +136,10 @@ export function SiteFooter({ home = false }: { home?: boolean }) {
           </nav>
         </div>
         <div className="footer__bottom">
-          <p className="footer__copy">© {new Date().getFullYear()} <SiteValue state={state} value={(s) => s.company_name} /></p>
+          <p className="footer__copy">
+            © {new Date().getFullYear()}{" "}
+            {SHOW_PLACEHOLDERS ? <SiteValue state={state} value={(s) => s.company_name} /> : (state.site?.company_name || APP_NAME)}
+          </p>
           <p className="footer__note">Made for people who sew.</p>
         </div>
       </div>

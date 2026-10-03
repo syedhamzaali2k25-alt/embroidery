@@ -2,9 +2,10 @@
 // contact form and nothing is sent from the site: there is no email service.
 import { NotChosen, SitePage, useSite } from "../lib/SiteChrome";
 import { usePage } from "../lib/usePage";
+import { titled } from "../lib/brand";
 
 export default function Contact() {
-  usePage("Contact · Stitchbook", "site-page");
+  usePage(titled("Contact"), "site-page");
   const { site, failed } = useSite();
   const email = site?.contact_email ?? null;
   return (
