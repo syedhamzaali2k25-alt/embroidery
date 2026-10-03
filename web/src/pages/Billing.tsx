@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 
-import { api, ApiError, type Account, type Plans } from "../lib/api";
+import { api, ApiError, planRequired, type Account, type Plans, type Usage } from "../lib/api";
 import { loginPath, signInEnabled, useSession } from "../lib/auth";
 import { count, refreshCredits, useCredits, usePlans } from "../lib/credits";
 import { NotChosen, SiteFooter, SiteHeader } from "../lib/SiteChrome";
+import { DAY, Pager, TIME as WHEN, UpgradeNote } from "../lib/UsageParts";
 import { usePage } from "../lib/usePage";
 import "../css/pricing.css";
 
@@ -17,6 +18,79 @@ const OPERATION: Record<string, string> = { export: "Export", satin_columns: "Sa
 const STATUS: Record<string, string> = { started: "In progress", succeeded: "Done", failed: "Failed (credits returned)", cancelled: "Cancelled (credits returned)" };
 
 type Enabled = Extract<Account, { enabled: true }>;
+const GRANT: Record<string, string> = { plan_grant: "Monthly plan credits", free_grant: "Free credits", purchase: "Credits bought",
+  adjustment: "Adjustment" };
+
+/** Credit usage (plans with the feature): balance, renewal, this month's spend and every entry. */
+function CreditUsage({ plans, account }: { plans: Plans | null; account: Enabled }) {
+  const [page, setPage] = useState(1);
+  const [state, setState] = useState<{ data: Usage } | { upgrade: string } | { error: string } | null>(null);
+  useEffect(() => {
+    let live = true;
+    api.usage(page).then((data) => live && setState({ data }), (err) => {
+      if (!live) return;
+      const plan = planRequired(err);
+      setState(plan !== null ? { upgrade: plan } : { error: err instanceof ApiError ? err.message : "Credit usage could not be loaded. Try again." });
+    });
+    return () => { live = false; };
+  }, [page, account.available]);
+  let body;
+  if (!state) body = <p role="status">Loading credit usage…</p>;
+  else if ("upgrade" in state) body = <UpgradeNote what="Credit usage" plan={state.upgrade} plans={plans} />;
+  else if ("error" in state) body = <p className="billing__error" role="alert">{state.error}</p>;
+  else if (!state.data.enabled) return null;
+  else {
+    const u = state.data;
+    body = (
+      <>
+        <div className="billing__cards">
+          <div className="billing__card">
+            <span className="billing__label">Balance</span>
+            <span className="billing__value">{count(u.available)}</span>
+            <span className="billing__sub">Plan {count(u.balances.plan?.available ?? 0)} · bought {count(u.balances.purchased?.available ?? 0)}</span>
+          </div>
+          <div className="billing__card">
+            <span className="billing__label">{u.renewal && !u.renewal.renews ? "Plan ends" : "Renews"}</span>
+            <span className="billing__value billing__value--date">{u.renewal ? DAY.format(new Date(u.renewal.date)) : "—"}</span>
+            <span className="billing__sub">{u.renewal ? (u.renewal.renews ? "New monthly credits each month" : "Renewal is stopped") : "No renewal date yet"}</span>
+          </div>
+          <div className="billing__card">
+            <span className="billing__label">Spent this month</span>
+            <span className="billing__value">{count(u.spent_this_month)}</span>
+            <span className="billing__sub">Since the 1st (UTC)</span>
+          </div>
+        </div>
+        {u.entries.items.length === 0 && page === 1 ? <p className="billing__notice">No credit activity yet. Credits you get and spend are listed here.</p> : (
+          <div className="billing__table-wrap" tabIndex={0} role="region" aria-labelledby="usage-title">
+            <table className="billing__table billing__table--stack">
+              <thead><tr><th scope="col">Date</th><th scope="col">What</th><th scope="col">Credits</th></tr></thead>
+              <tbody>
+                {u.entries.items.map((e, i) => (
+                  <tr key={`${e.at}-${i}`}>
+                    <td data-label="Date">{WHEN.format(new Date(e.at))}</td>
+                    <td data-label="What">
+                      {e.kind === "grant" ? GRANT[e.reason] ?? e.reason : OPERATION[e.reason] ?? e.reason}
+                      {e.acting_user ? <span className="usage__who"> by {e.acting_user.email ?? "a team member"}</span> : null}
+                    </td>
+                    <td data-label="Credits" className={e.amount > 0 ? "usage__amount--plus" : undefined}>{e.amount > 0 ? "+" : "−"}{count(Math.abs(e.amount))}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <Pager page={page} hasMore={u.entries.has_more} onPage={setPage} />
+      </>
+    );
+  }
+  return (
+    <section className="usage" aria-labelledby="usage-title">
+      <h2 id="usage-title" className="billing__history-title">Credit usage</h2>
+      {body}
+      <p><Link to="/exports">Export history</Link></p>
+    </section>
+  );
+}
 const paid = (a: Account | null) => !!a && a.enabled && a.plan !== "free" && a.status === "active";
 const failure = (err: unknown) => err instanceof ApiError && err.status === 503 ? "Payments are not available yet."
   : "The payment service did not answer. Try again in a minute.";
@@ -156,20 +230,21 @@ export default function Billing() {
           <p className="billing__notice">Renewal is stopped. You keep your plan until the end of the period you paid for.</p>
         )}
         {plans?.payments_available ? <PlanActions account={account} /> : <p><Link className="btn btn--ink" to="/pricing">See plans</Link></p>}
+        <CreditUsage plans={plans} account={account} />
         <section aria-labelledby="history-title">
           <h2 id="history-title" className="billing__history-title">History</h2>
           {account.history.length === 0 ? <p>Nothing yet. Exports will be listed here.</p> : (
             <div className="billing__table-wrap" tabIndex={0} role="region" aria-labelledby="history-title">
-              <table className="billing__table">
+              <table className="billing__table billing__table--stack">
                 <thead><tr><th scope="col">Time</th><th scope="col">Design</th><th scope="col">Operation</th><th scope="col">Status</th><th scope="col">Credits</th></tr></thead>
                 <tbody>
                   {account.history.map((row) => (
                     <tr key={row.job_id}>
-                      <td>{TIME.format(new Date(row.created_at))}</td>
-                      <td>{row.design_id ? <Link to={`/preview/${row.design_id.replace(/-/g, "")}`}>Open</Link> : "Deleted"}</td>
-                      <td>{OPERATION[row.operation] ?? row.operation}{row.format ? ` (${row.format.toUpperCase()})` : ""}</td>
-                      <td>{STATUS[row.status] ?? row.status}</td>
-                      <td>{row.status === "succeeded" ? count(row.credits) : row.status === "started" ? `${count(row.credits)} set aside` : "0"}</td>
+                      <td data-label="Time">{TIME.format(new Date(row.created_at))}</td>
+                      <td data-label="Design">{row.design_id ? <Link to={`/preview/${row.design_id.replace(/-/g, "")}`}>Open</Link> : "Deleted"}</td>
+                      <td data-label="Operation">{OPERATION[row.operation] ?? row.operation}{row.format ? ` (${row.format.toUpperCase()})` : ""}</td>
+                      <td data-label="Status">{STATUS[row.status] ?? row.status}</td>
+                      <td data-label="Credits">{row.status === "succeeded" ? count(row.credits) : row.status === "started" ? `${count(row.credits)} set aside` : "0"}</td>
                     </tr>
                   ))}
                 </tbody>

@@ -134,6 +134,8 @@ async function stubApi(page, seen, { account = () => ACCOUNT, downloadUrl = null
   const deny = (route) => route.fulfill({ status: 401, json: { error: 'Sign in to continue: this request has no sign-in token.' } });
   await page.route(`${API}/me/credits`, (r) => (signedIn(r.request()) ? r.fulfill({ json: account() }) : deny(r)));
   await page.route(`${API}/plans`, (r) => r.fulfill({ json: PLANS }));
+  // Export history / Credit usage: "not used on this server" unless a test stubs them itself.
+  await page.route(new RegExp(`^${API}/(exports|credits/usage)\\?`), (r) => (signedIn(r.request()) ? r.fulfill({ json: { enabled: false } }) : deny(r)));
   await page.route(`${API}/config`, (r) => r.fulfill({ json: config }));
   await page.route(`${API}/site`, (r) => r.fulfill({ json: { app_name: 'Stitchbook', demo_video_url: '', export_formats: ['dst'], company_name: null,
     contact_email: null, governing_country: null, data_retention_days: null, last_updated: null, max_upload_bytes: null } }));
@@ -590,6 +592,8 @@ try {
     await page.keyboard.press('ArrowDown');
     check(await focused() === 'Credits and plan', 'ArrowDown: Credits and plan');
     await page.keyboard.press('ArrowDown');
+    check(await focused() === 'Export history', 'ArrowDown again: Export history');
+    await page.keyboard.press('ArrowDown');
     check(await focused() === 'Log out', 'ArrowDown again: Log out');
     await page.keyboard.press('Escape');
     check(await menu.count() === 0 && await page.evaluate(() => document.activeElement?.getAttribute('aria-label')) === 'Account menu',
@@ -712,6 +716,95 @@ try {
     check(await free.page.locator('.plan__error').innerText() === 'Payments are not available yet.', 'a 503 from checkout: "Payments are not available yet."');
     await free.context.close();
     PLANS.payments_available = false;
+  }
+
+
+  console.log('-- Export history and Credit usage: Free sees a calm upgrade note, Pro sees both');
+  {
+    const shotsDir = join(root, '..', 'docs', 'screenshots');
+    const planRequiredRoute = (r) => r.fulfill({ status: 403, json: { error: 'plan_required', plan: 'pro' } });
+    const exportsPage = (items, has_more = false, page = 1) => ({ enabled: true, items, page, page_size: 2, has_more });
+    const EXPORTS = [
+      { job_id: 'x2', design_id: upload.id, design_name: 'bird.png', format: 'dst', bytes: 18432, credits: 10, finished_at: '2026-10-02T10:00:00Z' },
+      { job_id: 'x1', design_id: null, design_name: null, format: 'dst', bytes: null, credits: 10, finished_at: '2026-10-01T10:00:00Z' },
+    ];
+    const USAGE = (entries, has_more = false) => ({ enabled: true, available: 5030,
+      balances: { plan: { available: 5030, reserved: 0, consumed: 20 }, purchased: { available: 0, reserved: 0, consumed: 0 } },
+      renewal: { date: '2026-11-01T00:00:00Z', renews: true }, spent_this_month: 20,
+      entries: { items: entries, page: 1, page_size: 2, has_more } });
+    const ENTRIES = [
+      { kind: 'spend', reason: 'export', amount: -10, bucket: null, at: '2026-10-02T10:00:00Z', operation: 'export', design_id: upload.id, acting_user: null },
+      { kind: 'grant', reason: 'plan_grant', amount: 5000, bucket: 'plan', at: '2026-10-01T00:00:00Z', operation: null, design_id: null, acting_user: null },
+    ];
+    const free = () => accountWith(30, { plan: 'free', plan_name: 'Free', interval: null });
+    for (const [vp, width, height] of [['1366', 1366, 768], ['360', 360, 780]]) {
+      // Free: both are a calm note with a link to Pricing; the balance and designs stay.
+      const f = await fresh({ width, height, signedInAs: user, api: { account: free } });
+      await f.page.route(`${API}/exports?page=1`, planRequiredRoute);
+      await f.page.route(`${API}/credits/usage?page=1`, planRequiredRoute);
+      await f.page.goto(`${base}/exports`);
+      const note = f.page.locator('.upgrade-note');
+      await note.waitFor();
+      check((await note.innerText()).includes('Export history comes with the Pro plan.')
+        && await note.getByRole('link', { name: 'See plans' }).getAttribute('href') === '/pricing', `Free @ ${vp}: /exports shows a calm upgrade note linking to /pricing`);
+      check(await f.page.locator('header .acct__credits').isVisible(), `Free @ ${vp}: the header balance is still there`);
+      await f.page.screenshot({ path: join(shotsDir, `exports-free-${vp}.png`), fullPage: true });
+      let a = (await f.page.evaluate(audit)).issues;
+      check(a.length === 0, `Free /exports @ ${vp} audit: ${a.length ? JSON.stringify(a) : 'no issues'}`);
+      await f.page.goto(`${base}/billing`);
+      await f.page.locator('.usage .upgrade-note').waitFor();
+      check((await f.page.locator('.usage').innerText()).includes('Credit usage comes with the Pro plan.')
+        && await f.page.locator('.billing__table').count() === 1, `Free @ ${vp}: /billing keeps its history and shows the Credit usage note`);
+      await f.page.screenshot({ path: join(shotsDir, `billing-free-${vp}.png`), fullPage: true });
+      a = (await f.page.evaluate(audit)).issues;
+      check(a.length === 0, `Free /billing @ ${vp} audit: ${a.length ? JSON.stringify(a) : 'no issues'}`);
+      await f.context.close();
+
+      // Pro: the export list (newest first, paged) and the usage section.
+      const p = await fresh({ width, height, signedInAs: user });
+      const pages = [];
+      await p.page.route(new RegExp(`^${API}/exports\\?page=\\d+$`), (r) => {
+        const n = Number(new URL(r.request().url()).searchParams.get('page'));
+        pages.push(n);
+        return r.fulfill({ json: n === 1 ? exportsPage(EXPORTS, true) : exportsPage([{ ...EXPORTS[0], job_id: 'x0' }], false, 2) });
+      });
+      await p.page.route(`${API}/credits/usage?page=1`, (r) => r.fulfill({ json: USAGE(ENTRIES) }));
+      await p.page.goto(`${base}/exports`);
+      await p.page.locator('.billing__table tbody tr').first().waitFor();
+      const rows = await p.page.locator('.billing__table tbody tr').allInnerTexts();
+      check(rows.length === 2 && rows[0].includes('bird.png') && rows[0].includes('DST') && rows[0].includes('18.0 KB') && rows[1].includes('Deleted design'),
+        `Pro @ ${vp}: exports listed with name, format, size, credits, date`);
+      check(await p.page.getByRole('button', { name: 'Download again' }).count() === 1, `Pro @ ${vp}: "Download again" only where the design still exists`);
+      check((await p.page.locator('main').innerText()).includes('Downloading again makes a new export, so it uses 10 credits'),
+        `Pro @ ${vp}: it says plainly that downloading again costs credits (the cost from the account)`);
+      await p.page.screenshot({ path: join(shotsDir, `exports-pro-${vp}.png`), fullPage: true });
+      a = (await p.page.evaluate(audit)).issues;
+      check(a.length === 0, `Pro /exports @ ${vp} audit: ${a.length ? JSON.stringify(a) : 'no issues'}`);
+      await p.page.getByRole('button', { name: 'Older' }).click();
+      await p.page.getByText('Page 2').waitFor();
+      check(pages.includes(2), `Pro @ ${vp}: Older asks for page 2`);
+      await p.page.goto(`${base}/billing`);
+      const usage = p.page.locator('.usage');
+      await usage.locator('tbody tr').first().waitFor();
+      const text = await usage.innerText();
+      check(text.includes('Balance') && text.includes('5,030') && text.includes('November 1, 2026') && text.includes('Spent this month')
+        && text.includes('Monthly plan credits') && text.includes('+5,000') && text.includes('−10'),
+        `Pro @ ${vp}: Credit usage shows balance, renewal, this month's spend and the entries`);
+      await p.page.screenshot({ path: join(shotsDir, `billing-pro-${vp}.png`), fullPage: true });
+      a = (await p.page.evaluate(audit)).issues;
+      check(a.length === 0, `Pro /billing @ ${vp} audit: ${a.length ? JSON.stringify(a) : 'no issues'}`);
+      await p.context.close();
+    }
+    // A new Pro user: empty states.
+    const n = await fresh({ signedInAs: user });
+    await n.page.route(`${API}/exports?page=1`, (r) => r.fulfill({ json: exportsPage([]) }));
+    await n.page.route(`${API}/credits/usage?page=1`, (r) => r.fulfill({ json: { ...USAGE([]), renewal: null, spent_this_month: 0 } }));
+    await n.page.goto(`${base}/exports`);
+    await n.page.getByText('No exports yet.').waitFor();
+    await n.page.goto(`${base}/billing`);
+    await n.page.getByText('No credit activity yet.').waitFor();
+    check(true, 'a new user sees plain empty states on /exports and in Credit usage');
+    await n.context.close();
   }
 
   console.log('-- payments: checkout, return from the payment page, past due, Manage billing, Cancel plan');

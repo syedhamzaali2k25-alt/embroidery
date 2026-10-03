@@ -97,6 +97,7 @@ function Menu({ person, planName }: { person: Who; planName: string | null }) {
           </div>
           <Link className="acct__item" role="menuitem" to="/home" onClick={() => setOpen(false)}>My designs</Link>
           <Link className="acct__item" role="menuitem" to="/billing" onClick={() => setOpen(false)}>Credits and plan</Link>
+          <Link className="acct__item" role="menuitem" to="/exports" onClick={() => setOpen(false)}>Export history</Link>
           <button className="acct__item" role="menuitem" type="button" onClick={() => { setOpen(false); navigate("/logout"); }}>Log out</button>
         </div>
       )}

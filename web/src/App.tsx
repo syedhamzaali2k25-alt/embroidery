@@ -18,6 +18,7 @@ const Signup = lazy(() => import("./pages/Auth").then((m) => ({ default: m.Signu
 const Logout = lazy(() => import("./pages/Auth").then((m) => ({ default: m.Logout })));
 const Pricing = lazy(() => import("./pages/Pricing"));
 const Billing = lazy(() => import("./pages/Billing"));
+const Exports = lazy(() => import("./pages/Exports"));
 const BlogPost = lazy(() => import("./pages/Blog").then((m) => ({ default: m.BlogPost })));
 
 export default function App() {
@@ -36,6 +37,7 @@ export default function App() {
         <Route path="/preview/:designId" element={<Preview />} />
         <Route path="/pricing" element={<Pricing />} />
         <Route path="/billing" element={<Billing />} />
+        <Route path="/exports" element={<Exports />} />
         <Route path="/privacy" element={<Privacy />} />
         <Route path="/terms" element={<Terms />} />
         <Route path="/contact" element={<Contact />} />

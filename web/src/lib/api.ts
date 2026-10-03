@@ -206,6 +206,21 @@ export type Account =
         credits: number; created_at: string; finished_at: string | null; error: string | null }[];
     };
 
+/** A page of rows, newest first. */
+export type Paged<T> = { items: T[]; page: number; page_size: number; has_more: boolean };
+export type ExportRow = { job_id: string; design_id: string | null; design_name: string | null; format: string | null;
+  bytes: number | null; credits: number; finished_at: string };
+export type Exports = { enabled: false } | ({ enabled: true } & Paged<ExportRow>);
+export type UsageEntry = { kind: "grant" | "spend"; reason: string; amount: number; bucket: string | null; at: string;
+  operation: string | null; design_id: string | null; acting_user: { id: string; email: string | null } | null };
+export type Usage = { enabled: false } | {
+  enabled: true; balances: Record<"plan" | "purchased", Balance>; available: number;
+  renewal: { date: string; renews: boolean } | null; spent_this_month: number; entries: Paged<UsageEntry>;
+};
+/** 403 {error: "plan_required", plan}: the plan that includes the feature. */
+export const planRequired = (err: unknown): string | null =>
+  err instanceof ApiError && err.status === 403 && err.body?.error === "plan_required" ? String(err.body.plan ?? "") : null;
+
 /** Status 0: the server could not be reached. TIMED_OUT: it did not answer within the time allowed. */
 export const TIMED_OUT = -1;
 
@@ -346,6 +361,8 @@ export const api = {
   plans: () => request<Plans>("/plans"),
   credits: () => request<Account>("/me/credits", { stayOn401: true }),
   checkout: (plan: "pro" | "business", interval: "month" | "year") => request<{ url: string }>("/billing/checkout", post({ plan, interval })),
+  exports: (page = 1) => request<Exports>(`/exports?page=${page}`),
+  usage: (page = 1) => request<Usage>(`/credits/usage?page=${page}`),
   /** The payment provider's own page to manage or cancel the plan (null when there is none). */
   manageBilling: () => request<{ url: string | null }>("/billing/manage"),
   cancelPlan: () => request<{ status: string }>("/billing/cancel", { method: "POST" }),

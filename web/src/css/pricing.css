@@ -108,7 +108,24 @@
 .billing__error { font-weight: 500; color: var(--danger-text); }
 .billing__provider { font-size: 14px; }
 @media (max-width: 600px) {
-  /* Phones: the history wraps instead of scrolling sideways. */
+  /* Phones: each row becomes a small block, every cell with its column name (data-label), so
+     nothing scrolls sideways or runs off the screen. */
   .billing__table { font-size: 14px; }
   .billing__table th, .billing__table td { padding: 10px 8px; white-space: normal; }
+  .billing__table--stack thead { display: none; }
+  .billing__table--stack, .billing__table--stack tbody, .billing__table--stack tr { display: block; width: 100%; }
+  .billing__table--stack tr { padding: 10px 14px; border-bottom: 1px solid var(--border); }
+  .billing__table--stack tr:last-child { border-bottom: 0; }
+  .billing__table--stack td { display: flex; justify-content: space-between; gap: 12px; padding: 3px 0; border: 0; text-align: right; }
+  .billing__table--stack td::before { content: attr(data-label); font-weight: 700; text-align: left; }
+  .billing__table--stack td.billing__cell--action { justify-content: flex-start; padding-top: 8px; }
 }
+/* ---------- Export history, Credit usage ---------- */
+.billing__table .btn--row { font-size: 14px; white-space: nowrap; }
+.pager { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.pager__page { font-size: 14px; color: var(--muted-text); }
+.usage { display: grid; gap: 16px; }
+.usage h2 { font-size: 26px; }
+.usage__amount--plus { font-weight: 700; }
+.billing__value--date { font-size: 20px; }
+.usage__who { color: var(--muted-text); }

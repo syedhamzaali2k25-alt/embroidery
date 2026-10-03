@@ -30,7 +30,13 @@
         "price_yearly_per_month": "0.00",
         "credits": 30,
         "credit_period": "lifetime",
-        "features": []
+        "features": [
+          {
+            "key": "saved_designs",
+            "name": "Saved designs",
+            "status": "available"
+          }
+        ]
       },
       {
         "id": "pro",
@@ -41,7 +47,21 @@
         "credits": 5000,
         "credit_period": "month",
         "features": [
-          "Dashboard"
+          {
+            "key": "saved_designs",
+            "name": "Saved designs",
+            "status": "available"
+          },
+          {
+            "key": "export_history",
+            "name": "Export history",
+            "status": "available"
+          },
+          {
+            "key": "credit_usage",
+            "name": "Credit usage",
+            "status": "available"
+          }
         ]
       },
       {
@@ -52,7 +72,28 @@
         "price_yearly_per_month": "22.50",
         "credits": 10000,
         "credit_period": "month",
-        "features": null
+        "features": [
+          {
+            "key": "saved_designs",
+            "name": "Saved designs",
+            "status": "available"
+          },
+          {
+            "key": "export_history",
+            "name": "Export history",
+            "status": "available"
+          },
+          {
+            "key": "credit_usage",
+            "name": "Credit usage",
+            "status": "available"
+          },
+          {
+            "key": "teams",
+            "name": "Multiple accounts",
+            "status": "coming_soon"
+          }
+        ]
       }
     ],
     "credit_costs": {
@@ -63,6 +104,10 @@
     "monthly_rollover": false,
     "credit_packs": null,
     "refund_policy": null,
+    "checkout_return": {
+      "poll_s": null,
+      "wait_s": null
+    },
     "payments_available": false
   }
 }
