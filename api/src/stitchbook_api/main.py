@@ -26,7 +26,7 @@ import threading
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Callable
 
 from digitizer.config import Config, PlaceholderValueError, load_config, load_test_run_config
 from digitizer import quality
@@ -45,8 +45,10 @@ from shapely.ops import unary_union
 
 from fastapi.concurrency import run_in_threadpool
 
+from stitchbook_api import account as usage
 from stitchbook_api import plans as plan_math
 from stitchbook_api import uploads
+from stitchbook_api.account import SupabaseUserRpc, UsageUnavailable, UserRpc
 from stitchbook_api.billing import Billing, BillingUnavailable, FreeOperations, InsufficientCredits, SupabaseRpc
 from stitchbook_api.payments import BadSignature, IgnoredEvent, Provider, ProviderError, provider_from
 from stitchbook_api.plans import chosen
@@ -120,14 +122,24 @@ def _plain_validation_message(exc: RequestValidationError | ValidationError) -> 
     return "; ".join(parts) + ". Fix the request and send it again."
 
 
+class PlanRequired(Exception):
+    """The user's plan does not include this feature (403 {"error": "plan_required", "plan"})."""
+
+    def __init__(self, plan: str | None):
+        super().__init__("plan_required")
+        self.plan = plan
+
+
 def create_app(config: Config | None = None, storage: Storage | None = None,
                settings: Settings | None = None, auth: Auth | None = None,
                http: httpx.Client | None = None, billing: Billing | FreeOperations | None | str = "settings",
-               provider: Provider | None | str = "config") -> FastAPI:
+               provider: Provider | None | str = "config",
+               usage_for: Callable[[User], UserRpc] | None | str = "settings") -> FastAPI:
     """`auth` checks sign-in tokens: made from the Supabase settings when they are set; tests may
     pass their own. With neither, the API is in local mode (no sign-in, one local user).
     `billing` (credits) is made from the settings unless given; `provider` (payments) from
-    billing.provider in config.py unless given."""
+    billing.provider in config.py unless given. `usage_for` reads Export history and Credit usage
+    as the signed-in user (Supabase mode); tests pass their own."""
     settings = settings or load_settings()
     settings.check_production()  # fail closed: no production API without sign-in and billing
     config = config or (load_test_run_config() if settings.test_run_values else load_config())
@@ -168,6 +180,16 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
                                  production=settings.production, config=config,
                                  whop_api_key=settings.whop_api_key, whop_webhook_secret=settings.whop_webhook_secret,
                                  site_url=settings.site_url)
+
+    if usage_for == "settings":
+        if settings.supabase:
+            http = http or httpx.Client()
+
+            def usage_for(user: User) -> UserRpc:
+                return SupabaseUserRpc(settings.supabase_url, settings.supabase_publishable_key, user.token or "",
+                                       lambda: config.get("auth.http_timeout_s"), http)
+        else:
+            usage_for = None
 
     def current_user(authorization: Annotated[str | None, Header(include_in_schema=False)] = None) -> User:
         """The signed-in user, from a verified token only. Local mode: the one local user."""
@@ -248,6 +270,10 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
 
     NOT_ENOUGH = "You don't have enough credits for this."
 
+    @app.exception_handler(PlanRequired)
+    async def plan_required(_: Request, exc: PlanRequired):
+        return JSONResponse({"error": "plan_required", "plan": exc.plan}, status_code=403)
+
     @app.exception_handler(InsufficientCredits)
     async def no_credits(_: Request, exc: InsufficientCredits):
         return JSONResponse({"error": NOT_ENOUGH, "available": exc.available, "needed": exc.needed, "plan": exc.plan},
@@ -261,6 +287,7 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
 
     @app.exception_handler(DatabaseUnavailable)
     @app.exception_handler(StorageUnavailable)
+    @app.exception_handler(UsageUnavailable)
     async def store_down(_: Request, exc: Exception):
         log.warning("store unavailable: %s", exc)
         return JSONResponse({"error": "Your designs could not be reached right now. Try again in a moment."},
@@ -406,6 +433,41 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
         if billing is None or not billing.enabled:
             return {"enabled": False}
         return billing.account(user.id)
+
+    # ---------- Export history and Credit usage (plans with the feature) ----------
+
+    def needs_feature(user: User, key: str) -> UserRpc | None:
+        """The user's reader if their plan has this feature; None when this server has no billing
+        or accounts (local mode); 403 {"error": "plan_required", "plan": <first plan with it>}."""
+        if usage_for is None or not isinstance(billing, Billing):
+            return None
+        plan = billing.ensure_grants(user.id)  # due grants first, so the balance matches /me/credits
+        if not plan_math.has_feature(config, plan.id, key):
+            needed = next((p for p in plan_math.PLAN_IDS if plan_math.has_feature(config, p, key)), None)
+            raise PlanRequired(needed)
+        return usage_for(user)
+
+    def page_number(page: int) -> tuple[int, int]:
+        return page, config.get("billing.history_page_size")
+
+    @app.get("/exports", responses=ERRORS)
+    def export_history(page: Annotated[int, Query(ge=1, le=100000)] = 1, user: User = Depends(current_user)) -> dict:
+        """The user's finished exports, newest first: design name, format, size, credits used, date.
+        Pro and Business. A file is downloaded again through /designs/{id}/download-url (a fresh
+        short-lived link; it is a new export and costs credits, like any download)."""
+        rpc = needs_feature(user, "export_history")
+        if rpc is None:
+            return {"enabled": False}
+        return {"enabled": True, **usage.export_history(rpc, *page_number(page))}
+
+    @app.get("/credits/usage", responses=ERRORS)
+    def credit_usage(page: Annotated[int, Query(ge=1, le=100000)] = 1, user: User = Depends(current_user)) -> dict:
+        """Balance per bucket, the renewal date, this month's spend and the credit entries (grants
+        and spends), newest first. Pro and Business. Read through the user's own row level security."""
+        rpc = needs_feature(user, "credit_usage")
+        if rpc is None:
+            return {"enabled": False}
+        return usage.credit_usage(rpc, *page_number(page), plan_math.month_start())
 
     @app.post("/billing/checkout", responses=ERRORS)
     def checkout(body: Annotated[dict, Body()], user: User = Depends(current_user)) -> dict:

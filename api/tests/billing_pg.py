@@ -61,6 +61,22 @@ class PgRpc:
         return json.loads(whole(out))
 
 
+class PgUserRpc:
+    """Migration 7's my_* functions as one signed-in user (role authenticated + their JWT claims),
+    as PostgREST runs them for the user's token: row level security applies."""
+    SCALAR = {"my_credits_spent"}
+
+    def __init__(self, pg: Postgres, user_id: str):
+        self.pg, self.user_id = pg, user_id
+
+    def call(self, fn: str, args: dict[str, Any]) -> Any:
+        named = ", ".join(f"{k} => {literal(v)}" for k, v in args.items())
+        query = (f"select to_json(public.{fn}({named}))" if fn in self.SCALAR
+                 else f"select coalesce(json_agg(t), '[]') from public.{fn}({named}) t")
+        text = whole(self.pg.sql(query, user=self.user_id))
+        return json.loads(text) if text else None
+
+
 def whole(rows: list[list[str]]) -> str:
     """psql prints JSON over several lines and splits on "|": put it back together."""
     return "\n".join("|".join(r) for r in rows).strip()

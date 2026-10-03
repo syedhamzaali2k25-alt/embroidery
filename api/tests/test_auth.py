@@ -145,6 +145,11 @@ def test_every_other_route_answers_401_without_a_good_token(setup):
     assert LocalDesigns(storage, A).get(design_id) is not None  # nothing above changed A's design
 
 
+# Routes about the caller's own account (no id of anyone else's in the path): B gets B's own.
+OWN_ACCOUNT_ROUTES = {"/designs", "/jobs/health", "/me/credits", "/billing/checkout", "/billing/cancel", "/billing/manage",
+                      "/exports", "/credits/usage"}
+
+
 def test_user_b_never_sees_user_as_design_or_job(setup):
     client, storage, _ = setup
     design_id = upload(client, A)
@@ -155,7 +160,7 @@ def test_user_b_never_sees_user_as_design_or_job(setup):
     assert [d["id"] for d in client.get("/designs", headers=as_user(A)).json()] == [design_id]
     assert client.get("/designs", headers=as_user(B)).json() == []  # B's list does not contain it
     for method, path, body in user_routes(client, design_id, job.id):
-        if path in ("/designs", "/jobs/health", "/me/credits", "/billing/checkout", "/billing/cancel", "/billing/manage"):
+        if path in OWN_ACCOUNT_ROUTES:
             continue  # B's own list (checked above), the queue health, and B's own account routes
         response = call(client, method, path, body, as_user(B))
         assert response.status_code == 404, (method, path, response.status_code, response.text)
