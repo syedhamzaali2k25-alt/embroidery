@@ -91,7 +91,7 @@
           {
             "key": "teams",
             "name": "Multiple accounts",
-            "status": "coming_soon"
+            "status": "available"
           }
         ]
       }
@@ -104,6 +104,12 @@
     "monthly_rollover": false,
     "credit_packs": null,
     "refund_policy": null,
+    "team": {
+      "included_seats": 4,
+      "extra_seat_price": "10.00",
+      "extra_seat_credits": 1000,
+      "currency": "USD"
+    },
     "checkout_return": {
       "poll_s": null,
       "wait_s": null

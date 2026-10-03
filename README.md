@@ -94,7 +94,7 @@ npm run check:secrets    # dist/ contains no Supabase secret key, Google client 
 npm run test:pricing     # /pricing and the home Pricing section: every number from config, price math, toggle, no invented claims, 360 px
 ```
 
-Credits and plans (Step 13, `docs/billing.md`): preview is free; exports cost credits, reserved when they start and used only if they succeed. Plans and prices come from `billing.*` in config.py (`GET /plans`, the /pricing page). Without Supabase there is no billing: run the API with `STITCHBOOK_FREE_OPERATIONS=1` to export locally. Payments: Whop, sandbox first (Step 13c, `docs/payments-whop.md`); off until its keys and plan ids are set.
+Credits and plans (Step 13, `docs/billing.md`): preview is free; exports cost credits, reserved when they start and used only if they succeed. Plans and prices come from `billing.*` in config.py (`GET /plans`, the /pricing page). Without Supabase there is no billing: run the API with `STITCHBOOK_FREE_OPERATIONS=1` to export locally. Payments: Whop, sandbox first (Step 13c, `docs/payments-whop.md`); off until its keys and plan ids are set. Pro and Business add Export history (`/exports`) and Credit usage (on /billing); Business adds a team (Step 13b): the owner invites members by link, members export with the owner's credits and keep their designs private, and extra seats come from config (`billing.team.*`). Migration 7 must be pasted for these (`docs/supabase-setup.md`).
 
 To try the Upload and Preview screens locally: `STITCHBOOK_FREE_OPERATIONS=1 STITCHBOOK_TEST_RUN_VALUES=1 make api` in one terminal and `make web` in another, then open http://localhost:8080/upload. Tracing in the editor (`/editor?design=<id>`, reached from Preview) also needs Redis and `make worker`.
 
