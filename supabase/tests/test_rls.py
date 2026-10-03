@@ -43,7 +43,7 @@ class Postgres:
             pytest.skip("no local Postgres server (initdb/pg_ctl/psql): RLS SQL not tested here")
         self.bindir = bindir
         self.dir = Path(tempfile.mkdtemp(prefix="stitchbook-pg-", dir="/tmp"))
-        self.port = "55433"
+        self.port = os.environ.get("STITCHBOOK_TEST_PG_PORT", "55433")  # the screenshot server uses its own
         as_root = os.geteuid() == 0
         self.prefix = ["runuser", "-u", "postgres", "--"] if as_root else []
         if as_root:

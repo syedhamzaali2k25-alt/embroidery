@@ -19,7 +19,8 @@
     "test:auth": "node scripts/auth-tests.mjs",
     "test:pricing": "npm run build:offline && node scripts/pricing-tests.mjs",
     "check:secrets": "node scripts/check-bundle-secrets.mjs",
-    "test:motion": "npm run build:offline && node scripts/motion-tests.mjs"
+    "test:motion": "npm run build:offline && node scripts/motion-tests.mjs",
+    "test:teams": "node scripts/team-screens.mjs --teams"
   },
   "devDependencies": {
     "@types/react": "^19.3.0",
