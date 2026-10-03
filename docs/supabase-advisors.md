@@ -42,6 +42,15 @@ What migration 5 was written to avoid (intentions, not results):
 
 Migration 6 only adds a unique partial index, `subscriptions_provider_subscription_idx` on `subscriptions (provider, provider_subscription_id)`. Run the advisors again and record any finding; the Performance Advisor may list it as an unused index until webhooks arrive.
 
+## After migration 7 (usage and teams)
+
+Run both advisors again and record every finding. Intentions, not results:
+
+- RLS is on for `teams`, `team_members`, `team_invites`, `team_extra_seats`: users get SELECT only (owner reads all of their team; a member reads their own member row and their team); no write grants; nothing for anon.
+- `credit_reservations` now has one read policy: the spender (`owner_id`) or the pool owner (`credit_owner_id`).
+- New functions all set `search_path = ''`. The team and pool functions are security definer, service role only. `my_credit_balance()` is a security-definer function that authenticated users may run; it only reads `auth.uid()`'s own balance, so a "security definer function executable by authenticated" finding is expected for it. The other `my_*` functions are security invoker.
+- Indexes: `owner_id` on every new table, `team_invites (team_id)`, `team_invites (accepted_by)`, `credit_reservations (credit_owner_id, created_at)`. `team_members.user_id` and `team_invites.token_hash` are unique.
+
 ## Security Advisor findings
 
 | # | Level (Error / Warning / Info) | Finding (name as shown) | Object (table, function, bucket) | What it says | Fixed in | Notes |

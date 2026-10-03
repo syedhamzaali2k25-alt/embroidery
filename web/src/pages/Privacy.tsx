@@ -112,12 +112,19 @@ export default function Privacy() {
 
       <h2>Who can see it</h2>
       {signInEnabled ? (
+        <>
         <p>
           Only you, when you are logged in. Every design, job and file belongs to the account that uploaded it; the
           server and the database both refuse anyone else, and someone else's design looks to them as if it does not
           exist. Files are never given a public address: a download link works for a short time and then stops. There
           is no sharing feature. People who run Stitchbook can see the stored data through Supabase's own tools.
         </p>
+        <p>
+          Teams: if you join someone's team, the team owner sees your email address, when you joined, and how many
+          of the team's credits you spent and when. They do not see your designs or files, and other members do not
+          see you. An invite link is stored only in a scrambled (hashed) form.
+        </p>
+        </>
       ) : (
       <p>
         There are no accounts yet. Each design has its own address with a random id, and anyone who has that address

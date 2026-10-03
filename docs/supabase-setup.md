@@ -15,6 +15,7 @@ The files are in `supabase/migrations/`. Paste each one whole and run it before 
 | 3rd | `20261001000003_storage.sql` | Private buckets `uploads` and `exports`. Their policies let a signed-in user read and write only under their own folder: `{user_id}/...`. |
 | 4th | `20261001000005_billing.sql` | Credits and plans (Step 13): `subscriptions`, `credit_ledger`, `credit_reservations`, `credit_allocations`, `operation_log`, `processed_webhook_events`, with RLS (users read their own rows only and write nothing), and the credit functions that only the secret key may run. It also adds `(design_id, owner_id)` indexes to `jobs` and `exports`. See `docs/billing.md`. |
 | 5th | `20261001000006_whop_subscription_owner.sql` | Payments (Step 13c): one Whop membership can belong to one account only (a unique index on `subscriptions`). Paste it before taking payments; see `docs/payments-whop.md`. |
+| 6th | `20261001000007_usage_and_teams.sql` | Step 13d + 13b: the functions that read Export history and Credit usage as the signed-in user (`my_export_history`, `my_credit_entries`, `my_credits_spent`, `my_subscription`, `my_credit_balance`); teams (`teams`, `team_members`, `team_invites`, `team_extra_seats`, read-only RLS); the shared credit pool (new `credit_reservations.credit_owner_id`, `credit_ledger.acting_user_id`, reason `seat_grant`; `reserve_credit`, `consume_credit`, `release_credit` replaced); seat limits, invites and extra seats as service-role functions. Paste it before deploying this version of the API. |
 
 There is no `20261001000004_*.sql` in this repository. If you made a migration 4 yourself, run it before migration 5. Migration 5 does not depend on it; its index statements use `if not exists`, so an index of the same name is not made twice.
 
@@ -29,7 +30,8 @@ What to click:
 5. Open a new tab with **+** again. Paste and run `20261001000002_profiles_on_signup.sql`.
 6. Open a new tab with **+** again. Paste and run `20261001000003_storage.sql`.
 7. Open a new tab with **+** again. Paste and run `20261001000005_billing.sql`. (If the first three are already in your project, start here.)
-8. Open a new tab with **+** again. Paste and run `20261001000006_whop_subscription_owner.sql` (Step 13c). If 1-5 are already in your project, this is the only one to run now.
+8. Open a new tab with **+** again. Paste and run `20261001000006_whop_subscription_owner.sql` (Step 13c).
+9. Open a new tab with **+** again. Paste and run `20261001000007_usage_and_teams.sql` (Step 13d + 13b). If migrations 1-6 are already in your project, this is the only one to run now. Run it once: it replaces three credit functions and adds columns, and a second run stops at its first `create table` ("already exists"), changing nothing.
 
 Each file is meant to run once on the empty project. Running file 1 or 2 a second time fails with "already exists"; that is harmless, nothing is changed. File 3 also stops at its first policy on a second run, after setting both buckets back to private.
 

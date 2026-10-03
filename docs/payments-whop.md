@@ -167,6 +167,10 @@ The SDK has payout APIs (`payout_accounts`, `payout_methods`, `withdrawals`) but
 - Any identity verification, tax forms and minimum payout.
 - Payout fees and currency conversion (USD to PKR).
 
+### 4b. Extra team seats (Step 13b)
+
+An extra seat is a separate Whop plan (an add-on): create a renewing plan at the extra-seat price in config.py (`billing.team.extra_seat_price`, 10.00 USD a month) and paste its id into `billing.team.extra_seat_whop_plan_id`. Until then the Team page says "Extra seats are not available yet." Its webhooks (same events, same URL) add a seat and grant `billing.team.extra_seat_credits` once per seat and month. OWNER TO CONFIRM: whether Whop can tie the add-on to the Business membership, or it renews on its own date (today: on its own).
+
 ### 5. OWNER TO CONFIRM before launch
 
 - **Tax and invoices:** Owner states that Whop handles tax and invoices. Verify this in Whop's own terms/docs before launch and paste the link here: ____

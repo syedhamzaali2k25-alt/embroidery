@@ -17,7 +17,9 @@ Plans grant the credits. Payments go through a provider adapter: **Whop** (`docs
 | Credits: reserve / consume / release, grants, sweep | `api/src/stitchbook_api/billing.py`, the only code that uses `SUPABASE_SECRET_KEY` |
 | Payment provider interface, FakeProvider, WhopProvider | `api/src/stitchbook_api/payments.py`; setup and event mapping in `docs/payments-whop.md` |
 | One provider subscription per account | `supabase/migrations/20261001000006_whop_subscription_owner.sql` |
-| Tables, RLS, functions | `supabase/migrations/20261001000005_billing.sql` |
+| Tables, RLS, functions | `supabase/migrations/20261001000005_billing.sql`; teams and usage reads in `20261001000007_usage_and_teams.sql` |
+| Export history, Credit usage (read as the user) | `api/src/stitchbook_api/account.py`, `web/src/pages/Exports.tsx`, Credit usage in `web/src/pages/Billing.tsx` |
+| Teams | `Billing.team_*` in `api/src/stitchbook_api/billing.py`, routes `/team*` in `main.py`, `web/src/pages/Team.tsx`, `web/src/pages/TeamJoin.tsx` |
 | Pricing page, plan cards, header balance, /billing | `web/src/pages/Pricing.tsx`, `web/src/lib/PlanCards.tsx`, `web/src/lib/credits.ts`, `web/src/pages/Billing.tsx` |
 
 ## Values the owner gave (in config.py)
@@ -25,8 +27,10 @@ Plans grant the credits. Payments go through a provider adapter: **Whop** (`docs
 | Value | Setting | Notes |
 |---|---|---|
 | Free | price 0, 30 credits, given once ("lifetime") | **OWNER TO CONFIRM.** 30 = 3 exports at 10 credits each. |
-| Pro | 12 USD a month, 5,000 credits a month, features: "Dashboard" only | |
-| Business | 25 USD a month, 10,000 credits a month | Features and seats are `__CHOOSE__`; nothing is claimed. |
+| Features | Free: Saved designs. Pro: + Export history, Credit usage. Business: + Multiple accounts | `plans.*.features`: each has a `key` the API checks and a `name` the cards show; `"status": "coming_soon"` shows a tag and unlocks nothing. |
+| Pro | 12 USD a month, 5,000 credits a month | |
+| Business | 25 USD a month, 10,000 credits a month | Teams: 4 seats including the owner (`team.included_seats`). |
+| Extra seat | 10.00 USD a month, adds 1 seat and 1,000 credits a month to the owner's plan bucket | `team.extra_seat_price`, `team.extra_seat_credits`. The Whop add-on id `team.extra_seat_whop_plan_id` is `__CHOOSE__`. |
 | Yearly discount | 10% | Yearly price = monthly × 12 × 0.9, computed in code: Pro 129.60, Business 270.00. Yearly plans get the same monthly allowance. |
 | Export cost | 10 credits | |
 | Monthly rollover | off | **OWNER TO CONFIRM.** Unused plan credits expire at the end of the UTC month. |
@@ -40,8 +44,8 @@ These are all `__CHOOSE__` or flagged in config.py. Until chosen, the UI shows a
   - `credit_costs.satin_columns`: unset, so satin columns are free and nothing is reserved;
   - `credit_costs.auto_digitize`: unset (the operation does not exist yet).
 - **The Free plan's 30 credits:** exports? Lifetime or monthly?
-- **Business:** features, and seats. Teams are not built (see Step 13b).
-- **"Dashboard":** what it includes (Pro). It is listed because the owner gave it; no dashboard feature exists in the code yet.
+- **History page size:** `history_page_size` (rows per page of Export history and Credit usage). Unset = those pages answer "not configured".
+- **Teams:** `team.invite_ttl_s` (how long an invite link works) and `team.extra_seat_whop_plan_id`; see "Teams" below for the open decisions.
 - **Rollover:** `monthly_rollover`.
 - **Credit packs:** `credit_packs`, a list of `{"credits": n, "price": p}`. Hidden while unset. Bought credits never expire and are spent after the monthly allowance.
 - **Reservation timeout:** `reservation_timeout_s`, and `sweep_interval_s`. While unset, the stale sweep does not run.
@@ -118,13 +122,30 @@ A local gateway can be added the same way. The FakeProvider (HMAC-SHA256 over th
 - **Deleting a design** keeps its spent credits spent; the log rows stay, with no design.
 - **Deleting an account** removes its billing rows (cascade), but not the provider's subscription: cancel it first.
 
-## Step 13b: Teams (not built)
+## Export history and Credit usage (Step 13d)
 
-Nothing in the UI or copy mentions teams, seats or multiple accounts. Open decisions:
+Pro and Business (the `export_history` and `credit_usage` feature keys). Free gets 403 `{"error": "plan_required", "plan": "pro"}` and the web shows a calm note with a link to Pricing; Free keeps its header balance, its designs and the operation History on /billing.
 
-- **Organizations:** an `organizations` table; is a personal account an organization of one?
-- **Members and roles:** owner / admin / member; who may buy, export, see history.
-- **Shared credit pool:** credits belong to the organization; the per-user ledger and reservations move to organization ids.
-- **RLS rewrite:** every policy changes from `owner_id = auth.uid()` to membership checks, including Storage paths (`{user_id}/...` → `{org_id}/...`).
-- **Invitations:** email invitations, expiry, accepting into an existing account.
-- **Seat limits:** `plans.business.seats`; what happens when a plan is downgraded below its member count.
+- `GET /exports?page=n`: the user's finished exports, newest first (design name, format, size, credits, date). Downloading again goes through the normal metered download, which signs a fresh short-lived link (`storage.signed_url_ttl_s`); it is a new export and costs credits, because the stored file is rewritten by every (free) preview.
+- `GET /credits/usage?page=n`: balance by bucket, renewal date, this month's spend, and the entries (grants +, spends −), newest first.
+- Both are read AS THE USER: the API calls migration 7's `my_*` functions with the user's own token and the publishable key, so row level security decides. No secret key. (`my_credit_balance()` is a definer wrapper that only ever reads the caller's own balance.)
+
+## Teams (Step 13b)
+
+Only Business has a team (the `teams` feature key, "Multiple accounts"). Members export with the TEAM OWNER's credits; designs stay private to whoever made them (no sharing).
+
+- **Seats:** owner + members ≤ `team.included_seats` + active extra seats. Checked in SQL under the owner's row lock (`team_create_invite`, `team_accept_invite`), so concurrent accepts cannot overshoot (tested with 10 at once).
+- **Invites:** `POST /team/invites {email}` returns a link `/team/join#token=...` to copy; there is no email service. Only the token's SHA-256 is stored. A link works once, until `team.invite_ttl_s`, for the invited email only (the signed-in email must match). One person, one team. Someone with an active paid plan of their own must cancel it before joining.
+- **Who pays:** `billing_credit_owner(user)` = the team owner while the user is a member of an active Business team, else the user. `reserve_credit` / `consume_credit` / `release_credit` lock and spend that pool. A reservation keeps who spent (`owner_id`, whose design it is) and who paid (`credit_owner_id`, new); the owner's Credit usage shows which member spent. Grants record `acting_user_id` (new, nullable) where there is one (an extra seat). Spends are not ledger rows (the ledger only holds grants; balances subtract reservations), so "who spent" lives on the reservation.
+- **Members see** "Credits are provided by your team" (on /billing, /team and instead of plan cards), the pool's available credits and their own history. They cannot read the owner's billing, invites, seats or other members (403 `team_member`; RLS shows them only their own member row).
+- **Removing a member** (`DELETE /team/members/{id}`; never the owner) stops pool access at once: the next reservation finds no membership. Something already running settles normally.
+- **Plan end:** when the owner's Business ends (deactivated, or switched to another plan), the webhook runs `team_end`: members leave the team, open invites stop working, designs stay with their makers. They fall back to Free rules with no new free credits (nobody who has ever joined a team gets the Free grant). "Cancelled but paid until later" keeps the team until then.
+- **Extra seats:** `POST /team/seats` opens the provider's checkout (FakeProvider now; Whop once `team.extra_seat_whop_plan_id` is set, otherwise "Extra seats are not available yet."). A seat event grants `team.extra_seat_credits` into the owner's plan bucket once per seat and UTC month (ref `seat:{subscription}:{YYYY-MM-01}`, no rollover; replays add nothing); the monthly top-up gives later months while the seat and Business are active. A cancelled seat stops the next grant and frees no member.
+
+### OWNER TO DECIDE (teams)
+
+- **Whop add-on seat billing:** create the add-on plan in Whop and paste its id into `team.extra_seat_whop_plan_id`; whether a seat renews with the Business plan's date or its own; what happens to seats when Business is cancelled (today: seats stay recorded but give no credits and no access while Business is inactive).
+- **Members at downgrade:** today the team ends and members go back to Free rules without new free credits. Alternatives: a grace period, or keeping the team inactive for a later re-subscribe.
+- **Seats below the member count** (an extra seat cancelled while full): today nobody is removed; no one new can join until there is room.
+- **Email invites later:** an email service (Supabase Auth invite, or a mail provider) instead of copying the link.
+- **Per-member credit limits:** not built; any member can spend the whole pool.

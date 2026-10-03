@@ -42,7 +42,9 @@ console.log('-- source: no price or credit amount typed into the pricing compone
   const numbers = new Set();
   for (const p of PLANS.plans) for (const v of [p.price_monthly, p.price_yearly, p.price_yearly_per_month, p.credits]) if (v !== null && Number(v) > 0) numbers.add(Number(v));
   for (const v of [PLANS.yearly_discount_percent, ...Object.values(PLANS.credit_costs)]) if (v) numbers.add(Number(v));
-  const files = ['src/lib/PlanCards.tsx', 'src/pages/Pricing.tsx', 'src/pages/Billing.tsx', 'src/lib/credits.ts', 'src/lib/AccountMenu.tsx'];
+  for (const v of [PLANS.team.extra_seat_price, PLANS.team.extra_seat_credits]) if (v) numbers.add(Number(v));
+  const files = ['src/lib/PlanCards.tsx', 'src/pages/Pricing.tsx', 'src/pages/Billing.tsx', 'src/lib/credits.ts', 'src/lib/AccountMenu.tsx',
+    'src/pages/Team.tsx', 'src/pages/TeamJoin.tsx'];
   const landing = await readFile(join(root, 'src/pages/Landing.tsx'), 'utf8');
   const sources = await Promise.all(files.map(async (f) => [f, await readFile(join(root, f), 'utf8')]));
   sources.push(['src/pages/Landing.tsx (pricing section)', landing.slice(landing.indexOf('id="pricing"'), landing.indexOf('className="cta"'))]);
@@ -52,7 +54,8 @@ console.log('-- source: no price or credit amount typed into the pricing compone
     const typed = featureNames.filter((n) => plain.includes(`"${n}"`) || plain.includes(`'${n}'`) || plain.includes(`>${n}<`));
     // Plan cards and pricing only (the Billing page has its own "Credit usage" heading).
     if (/PlanCards|Pricing|Landing/.test(file)) check(typed.length === 0, `${file}: no feature text typed in${typed.length ? ` (found ${typed.join(', ')})` : ''}`);
-    const code = text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '').replace(/\{\/\*[\s\S]*?\*\/\}/g, '');
+    const code = text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '').replace(/\{\/\*[\s\S]*?\*\/\}/g, '')
+      .replace(/\*\s*1000\b/g, '* MS');  // seconds -> milliseconds: a unit, not a price or a credit amount
     const found = [...code.matchAll(/(?<![\w.#$-])(\d+(?:\.\d+)?)(?![\w-])/g)].map((m) => Number(m[1])).filter((n) => numbers.has(n));
     const money = code.match(/[$€£]\s?\d|\d+\s?(credits|%)\b/);
     check(found.length === 0 && !money, `${file}: no configured price/credit literal${found.length ? ` (found ${found.join(', ')})` : ''}${money ? ` (found "${money[0]}")` : ''}`);
@@ -110,7 +113,16 @@ const cards = (page, scope = 'body') => page.locator(`${scope} .plan`).evaluateA
 const noSideScroll = (page) => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth);
 // Text that comes from config.py (the owner's own feature names) is allowed; everything else on
 // the page is checked against FORBIDDEN.
-const fromConfigRemoved = (text) => PLANS.plans.flatMap((p) => (p.features || []).map((f) => f.name))
+// The extra-seat line, as config.py makes it (null while a value is not chosen or no plan offers teams).
+const seatText = (plans) => {
+  const t = plans.team;
+  const teams = plans.plans.some((p) => (p.features || []).some((f) => f.key === 'teams' && f.status === 'available'));
+  if (!teams || t.extra_seat_price === null || t.extra_seat_credits === null) return null;
+  const price = Number(t.extra_seat_price);
+  const money = new Intl.NumberFormat('en', { style: 'currency', currency: t.currency, minimumFractionDigits: Number.isInteger(price) ? 0 : 2 }).format(price);
+  return `Extra seat: ${money}/month, adds 1 seat and ${Number(t.extra_seat_credits).toLocaleString('en')} credits to the shared pool`;
+};
+const fromConfigRemoved = (text) => [...PLANS.plans.flatMap((p) => (p.features || []).map((f) => f.name)), seatText(PLANS) ?? '\u0000']
   .reduce((t, name) => t.split(name).join(' '), text);
 const FORBIDDEN = /unlimited|cheapest|\bteam\b|multiple accounts|testimonial|best value|\bseats?\b|most popular/i;
 
@@ -136,7 +148,10 @@ try {
     check(await page.locator('.plan__soon').count() === soon.length, `"Coming soon" tags only on ${soon.join(', ') || 'nothing'}`);
     const all = await page.locator('main').innerText();
     check(!all.includes('Dashboard') && !all.includes('Features not chosen yet'), 'no "Dashboard" and no "Features not chosen yet"');
-    check((await page.locator('.plans__note').innerText()).includes('1 export = 10 credits'), '"1 export = 10 credits" from credit_costs.export');
+    check((await page.locator('.plans__note').first().innerText()).includes('1 export = 10 credits'), '"1 export = 10 credits" from credit_costs.export');
+    const seat = seatText(PLANS);
+    const shown = await page.locator('.plans__seat').allInnerTexts();
+    check(seat ? shown.join() === seat : shown.length === 0, `the extra-seat line comes from config: "${shown.join() || 'not shown'}"`);
     const fills = await page.locator('.plan').evaluateAll((els) => els.map((e) => [...e.classList].find((c) => c.startsWith('card--'))));
     check(fills.join() === 'card--lavender,card--lime,card--pink', 'fills: lavender, lime, pink');
     await page.screenshot({ path: join(shots, 'pricing-monthly-1366.png'), fullPage: true });
@@ -168,9 +183,18 @@ try {
     await page.locator('.plan').first().waitFor();
     await page.getByRole('radio', { name: /Yearly/ }).click();
     const pro = (await cards(page))[1];
-    check(pro.includes('$216.00 per year') && (await page.locator('.plans__note').innerText()).includes('1 export = 15 credits'),
+    check(pro.includes('$216.00 per year') && (await page.locator('.plans__note').first().innerText()).includes('1 export = 15 credits'),
       `Pro at 20/month -> $216.00/year; export cost 15 ("${pro}")`);
     await page.close();
+    const seatPage = await open('/pricing', { plans: plansFromConfig({ 'billing.team.extra_seat_price': 12.5, 'billing.team.extra_seat_credits': 2500 }) });
+    await seatPage.locator('.plans__seat').waitFor();
+    check(await seatPage.locator('.plans__seat').innerText() === 'Extra seat: $12.50/month, adds 1 seat and 2,500 credits to the shared pool',
+      'a changed seat price and seat credits change the extra-seat line');
+    await seatPage.close();
+    const unset = await open('/pricing', { plans: plansFromConfig({ 'billing.team.extra_seat_price': '__CHOOSE__' }) });
+    await unset.locator('.plan').first().waitFor();
+    check(await unset.locator('.plans__seat').count() === 0, 'seat price not chosen: no extra-seat line (nothing invented)');
+    await unset.close();
   }
 
   console.log('-- home page Pricing section = /pricing (same component, same data)');

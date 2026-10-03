@@ -315,10 +315,8 @@ PRODUCT: dict[str, dict[str, Any]] = {
             {"key": "saved_designs", "name": "Saved designs"},
             {"key": "export_history", "name": "Export history"},
             {"key": "credit_usage", "name": "Credit usage"},
-            {"key": "teams", "name": "Multiple accounts", "status": "coming_soon"},
+            {"key": "teams", "name": "Multiple accounts"},
         ],
-        # Accounts per Business subscription. Not built (Step 13b: Teams); never shown as a claim.
-        "plans.business.seats": PLACEHOLDER,
         # Yearly billing: the yearly price is monthly x 12 x (1 - this/100), computed in code
         # (Pro 129.60, Business 270.00), never typed in anywhere.
         "yearly_discount_percent": 10,
