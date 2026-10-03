@@ -322,6 +322,18 @@ PRODUCT: dict[str, dict[str, Any]] = {
         # Yearly billing: the yearly price is monthly x 12 x (1 - this/100), computed in code
         # (Pro 129.60, Business 270.00), never typed in anywhere.
         "yearly_discount_percent": 10,
+        # Teams (Business only; Step 13b). Seats counted include the owner: 4 = owner + 3 members.
+        "team.included_seats": 4,
+        # An extra seat: this price per month in billing.currency (owner decision)...
+        "team.extra_seat_price": 10.00,
+        # ...adds one seat and this many credits per month to the team owner's plan bucket
+        # (granted once per seat and UTC month, no rollover; stops when the seat or Business ends).
+        "team.extra_seat_credits": 1000,
+        # Whop plan id (plan_...) of the extra-seat add-on. Unset = "Extra seats are not available
+        # yet" when the provider is Whop (the FakeProvider sells them in tests and local runs).
+        "team.extra_seat_whop_plan_id": PLACEHOLDER,
+        # An invite link stops working this many seconds after it is made.
+        "team.invite_ttl_s": PLACEHOLDER,
         # Export history and Credit usage: rows per page (the API pages newest first).
         "history_page_size": PLACEHOLDER,
         # Credits each metered operation costs. 0 or PLACEHOLDER = free and nothing is reserved.
@@ -423,6 +435,7 @@ TEST_RUN_OVERRIDES: dict[str, Any] = {
     "billing.reservation_timeout_s": 600,
     "billing.sweep_interval_s": 60,
     "billing.history_page_size": 20,
+    "billing.team.invite_ttl_s": 86400,
     "auth.jwks_cache_s": 300,
     "auth.http_timeout_s": 10,
     "editor.edit_point_tolerance_mm": 0.5,

@@ -35,6 +35,7 @@ class AuthUnavailable(Exception):
 class User:
     id: str
     token: str | None  # the verified access token, passed on to Supabase so RLS applies
+    email: str | None = None  # from the verified token only (team invites are checked against it)
 
 
 # Local mode (no Supabase settings): everything belongs to this one user and no sign-in is asked.
@@ -43,6 +44,10 @@ LOCAL_USER = User(id="local", token=None)
 
 class Auth(Protocol):
     def verify(self, token: str) -> User: ...
+
+
+def _email(value) -> str | None:
+    return value.strip().lower() if isinstance(value, str) and "@" in value else None
 
 
 def _user_id(sub: object) -> str:
@@ -110,7 +115,7 @@ class SupabaseAuth:
                 raise Unauthorized("The sign-in token is not valid. Sign in again.") from None
             if claims.get("role") != "authenticated":
                 raise Unauthorized("Sign in to continue.")
-            return User(id=_user_id(claims.get("sub")), token=token)
+            return User(id=_user_id(claims.get("sub")), token=token, email=_email(claims.get("email")))
         if alg == "HS256":
             return self._ask_supabase(token)
         raise Unauthorized("The sign-in token is not valid. Sign in again.")
@@ -124,4 +129,5 @@ class SupabaseAuth:
             raise AuthUnavailable() from exc
         if response.status_code != 200:
             raise Unauthorized("The sign-in token is not valid. Sign in again.")
-        return User(id=_user_id(response.json().get("id")), token=token)
+        body = response.json()
+        return User(id=_user_id(body.get("id")), token=token, email=_email(body.get("email")))

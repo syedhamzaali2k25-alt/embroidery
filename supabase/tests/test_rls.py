@@ -101,12 +101,14 @@ def test_the_migrations_create_exactly_the_four_tables_and_two_private_buckets(d
     tables = {r[0] for r in db.sql("select tablename from pg_tables where schemaname = 'public'")}
     assert tables == {"profiles", "designs", "jobs", "exports",  # migration 1
                       "subscriptions", "credit_ledger", "credit_reservations", "credit_allocations",  # migration 5
-                      "operation_log", "processed_webhook_events"}
+                      "operation_log", "processed_webhook_events",
+                      "teams", "team_members", "team_invites", "team_extra_seats"}  # migration 7
     rls = db.sql("select tablename, rowsecurity from pg_tables where schemaname = 'public' order by 1")
     assert all(on == "t" for _name, on in rls), "row level security must be on for every table"
     assert db.sql("select id, public from storage.buckets order by id") == [["exports", "f"], ["uploads", "f"]]
     owner_indexes = {r[0] for r in db.sql("select indexdef from pg_indexes where schemaname = 'public'") if "owner_id" in r[0]}
-    for table in ("designs", "jobs", "exports", "credit_ledger", "credit_reservations", "credit_allocations", "operation_log"):
+    for table in ("designs", "jobs", "exports", "credit_ledger", "credit_reservations", "credit_allocations", "operation_log",
+                  "teams", "team_members", "team_invites", "team_extra_seats"):
         assert any(f"public.{table} " in d for d in owner_indexes), f"{table}.owner_id is indexed"
 
 
