@@ -144,6 +144,18 @@ TEAM_MESSAGES = {
 }
 
 
+# The request headers the web app sends to the API (web/src/lib/api.ts). A multipart upload's
+# Content-Type is CORS-safelisted, a JSON one is not.
+CORS_HEADERS = ("Authorization", "Content-Type")
+
+
+def cors_methods(app: FastAPI) -> list[str]:
+    """Every method a route of this app answers, plus OPTIONS (the preflight); nothing else."""
+    from fastapi.routing import APIRoute
+    used = {m for r in app.routes if isinstance(r, APIRoute) for m in r.methods}
+    return sorted(used | {"OPTIONS"})
+
+
 def token_hash(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
@@ -297,13 +309,6 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
         stop.set()
 
     app = FastAPI(title=f"{config.app_name} API", lifespan=lifespan)
-    if settings.cors_origin:
-        app.add_middleware(
-            CORSMiddleware,
-            allow_origins=[settings.cors_origin],
-            allow_methods=["GET", "POST"],
-            allow_headers=["Authorization", "Content-Type"],
-        )
 
     @app.exception_handler(HTTPException)
     async def http_error(_: Request, exc: HTTPException):
@@ -1075,6 +1080,17 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
         except QueueUnavailable:
             raise HTTPException(503, QUEUE_DOWN) from None
 
+    # CORS last, once every route exists: the web app (one exact origin) may use exactly the
+    # methods the routes use (today GET, POST, DELETE) plus OPTIONS for the preflight, and only
+    # the headers it sends. A route with a new method is allowed automatically;
+    # api/tests/test_cors.py sends a preflight for every route to prove it.
+    if settings.cors_origin:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=[settings.cors_origin],
+            allow_methods=cors_methods(app),
+            allow_headers=list(CORS_HEADERS),
+        )
     return app
 
 
