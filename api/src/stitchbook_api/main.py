@@ -18,13 +18,15 @@ Without those settings the API runs in local mode: one local user, records and f
 from __future__ import annotations
 
 import functools
+import hashlib
 import logging
+import secrets
 import re
 from contextlib import asynccontextmanager
 import tempfile
 import threading
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Annotated, Callable
 
@@ -49,8 +51,9 @@ from stitchbook_api import account as usage
 from stitchbook_api import plans as plan_math
 from stitchbook_api import uploads
 from stitchbook_api.account import SupabaseUserRpc, UsageUnavailable, UserRpc
-from stitchbook_api.billing import Billing, BillingUnavailable, FreeOperations, InsufficientCredits, SupabaseRpc
-from stitchbook_api.payments import BadSignature, IgnoredEvent, Provider, ProviderError, provider_from
+from stitchbook_api.billing import Billing, BillingUnavailable, FreeOperations, InsufficientCredits, SupabaseRpc, TeamError
+from stitchbook_api.payments import (BadSignature, IgnoredEvent, Provider, ProviderError, SeatsUnavailable,
+                                     provider_from)
 from stitchbook_api.plans import chosen
 from stitchbook_api.auth import LOCAL_USER, Auth, AuthUnavailable, SupabaseAuth, Unauthorized, User
 from stitchbook_api.jobs import TERMINAL, AlreadyFinished, JobNotFound, Jobs, QueueUnavailable
@@ -120,6 +123,44 @@ def _plain_validation_message(exc: RequestValidationError | ValidationError) -> 
         loc = ".".join(str(p) for p in err.get("loc", ()) if p not in ("body", "query", "path"))
         parts.append(f"{loc}: {err['msg']}" if loc else err["msg"])
     return "; ".join(parts) + ". Fix the request and send it again."
+
+
+EMAIL = re.compile(r"[^@\s]{1,64}@[^@\s]{1,255}\.[^@\s]{2,}")
+
+# Team refusals from the database, as the person sees them: (HTTP status, message).
+TEAM_MESSAGES = {
+    "business_required": (403, "Teams come with the Business plan."),
+    "not_team_owner": (403, "Only the team owner can do this."),
+    "no_seats": (409, "All seats are taken. Remove a member or add an extra seat first."),
+    "invite_invalid": (404, "This invite link is not valid."),
+    "invite_used": (410, "This invite link has already been used or was cancelled."),
+    "invite_expired": (410, "This invite link has expired. Ask the team owner for a new one."),
+    "invite_own_team": (409, "This is an invite to your own team."),
+    "invite_other_email": (403, "This invite is for a different email address. Log in with the address it was sent to."),
+    "already_in_team": (409, "You are already in a team. Leave it before joining another."),
+    "has_own_plan": (409, "You have a paid plan of your own. Cancel it before joining a team."),
+    "team_inactive": (409, "This team's plan is not active."),
+    "cannot_remove_owner": (409, "You can't remove yourself from your own team."),
+}
+
+
+def token_hash(token: str) -> str:
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
+def valid_uuid(value: str) -> str:
+    try:
+        return str(uuid.UUID(value))
+    except ValueError:
+        raise HTTPException(404, "Not found.") from None
+
+
+# What a team member never sees: the pool's billing (the owner's grants, spends and seats).
+MEMBER_HIDDEN = {"credit_usage", "teams"}
+
+
+class MemberRestricted(Exception):
+    """A team member asked for the team owner's billing (403 {"error": "team_member"})."""
 
 
 class PlanRequired(Exception):
@@ -269,6 +310,15 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
         return JSONResponse({"error": exc.detail}, status_code=exc.status_code, headers=exc.headers)
 
     NOT_ENOUGH = "You don't have enough credits for this."
+
+    @app.exception_handler(MemberRestricted)
+    async def member_restricted(_: Request, exc: MemberRestricted):
+        return JSONResponse({"error": "team_member", "message": "Credits are provided by your team."}, status_code=403)
+
+    @app.exception_handler(TeamError)
+    async def team_refused(_: Request, exc: TeamError):
+        status, message = TEAM_MESSAGES.get(exc.code, (409, "That team change could not be made."))
+        return JSONResponse({"error": message, "code": exc.code}, status_code=status)
 
     @app.exception_handler(PlanRequired)
     async def plan_required(_: Request, exc: PlanRequired):
@@ -436,15 +486,23 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
 
     # ---------- Export history and Credit usage (plans with the feature) ----------
 
+    def needs_feature_plan(user: User, key: str):
+        """The user's plan (due grants given first, so balances match /me/credits); 403
+        plan_required if it lacks the feature, 403 team_member for the pool's billing."""
+        plan = billing.ensure_grants(user.id)
+        if plan.team_role == "member" and key in MEMBER_HIDDEN:
+            raise MemberRestricted()
+        if not plan_math.has_feature(config, plan.id, key):
+            needed = next((p for p in plan_math.PLAN_IDS if plan_math.has_feature(config, p, key)), None)
+            raise PlanRequired(needed)
+        return plan
+
     def needs_feature(user: User, key: str) -> UserRpc | None:
         """The user's reader if their plan has this feature; None when this server has no billing
         or accounts (local mode); 403 {"error": "plan_required", "plan": <first plan with it>}."""
         if usage_for is None or not isinstance(billing, Billing):
             return None
-        plan = billing.ensure_grants(user.id)  # due grants first, so the balance matches /me/credits
-        if not plan_math.has_feature(config, plan.id, key):
-            needed = next((p for p in plan_math.PLAN_IDS if plan_math.has_feature(config, p, key)), None)
-            raise PlanRequired(needed)
+        needs_feature_plan(user, key)
         return usage_for(user)
 
     def page_number(page: int) -> tuple[int, int]:
@@ -469,6 +527,86 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
             return {"enabled": False}
         return usage.credit_usage(rpc, *page_number(page), plan_math.month_start())
 
+    # ---------- teams (Business; Step 13b) ----------
+
+    def team_owner(user: User) -> None:
+        """403 unless the user may run a team: Business (the "teams" feature), not a member."""
+        if not isinstance(billing, Billing):
+            raise HTTPException(503, "Teams are not available on this server.")
+        needs_feature_plan(user, "teams")
+
+    def extra_seat_info() -> dict:
+        available = provider is not None and (provider.name != "whop"
+                                             or chosen(config, "billing.team.extra_seat_whop_plan_id") is not None)
+        return {**plan_math.team_offer(config), "available": available}
+
+    @app.get("/team", responses=ERRORS)
+    def get_team(user: User = Depends(current_user)) -> dict:
+        """The owner's team (members, open invites, seats); a member gets only {"role": "member"}."""
+        if not isinstance(billing, Billing):
+            return {"enabled": False}
+        plan = billing.effective(user.id)
+        if plan.team_role == "member":
+            return {"enabled": True, "role": "member"}
+        needs_feature_plan(user, "teams")
+        return {"enabled": True, "role": "owner", **billing.team_view(user.id), "extra_seat": extra_seat_info()}
+
+    @app.post("/team/invites", responses=ERRORS)
+    def create_invite(body: Annotated[dict, Body()], user: User = Depends(current_user)) -> dict:
+        """An invite link for one email. The token is shown once, here; only its hash is stored."""
+        team_owner(user)
+        email = str(body.get("email") or "").strip().lower()
+        if not EMAIL.fullmatch(email):
+            raise HTTPException(422, "Enter the email address of the person to invite.")
+        token = secrets.token_urlsafe(32)
+        expires = datetime.now(timezone.utc) + timedelta(seconds=config.get("billing.team.invite_ttl_s"))
+        invite_id = billing.create_invite(user.id, email, token_hash(token), expires)
+        return {"invite": {"id": invite_id, "email": email, "expires_at": expires.isoformat()}, "token": token,
+                "path": f"/team/join#token={token}"}
+
+    @app.delete("/team/invites/{invite_id}", responses=ERRORS)
+    def revoke_invite(invite_id: str, user: User = Depends(current_user)) -> dict:
+        team_owner(user)
+        if not billing.revoke_invite(user.id, valid_uuid(invite_id)):
+            raise HTTPException(404, "No open invite with that id.")
+        return {"status": "revoked"}
+
+    @app.delete("/team/members/{member_id}", responses=ERRORS)
+    def remove_member(member_id: str, user: User = Depends(current_user)) -> dict:
+        team_owner(user)
+        member = valid_uuid(member_id)
+        if member == user.id:
+            raise HTTPException(409, "You can't remove yourself from your own team.")
+        if not billing.remove_member(user.id, member):
+            raise HTTPException(404, "No member with that id in your team.")
+        return {"status": "removed"}
+
+    @app.post("/team/invites/accept", responses=ERRORS)
+    def accept_invite(body: Annotated[dict, Body()], user: User = Depends(current_user)) -> dict:
+        """Joins the team of the invite, for the signed-in user (whose email must be the invite's)."""
+        if not isinstance(billing, Billing):
+            raise HTTPException(503, "Teams are not available on this server.")
+        token = str(body.get("token") or "")
+        if not 20 <= len(token) <= 200:
+            raise HTTPException(404, TEAM_MESSAGES["invite_invalid"][1])
+        billing.accept_invite(user.id, user.email, token_hash(token))
+        return {"status": "joined"}
+
+    @app.post("/team/seats", responses=ERRORS)
+    def buy_seat(user: User = Depends(current_user)) -> dict:
+        """The provider's checkout for one extra seat (FakeProvider in tests; Whop once its add-on
+        plan id is set)."""
+        team_owner(user)
+        if provider is None:
+            raise HTTPException(503, PAYMENTS_OFF)
+        try:
+            return {"url": provider.create_seat_checkout(user.id)}
+        except SeatsUnavailable:
+            raise HTTPException(503, "Extra seats are not available yet.") from None
+        except ProviderError:
+            log.exception("seat checkout could not be created")
+            raise HTTPException(502, PROVIDER_DOWN) from None
+
     @app.post("/billing/checkout", responses=ERRORS)
     def checkout(body: Annotated[dict, Body()], user: User = Depends(current_user)) -> dict:
         """The provider's checkout page for a plan; 503 until a provider is set up."""
@@ -477,6 +615,8 @@ def create_app(config: Config | None = None, storage: Storage | None = None,
             raise HTTPException(422, "Choose plan pro or business and interval month or year.")
         if provider is None or not isinstance(billing, Billing):
             raise HTTPException(503, PAYMENTS_OFF)
+        if billing.effective(user.id).team_role == "member":
+            raise MemberRestricted()
         try:
             return {"url": provider.create_checkout(user.id, None, plan, interval)}
         except ProviderError:

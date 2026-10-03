@@ -71,7 +71,8 @@ def credit_usage(rpc: UserRpc, page: int, size: int, month_start: datetime) -> d
         "spent_this_month": rpc.call("my_credits_spent", {"p_since": month_start.isoformat()}) or 0,
         "entries": page_of([{"kind": e["kind"], "reason": e["reason"], "amount": e["amount"], "bucket": e.get("bucket"),
                              "at": e["at"], "operation": e.get("operation"), "design_id": as_hex(e.get("design_id")),
-                             "acting_user": e.get("acting_user")} for e in entries], page, size),
+                             "acting_user": ({"id": e["acting_user_id"], "email": e.get("acting_email")}
+                                             if e.get("acting_user_id") else None)} for e in entries], page, size),
     }
 
 

@@ -45,6 +45,10 @@ class IgnoredEvent(Exception):
     plan, a refund). The webhook answers 200 so the provider does not retry, and logs it."""
 
 
+class SeatsUnavailable(RuntimeError):
+    """Extra seats cannot be bought yet (no add-on plan id set for this provider)."""
+
+
 class ProviderError(RuntimeError):
     """The provider could not be reached or refused a call (checkout, cancel, manage link)."""
 
@@ -63,6 +67,7 @@ class Event:
     grant: bool = True               # give this period's plan credits (if active)
     period_start: datetime | None = None  # when the paid period began (None = now)
     has_period: bool = True          # False: the event does not carry the period end (keep ours)
+    kind: str = "plan"               # "plan" (Free/Pro/Business) or "seat" (an extra team seat)
 
 
 class Provider(Protocol):
@@ -71,6 +76,7 @@ class Provider(Protocol):
     def verify_webhook(self, headers: Mapping[str, str], raw_body: bytes) -> Event: ...
     def cancel_subscription(self, subscription_id: str) -> None: ...
     def manage_url(self, subscription_id: str) -> str | None: ...
+    def create_seat_checkout(self, user_id: str) -> str: ...
 
 
 PLANS = {"free", "pro", "business"}
@@ -102,6 +108,13 @@ class FakeProvider:
             raise BadSignature("webhook signature does not match")
         data = json.loads(raw_body)  # only after the signature matched
         meta = data.get("metadata") or {}
+        if data.get("kind") == "seat":
+            if data["status"] not in STATUSES:
+                raise ValueError("webhook event has an unknown status")
+            return Event(id=str(data["id"]), type=str(data.get("type", "")), owner_id=str(meta["user_id"]), plan="business",
+                         interval="month", status=str(data["status"]),
+                         period_end=datetime.fromisoformat(data["period_end"]) if data.get("period_end") else None,
+                         customer_id=data.get("customer_id"), subscription_id=data.get("subscription_id"), kind="seat")
         event = Event(
             id=str(data["id"]), type=str(data.get("type", "")), owner_id=str(meta["user_id"]),
             plan=str(data["plan"]), interval=data.get("interval"), status=str(data["status"]),
@@ -117,6 +130,9 @@ class FakeProvider:
 
     def manage_url(self, subscription_id: str) -> str | None:
         return None
+
+    def create_seat_checkout(self, user_id: str) -> str:
+        return "https://checkout.invalid/fake?" + urlencode({"kind": "seat", "user": user_id})
 
 
 # ---------------------------------------------------------------- Whop
@@ -209,7 +225,7 @@ class WhopProvider:
 
     def __init__(self, api_key: str, webhook_secret: str, environment: str, plan_ids: Mapping[tuple[str, str], str],
                  redirect_url: str | None, timeout_s: Callable[[], float], tolerance_s: float,
-                 http: httpx.Client | None = None):
+                 http: httpx.Client | None = None, seat_plan_id: str | None = None):
         if not api_key or not webhook_secret:
             raise NotConfigured("billing.provider is \"whop\" but WHOP_API_KEY and WHOP_WEBHOOK_SECRET are not both "
                                 "set in .env (docs/payments-whop.md, step 2)")
@@ -225,6 +241,9 @@ class WhopProvider:
         self._secret = webhook_secret.encode()  # literal bytes: what Whop signs with
         self.plan_ids = dict(plan_ids)
         self.plans_by_id = {v: k for k, v in plan_ids.items()}
+        self.seat_plan_id = seat_plan_id  # the extra-seat add-on (billing.team.extra_seat_whop_plan_id)
+        if seat_plan_id:
+            self.plans_by_id[seat_plan_id] = ("seat", "month")
         self.redirect_url = redirect_url
         self.timeout_s = timeout_s
         self.tolerance_s = tolerance_s
@@ -256,6 +275,18 @@ class WhopProvider:
             raise ProviderError("Whop did not return a checkout page")
         return str(url)
 
+    def create_seat_checkout(self, user_id: str) -> str:
+        """A checkout for one extra team seat (the add-on plan), tied to the user like any checkout."""
+        if not self.seat_plan_id:
+            raise SeatsUnavailable("billing.team.extra_seat_whop_plan_id is not set")
+        body: dict[str, Any] = {"plan_id": self.seat_plan_id, "metadata": {WHOP_USER_KEY: user_id}}
+        if self.redirect_url:
+            body["redirect_url"] = self.redirect_url.replace("/billing?", "/team?")
+        url = self._call("POST", "checkout_configurations", body).get("purchase_url")
+        if not url or not str(url).startswith("https://"):
+            raise ProviderError("Whop did not return a checkout page")
+        return str(url)
+
     def cancel_subscription(self, subscription_id: str) -> None:
         """Stops renewal; access stays until the end of the paid period."""
         self._call("POST", f"memberships/{quote(subscription_id, safe='')}/cancel", {"cancel_at_period_end": True})
@@ -281,6 +312,9 @@ class WhopProvider:
         if plan_id not in self.plans_by_id:
             raise IgnoredEvent(f"{kind} for a plan that is not in config.py (billing.plans.*.whop_plan_ids)")
         plan, interval = self.plans_by_id[plan_id]
+        item = "seat" if plan == "seat" else "plan"
+        if item == "seat":
+            plan = "business"
         owner = _user_id(data.get("metadata"))
         member = _ref(data.get("user")) or _ref(data.get("user_id"))
         if kind.startswith("membership."):
@@ -295,14 +329,15 @@ class WhopProvider:
             else:
                 status, end = "active", period_end
             return Event(id=webhook_id, type=kind, owner_id=owner, plan=plan, interval=interval, status=status,
-                         period_end=end, customer_id=member, subscription_id=subscription, grant=False)
+                         period_end=end, customer_id=member, subscription_id=subscription, grant=False, kind=item)
         subscription = _ref(data.get("membership")) or _ref(data.get("membership_id"))
         if kind == "payment.succeeded":
             return Event(id=webhook_id, type=kind, owner_id=owner, plan=plan, interval=interval, status="active",
                          period_end=None, customer_id=member, subscription_id=subscription, grant=True,
-                         period_start=_when(data.get("paid_at") or data.get("created_at")), has_period=False)
+                         period_start=_when(data.get("paid_at") or data.get("created_at")), has_period=False, kind=item)
         return Event(id=webhook_id, type=kind, owner_id=owner, plan=plan, interval=interval, status="past_due",
-                     period_end=None, customer_id=member, subscription_id=subscription, grant=False, has_period=False)
+                     period_end=None, customer_id=member, subscription_id=subscription, grant=False, has_period=False,
+                     kind=item)
 
 
 def whop_plan_ids(config: Any) -> dict[tuple[str, str], str | None]:
@@ -332,5 +367,6 @@ def provider_from(name: str | None, *, fake_secret: str | None, production: bool
         return WhopProvider(whop_api_key or "", whop_webhook_secret or "", environment or "", whop_plan_ids(config),
                             redirect_url=f"{site_url}/billing?checkout=done" if site_url else None,
                             timeout_s=lambda: config.get("billing.provider_http_timeout_s"),
-                            tolerance_s=config.get("billing.webhook_tolerance_s"), http=http)
+                            tolerance_s=config.get("billing.webhook_tolerance_s"), http=http,
+                            seat_plan_id=chosen(config, "billing.team.extra_seat_whop_plan_id"))
     raise NotConfigured(f"no adapter for payment provider {name!r} (see docs/billing.md)")

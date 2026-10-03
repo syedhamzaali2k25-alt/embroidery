@@ -39,6 +39,20 @@ class BillingUnavailable(RuntimeError):
     """The billing database could not be reached or refused the call."""
 
 
+# Named refusals raised by migration 7's team functions.
+TEAM_ERRORS = {"business_required", "not_team_owner", "no_seats", "invite_invalid", "invite_used", "invite_expired",
+               "invite_own_team", "invite_other_email", "already_in_team", "has_own_plan", "team_inactive",
+               "cannot_remove_owner"}
+
+
+class TeamError(Exception):
+    """A team change the database refused (no seats, used invite, ...): code is the reason."""
+
+    def __init__(self, code: str):
+        super().__init__(code)
+        self.code = code
+
+
 class Rpc(Protocol):
     """Calls one of migration 5's functions, or reads a billing table, as the service role."""
     def call(self, fn: str, args: dict[str, Any]) -> Any: ...
@@ -68,6 +82,8 @@ class SupabaseRpc:
                 body = response.json()
             except ValueError:
                 body = {}
+            if body.get("message") in TEAM_ERRORS:
+                raise TeamError(body["message"])
             if body.get("message") == "insufficient_credits":
                 detail = json.loads(body.get("details") or "{}")
                 raise InsufficientCredits(int(detail.get("available", 0)), int(detail.get("needed", 0)))
@@ -99,6 +115,8 @@ class Plan:
     interval: str | None
     status: str
     subscription_id: str | None
+    team_role: str | None = None   # "owner" or "member" when in a team
+    pool_owner: str | None = None  # a member: whose credits they spend
 
 
 class Billing:
@@ -121,23 +139,55 @@ class Billing:
         return Plan(plan_id, plan_math.plan_name(self.config, plan_id), sub.get("billing_interval") if entitled else None,
                     sub["status"] if sub else "active", sub.get("provider_subscription_id") if sub else None)
 
+    def membership(self, user: str) -> dict | None:
+        rows = self.rpc.select_by("team_members", "user_id", user)
+        return rows[0] if rows else None
+
+    def effective(self, user: str) -> Plan:
+        """The plan that applies to the user: a member of an active Business team gets the team's
+        plan (and spends the owner's credits); everyone else their own."""
+        m = self.membership(user)
+        if m and m["role"] == "member":
+            pool = self.plan(str(m["owner_id"]))
+            if pool.id == "business":
+                return Plan(pool.id, pool.name, None, "active", None, team_role="member", pool_owner=str(m["owner_id"]))
+        own = self.plan(user)
+        if m and m["role"] == "owner":
+            own.team_role = "owner"
+        return own
+
     def ensure_grants(self, owner: str, plan: Plan | None = None) -> Plan:
-        """The Free grant once per account (ref "free_grant"), and this UTC month's plan allowance
-        once per subscription and month (ref "plan:{subscription}:{period_start}")."""
-        plan = plan or self.plan(owner)
+        """The Free grant once per account (ref "free_grant"; never to someone who has joined a
+        team), this UTC month's plan allowance once per subscription and month (ref
+        "plan:{subscription}:{period_start}"), and a Business owner's extra-seat credits once per
+        seat and month (ref "seat:{subscription}:{period_start}"). A team member's grants are
+        their pool owner's."""
+        plan = plan or self.effective(owner)
+        if plan.team_role == "member" and plan.pool_owner:
+            self.ensure_grants(plan.pool_owner)  # the pool's grants, so members never wait on the owner
+            return plan
         free = plan_math.plan_credits(self.config, "free")
-        if free:
+        joined = self.rpc.select_by("team_invites", "accepted_by", owner) if free else []
+        if free and not joined:
             self.rpc.call("grant_credits", {"p_owner": owner, "p_amount": free, "p_bucket": "plan", "p_reason": "free_grant",
                                             "p_ref": "free_grant", "p_expires_at": None})
+        start = plan_math.month_start()
+        rollover = plan_math.chosen(self.config, "billing.monthly_rollover")
+        expires = None if rollover else plan_math.month_end(start).isoformat()
         if plan.id != "free" and plan.subscription_id:
             monthly = plan_math.plan_credits(self.config, plan.id)
             if monthly:
-                start = plan_math.month_start()
-                rollover = plan_math.chosen(self.config, "billing.monthly_rollover")
-                expires = None if rollover else plan_math.month_end(start).isoformat()
                 self.rpc.call("grant_credits", {"p_owner": owner, "p_amount": monthly, "p_bucket": "plan",
                                                 "p_reason": "plan_grant", "p_ref": grant_ref(plan.subscription_id, start),
                                                 "p_expires_at": expires})
+        if plan.id == "business":
+            seat_credits = plan_math.chosen(self.config, "billing.team.extra_seat_credits")
+            for seat in self.rpc.select("team_extra_seats", owner) if seat_credits else []:
+                if seat.get("status") == "active":
+                    self.rpc.call("grant_credits", {"p_owner": owner, "p_amount": seat_credits, "p_bucket": "plan",
+                                                    "p_reason": "seat_grant",
+                                                    "p_ref": seat_ref(seat["provider_subscription_id"], start),
+                                                    "p_expires_at": expires})
         return plan
 
     # ---------- balances and history ----------
@@ -147,17 +197,60 @@ class Billing:
 
     def account(self, owner: str, history: int | None = None) -> dict[str, Any]:
         plan = self.ensure_grants(owner)
-        balances = self.balances(owner)
         log_rows = self.rpc.select("operation_log", owner, order="created_at.desc", limit=history)
+        costs = {k: plan_math.credit_cost(self.config, k) for k in plan_math.operation_kinds(self.config)}
+        own_history = [{k: r.get(k) for k in ("job_id", "design_id", "operation", "format", "status", "credits",
+                                              "created_at", "finished_at", "error")} for r in log_rows]
+        if plan.team_role == "member":
+            # A member sees what the team can still spend, and their own operations; never the
+            # owner's grants, reservations or anyone else's activity.
+            pool = sum(b["available"] for b in self.balances(plan.pool_owner).values())
+            empty = {"available": 0, "reserved": 0, "consumed": 0}
+            return {"enabled": True, "plan": plan.id, "plan_name": plan.name, "interval": None, "status": "active",
+                    "team": {"role": "member"}, "balances": {"plan": {**empty, "available": pool}, "purchased": empty},
+                    "available": pool, "costs": costs, "history": own_history}
+        balances = self.balances(owner)
         return {
             "enabled": True,
             "plan": plan.id, "plan_name": plan.name, "interval": plan.interval, "status": plan.status,
+            "team": {"role": "owner"} if plan.team_role == "owner" else None,
             "balances": balances,
             "available": sum(b["available"] for b in balances.values()),
-            "costs": {k: plan_math.credit_cost(self.config, k) for k in plan_math.operation_kinds(self.config)},
-            "history": [{k: r.get(k) for k in ("job_id", "design_id", "operation", "format", "status", "credits",
-                                                 "created_at", "finished_at", "error")} for r in log_rows],
+            "costs": costs,
+            "history": own_history,
         }
+
+    # ---------- teams (migration 7) ----------
+    def team_view(self, owner: str) -> dict[str, Any]:
+        """The owner's team: members, open invites, seats used and total."""
+        included = self.config.get("billing.team.included_seats")
+        members = self.rpc.select("team_members", owner, order="joined_at.asc")
+        now = datetime.now(timezone.utc)
+        invites = [i for i in self.rpc.select("team_invites", owner, order="created_at.desc")
+                   if not i.get("accepted_at") and not i.get("revoked_at") and _time(i["expires_at"]) > now]
+        extra = sum(1 for x in self.rpc.select("team_extra_seats", owner) if x.get("status") == "active")
+        used = len(members) or 1  # the owner always holds a seat, even before the team row exists
+        return {
+            "members": [{"user_id": str(m["user_id"]), "email": m.get("email"), "role": m["role"], "joined_at": m["joined_at"]}
+                        for m in members if m["role"] == "member"],
+            "invites": [{"id": str(i["id"]), "email": i["email"], "expires_at": i["expires_at"]} for i in invites],
+            "seats": {"used": used, "total": included + extra, "included": included, "extra": extra},
+        }
+
+    def create_invite(self, owner: str, email: str, token_hash: str, expires_at: datetime) -> str:
+        return str(self.rpc.call("team_create_invite", {
+            "p_owner": owner, "p_email": email, "p_token_hash": token_hash, "p_expires_at": expires_at.isoformat(),
+            "p_included_seats": self.config.get("billing.team.included_seats")}))
+
+    def accept_invite(self, user: str, email: str | None, token_hash: str) -> dict:
+        return self.rpc.call("team_accept_invite", {"p_user": user, "p_email": email, "p_token_hash": token_hash,
+                                                    "p_included_seats": self.config.get("billing.team.included_seats")})
+
+    def remove_member(self, owner: str, user: str) -> bool:
+        return bool(self.rpc.call("team_remove_member", {"p_owner": owner, "p_user": user}))
+
+    def revoke_invite(self, owner: str, invite_id: str) -> bool:
+        return bool(self.rpc.call("team_revoke_invite", {"p_owner": owner, "p_invite": invite_id}))
 
     # ---------- operations ----------
     def start(self, owner: str, design_id: str | None, job_id: str, operation: str, fmt: str | None,
@@ -197,6 +290,8 @@ class Billing:
           - a cancel / failure of a subscription that is no longer the owner's current one
             ("ignored: not the current subscription"), so an old plan cannot end the new one.
         """
+        if getattr(event, "kind", "plan") == "seat":
+            return self.apply_seat_event(provider, event)
         bound = [r for r in (self.rpc.select_by("subscriptions", "provider_subscription_id", event.subscription_id)
                              if event.subscription_id else []) if r.get("provider") == provider]
         bound_owner = bound[0]["owner_id"] if bound else None
@@ -221,13 +316,44 @@ class Billing:
         monthly = plan_math.plan_credits(self.config, event.plan) if grant and event.plan != "free" and event.status == "active" else None
         start = plan_math.month_start(getattr(event, "period_start", None))
         rollover = plan_math.chosen(self.config, "billing.monthly_rollover")
-        return self.rpc.call("apply_billing_event", {
+        result = self.rpc.call("apply_billing_event", {
             "p_provider": provider, "p_event_id": event.id, "p_owner": owner, "p_plan": event.plan,
             "p_interval": event.interval, "p_status": event.status,
             "p_period_end": period_end.isoformat() if period_end else None,
             "p_customer": event.customer_id, "p_subscription": event.subscription_id,
             "p_grant_amount": monthly or 0,
             "p_grant_ref": grant_ref(event.subscription_id, start) if monthly and event.subscription_id else None,
+            "p_grant_expires_at": None if rollover else plan_math.month_end(start).isoformat(),
+        })
+        if result == "applied":
+            # A Business plan that has ended takes the team with it (no-op while still active).
+            removed = self.rpc.call("team_end", {"p_owner": owner})
+            if removed:
+                log.info("billing event %s ended a team: %s member(s) back on their own account", event.id, removed)
+        return result
+
+    def apply_seat_event(self, provider: str, event: Any) -> str:
+        """An extra seat bought, renewed or cancelled: the seat's status, and this period's seat
+        credits (billing.team.extra_seat_credits) once. The owner comes from the signed metadata,
+        or from the account the seat was first bound to."""
+        bound = [r for r in (self.rpc.select_by("team_extra_seats", "provider_subscription_id", event.subscription_id)
+                             if event.subscription_id else []) if r.get("provider") == provider]
+        bound_owner = str(bound[0]["owner_id"]) if bound else None
+        if event.owner_id and bound_owner and bound_owner != event.owner_id:
+            log.warning("seat event %s names another owner than its seat's: ignored", event.id)
+            return "ignored: owner mismatch"
+        owner = event.owner_id or bound_owner
+        if not owner or not event.subscription_id or not self.rpc.select_by("profiles", "id", owner):
+            log.warning("seat event %s has no known owner: nothing applied", event.id)
+            return "ignored: unknown owner"
+        credits = plan_math.chosen(self.config, "billing.team.extra_seat_credits") if getattr(event, "grant", True) else None
+        start = plan_math.month_start(getattr(event, "period_start", None))
+        rollover = plan_math.chosen(self.config, "billing.monthly_rollover")
+        return self.rpc.call("apply_seat_event", {
+            "p_provider": provider, "p_event_id": event.id, "p_owner": owner, "p_subscription": event.subscription_id,
+            "p_status": event.status, "p_period_end": event.period_end.isoformat() if event.period_end else None,
+            "p_grant_amount": credits or 0,
+            "p_grant_ref": seat_ref(event.subscription_id, start) if credits else None,
             "p_grant_expires_at": None if rollover else plan_math.month_end(start).isoformat(),
         })
 
@@ -250,6 +376,10 @@ class FreeOperations:
 
     def sweep(self, older_than_s: float) -> int:
         return 0
+
+
+def seat_ref(subscription_id: str, period_start: datetime) -> str:
+    return f"seat:{subscription_id}:{period_start:%Y-%m-%d}"
 
 
 def grant_ref(subscription_id: str, period_start: datetime) -> str:

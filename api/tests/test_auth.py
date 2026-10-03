@@ -147,7 +147,10 @@ def test_every_other_route_answers_401_without_a_good_token(setup):
 
 # Routes about the caller's own account (no id of anyone else's in the path): B gets B's own.
 OWN_ACCOUNT_ROUTES = {"/designs", "/jobs/health", "/me/credits", "/billing/checkout", "/billing/cancel", "/billing/manage",
-                      "/exports", "/credits/usage"}
+                      "/exports", "/credits/usage",
+                      # Teams: the caller's own team; ids in these paths are checked in test_teams_api.py.
+                      "/team", "/team/invites", "/team/invites/accept", "/team/seats",
+                      "/team/invites/{invite_id}", "/team/members/{member_id}"}
 
 
 def test_user_b_never_sees_user_as_design_or_job(setup):

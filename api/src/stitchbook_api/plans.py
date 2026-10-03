@@ -90,6 +90,7 @@ def plans(config: Config) -> dict[str, Any]:
         "monthly_rollover": chosen(config, "billing.monthly_rollover"),
         "credit_packs": packs if isinstance(packs, list) and packs else None,
         "refund_policy": chosen(config, "billing.refund_policy"),
+        "team": team_offer(config),
         # /billing, back from the payment page: how often and how long to look for the payment.
         "checkout_return": {"poll_s": chosen(config, "billing.checkout_return_poll_s"),
                             "wait_s": chosen(config, "billing.checkout_return_wait_s")},
@@ -118,6 +119,18 @@ def has_feature(config: Config, plan: str, key: str) -> bool:
     return any(f["key"] == key and f["status"] == "available" for f in plan_features(config, plan) or [])
 
 
+def team_offer(config: Config) -> dict[str, Any]:
+    """What teams cost and give, from config: seats included (owner counted), extra seat price
+    per month and the credits it adds to the shared pool each month. None = not chosen."""
+    price = chosen(config, "billing.team.extra_seat_price")
+    return {
+        "included_seats": chosen(config, "billing.team.included_seats"),
+        "extra_seat_price": str(money(price)) if price is not None else None,
+        "extra_seat_credits": chosen(config, "billing.team.extra_seat_credits"),
+        "currency": chosen(config, "billing.currency"),
+    }
+
+
 def month_start(now: datetime | None = None) -> datetime:
     """Start of the current UTC calendar month (the plan allowance period)."""
     now = now or datetime.now(timezone.utc)
@@ -129,5 +142,5 @@ def month_end(start: datetime) -> datetime:
     return start.replace(year=start.year + 1, month=1) if start.month == 12 else start.replace(month=start.month + 1)
 
 
-__all__ = ["PLACEHOLDER", "PLAN_IDS", "chosen", "credit_cost", "has_feature", "plan_features", "month_end", "month_start", "operation_kinds",
+__all__ = ["PLACEHOLDER", "PLAN_IDS", "chosen", "credit_cost", "has_feature", "plan_features", "team_offer", "month_end", "month_start", "operation_kinds",
            "per_month_of_yearly", "plan_credits", "plan_name", "plans", "yearly_price"]

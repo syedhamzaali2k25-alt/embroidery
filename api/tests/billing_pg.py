@@ -12,7 +12,7 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "supabase" / "tests"))
 from test_rls import MIGRATIONS, STUB, Postgres  # noqa: E402
 
-from stitchbook_api.billing import InsufficientCredits  # noqa: E402
+from stitchbook_api.billing import TEAM_ERRORS, InsufficientCredits, TeamError  # noqa: E402
 
 SET_RETURNING = {"credit_balance"}
 
@@ -39,6 +39,9 @@ class PgRpc:
         try:
             out = self.pg.sql(query, service=True)
         except PermissionError as exc:
+            named = re.search(r"ERROR:\s+([a-z_]+)", str(exc))
+            if named and named.group(1) in TEAM_ERRORS:
+                raise TeamError(named.group(1)) from None
             if "insufficient_credits" in str(exc):
                 detail = re.search(r"DETAIL:\s+(\{.*\})", str(exc))
                 d = json.loads(detail.group(1)) if detail else {}
