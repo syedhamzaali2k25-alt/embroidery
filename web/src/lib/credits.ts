@@ -73,3 +73,18 @@ export function money(value: string | null, currency: string | null): string | n
 }
 
 export const count = (n: number) => n.toLocaleString("en");
+
+/** A price without ".00" when it is whole (the extra-seat line: "$10/month"). */
+export function moneyShort(value: string | null, currency: string | null): string | null {
+  if (value === null || !currency) return null;
+  const n = Number(value);
+  return new Intl.NumberFormat("en", { style: "currency", currency, minimumFractionDigits: Number.isInteger(n) ? 0 : 2 }).format(n);
+}
+
+/** "Extra seat: $10/month, adds 1 seat and 1,000 credits to the shared pool": every number from
+ * config (GET /plans team); null while any of them is not chosen. */
+export function extraSeatLine(team: { extra_seat_price: string | null; extra_seat_credits: number | null; currency: string | null }): string | null {
+  const price = moneyShort(team.extra_seat_price, team.currency);
+  if (!price || team.extra_seat_credits === null) return null;
+  return `Extra seat: ${price}/month, adds 1 seat and ${count(team.extra_seat_credits)} credits to the shared pool`;
+}

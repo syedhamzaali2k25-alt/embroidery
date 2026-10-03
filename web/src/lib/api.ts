@@ -192,6 +192,8 @@ export type Plans = {
   monthly_rollover: boolean | null;
   credit_packs: { credits: number; price: number }[] | null;
   refund_policy: string | null;
+  /** Teams (Business): seats included (owner counted), extra seat price per month and its monthly credits. */
+  team: TeamOffer;
   /** /billing, back from the payment page: check every poll_s seconds for at most wait_s (null = not chosen). */
   checkout_return: { poll_s: number | null; wait_s: number | null };
   payments_available: boolean;
@@ -201,10 +203,23 @@ export type Account =
   | { enabled: false }
   | {
       enabled: true; plan: PlanInfo["id"]; plan_name: string | null; interval: "month" | "year" | null; status: string;
+      /** In a team: "owner" or "member" (a member spends the owner's credits). */
+      team?: { role: "owner" | "member" } | null;
       balances: Record<"plan" | "purchased", Balance>; available: number; costs: Record<string, number>;
       history: { job_id: string; design_id: string | null; operation: string; format: string | null; status: string;
         credits: number; created_at: string; finished_at: string | null; error: string | null }[];
     };
+
+export type TeamOffer = { included_seats: number | null; extra_seat_price: string | null; extra_seat_credits: number | null;
+  currency: string | null };
+export type TeamMember = { user_id: string; email: string | null; role: "member"; joined_at: string };
+export type TeamInvite = { id: string; email: string; expires_at: string };
+export type Team =
+  | { enabled: false }
+  | { enabled: true; role: "member" }
+  | { enabled: true; role: "owner"; members: TeamMember[]; invites: TeamInvite[];
+      seats: { used: number; total: number; included: number; extra: number };
+      extra_seat: TeamOffer & { available: boolean } };
 
 /** A page of rows, newest first. */
 export type Paged<T> = { items: T[]; page: number; page_size: number; has_more: boolean };
@@ -362,6 +377,12 @@ export const api = {
   credits: () => request<Account>("/me/credits", { stayOn401: true }),
   checkout: (plan: "pro" | "business", interval: "month" | "year") => request<{ url: string }>("/billing/checkout", post({ plan, interval })),
   exports: (page = 1) => request<Exports>(`/exports?page=${page}`),
+  team: () => request<Team>("/team"),
+  invite: (email: string) => request<{ invite: TeamInvite; token: string; path: string }>("/team/invites", post({ email })),
+  revokeInvite: (id: string) => request<{ status: string }>(`/team/invites/${id}`, { method: "DELETE" }),
+  removeMember: (id: string) => request<{ status: string }>(`/team/members/${id}`, { method: "DELETE" }),
+  acceptInvite: (token: string) => request<{ status: string }>("/team/invites/accept", post({ token })),
+  buySeat: () => request<{ url: string }>("/team/seats", { method: "POST" }),
   usage: (page = 1) => request<Usage>(`/credits/usage?page=${page}`),
   /** The payment provider's own page to manage or cancel the plan (null when there is none). */
   manageBilling: () => request<{ url: string | null }>("/billing/manage"),

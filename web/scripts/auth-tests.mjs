@@ -136,6 +136,7 @@ async function stubApi(page, seen, { account = () => ACCOUNT, downloadUrl = null
   await page.route(`${API}/plans`, (r) => r.fulfill({ json: PLANS }));
   // Export history / Credit usage: "not used on this server" unless a test stubs them itself.
   await page.route(new RegExp(`^${API}/(exports|credits/usage)\\?`), (r) => (signedIn(r.request()) ? r.fulfill({ json: { enabled: false } }) : deny(r)));
+  await page.route(`${API}/team`, (r) => (signedIn(r.request()) ? r.fulfill({ json: { enabled: false } }) : deny(r)));
   await page.route(`${API}/config`, (r) => r.fulfill({ json: config }));
   await page.route(`${API}/site`, (r) => r.fulfill({ json: { app_name: 'Stitchbook', demo_video_url: '', export_formats: ['dst'], company_name: null,
     contact_email: null, governing_country: null, data_retention_days: null, last_updated: null, max_upload_bytes: null } }));
@@ -805,6 +806,141 @@ try {
     await n.page.getByText('No credit activity yet.').waitFor();
     check(true, 'a new user sees plain empty states on /exports and in Credit usage');
     await n.context.close();
+  }
+
+
+  console.log('-- teams: Business owner, member, invite link, Free and Pro');
+  {
+    const shotsDir = join(root, '..', 'docs', 'screenshots');
+    const OFFER = { ...PLANS.team, available: true };
+    const ownerTeam = (members, invites = [], seats = { used: members.length + 1, total: 4, included: 4, extra: 0 }) =>
+      ({ enabled: true, role: 'owner', members, invites, seats, extra_seat: OFFER });
+    const M1 = { user_id: '11111111-1111-4111-8111-111111111111', email: 'sam@example.com', role: 'member', joined_at: '2026-10-01T09:00:00Z' };
+    const M2 = { user_id: '22222222-2222-4222-8222-222222222222', email: 'robin@example.com', role: 'member', joined_at: '2026-10-02T09:00:00Z' };
+    const business = () => accountWith(10030, { plan: 'business', plan_name: 'Business', interval: 'month', team: { role: 'owner' } });
+    const member = () => accountWith(9990, { plan: 'business', plan_name: 'Business', interval: null, team: { role: 'member' },
+      balances: { plan: { available: 9990, reserved: 0, consumed: 0 }, purchased: { available: 0, reserved: 0, consumed: 0 } } });
+    const seatLine = `Extra seat: $${Number(PLANS.team.extra_seat_price)}/month, adds 1 seat and ${Number(PLANS.team.extra_seat_credits).toLocaleString('en')} credits to the shared pool`;
+    for (const [vp, width, height] of [['1366', 1366, 768], ['360', 360, 780]]) {
+      // Business owner: members, seats, invite link to copy, remove (asks first), extra seat.
+      const o = await fresh({ width, height, signedInAs: user, api: { account: business } });
+      let team = ownerTeam([M1]);
+      const calls = [];
+      await o.page.route(`${API}/team`, (r) => r.fulfill({ json: team }));
+      await o.page.route(`${API}/team/invites`, (r) => {
+        calls.push(`invite ${r.request().postDataJSON().email}`);
+        team = ownerTeam([M1], [{ id: 'inv1', email: 'robin@example.com', expires_at: '2026-10-04T09:00:00Z' }]);
+        return r.fulfill({ json: { invite: { id: 'inv1', email: 'robin@example.com', expires_at: '2026-10-04T09:00:00Z' },
+          token: 'tok_made_up_for_tests_0123456789abcdef', path: '/team/join#token=tok_made_up_for_tests_0123456789abcdef' } });
+      });
+      await o.page.route(`${API}/team/members/*`, (r) => { calls.push(`${r.request().method()} member`); team = ownerTeam([]); return r.fulfill({ json: { status: 'removed' } }); });
+      await o.page.route(`${API}/team/seats`, (r) => { calls.push('seat'); return r.fulfill({ json: { url: 'https://checkout.example.test/seat' } }); });
+      await o.page.route('https://checkout.example.test/**', (r) => r.fulfill({ contentType: 'text/html', body: '<title>provider</title>' }));
+      await o.page.goto(`${base}/team`);
+      await o.page.locator('.team__list').first().waitFor();
+      const text = await o.page.locator('main').innerText();
+      check(text.includes('2 of 4') && text.includes('sam@example.com') && text.includes(seatLine),
+        `owner @ ${vp}: seats used/total, members, and "${seatLine}" (numbers from config)`);
+      await o.page.getByLabel('Email address').fill('robin@example.com');
+      await o.page.getByRole('button', { name: 'Make invite link' }).click();
+      await o.page.locator('.team__url').waitFor();
+      const url = await o.page.locator('.team__url').innerText();
+      check(url === `${base}/team/join#token=tok_made_up_for_tests_0123456789abcdef` && calls.includes('invite robin@example.com'),
+        `owner @ ${vp}: an invite makes a link to copy (no email is sent)`);
+      check(await o.page.getByRole('button', { name: 'Copy link' }).isVisible() && (await o.page.locator('main').innerText()).includes('Cancel invite'),
+        `owner @ ${vp}: Copy link, and the open invite with Cancel invite`);
+      await o.page.screenshot({ path: join(shotsDir, `team-owner-${vp}.png`), fullPage: true });
+      let a = (await o.page.evaluate(audit)).issues;
+      check(a.length === 0, `owner /team @ ${vp} audit: ${a.length ? JSON.stringify(a) : 'no issues'}`);
+      await o.page.getByRole('button', { name: 'Remove' }).click();
+      check(!calls.some((c) => c.includes('member')), `owner @ ${vp}: Remove asks first`);
+      await o.page.getByRole('button', { name: 'Yes, remove' }).click();
+      await o.page.getByText('No members yet.').waitFor();
+      check(calls.includes('DELETE member'), `owner @ ${vp}: confirmed, the member is removed`);
+      await o.page.getByRole('button', { name: 'Add an extra seat' }).click();
+      await o.page.waitForURL('https://checkout.example.test/**');
+      check(calls.includes('seat'), `owner @ ${vp}: Add an extra seat opens the provider's checkout`);
+      await o.context.close();
+
+      // The owner's Credit usage says which member spent.
+      const u = await fresh({ width, height, signedInAs: user, api: { account: business } });
+      await u.page.route(`${API}/credits/usage?page=1`, (r) => r.fulfill({ json: { enabled: true, available: 10030,
+        balances: { plan: { available: 10030, reserved: 0, consumed: 10 }, purchased: { available: 0, reserved: 0, consumed: 0 } },
+        renewal: { date: '2026-11-01T00:00:00Z', renews: true }, spent_this_month: 10,
+        entries: { items: [{ kind: 'spend', reason: 'export', amount: -10, bucket: null, at: '2026-10-02T10:00:00Z', operation: 'export',
+          design_id: null, acting_user: { id: M1.user_id, email: 'sam@example.com' } }], page: 1, page_size: 20, has_more: false } } }));
+      await u.page.goto(`${base}/billing`);
+      await u.page.locator('.usage tbody tr').first().waitFor();
+      check((await u.page.locator('.usage').innerText()).includes('by sam@example.com'), `owner @ ${vp}: Credit usage shows which member spent`);
+      await u.page.screenshot({ path: join(shotsDir, `billing-business-owner-${vp}.png`), fullPage: true });
+      a = (await u.page.evaluate(audit)).issues;
+      check(a.length === 0, `owner /billing @ ${vp} audit: ${a.length ? JSON.stringify(a) : 'no issues'}`);
+      await u.context.close();
+
+      // Member: "Credits are provided by your team" on /team, /billing and instead of plan cards.
+      const m = await fresh({ width, height, signedInAs: user, api: { account: member } });
+      await m.page.route(`${API}/team`, (r) => r.fulfill({ json: { enabled: true, role: 'member' } }));
+      for (const path of ['/team', '/billing', '/pricing']) {
+        await m.page.goto(`${base}${path}`);
+        await m.page.locator('.member-note').waitFor();
+        check((await m.page.locator('.member-note').innerText()).includes('Credits are provided by your team'),
+          `member @ ${vp}: ${path} says "Credits are provided by your team"`);
+        if (path === '/pricing') check(await m.page.locator('.plan').count() === 0, `member @ ${vp}: no plan cards on /pricing`);
+        if (path === '/billing') check(await m.page.getByRole('button', { name: 'Manage billing' }).count() === 0 && await m.page.locator('.usage').count() === 0,
+          `member @ ${vp}: no billing actions and no Credit usage`);
+        await m.page.screenshot({ path: join(shotsDir, `${path.slice(1)}-business-member-${vp}.png`), fullPage: true });
+        a = (await m.page.evaluate(audit)).issues;
+        check(a.length === 0, `member ${path} @ ${vp} audit: ${a.length ? JSON.stringify(a) : 'no issues'}`);
+      }
+      await m.context.close();
+
+      // Free and Pro: no Team page, a calm note instead.
+      for (const [who, acct] of [['free', () => accountWith(30, { plan: 'free', plan_name: 'Free', interval: null })], ['pro', () => ACCOUNT]]) {
+        const f = await fresh({ width, height, signedInAs: user, api: { account: acct } });
+        await f.page.route(`${API}/team`, (r) => r.fulfill({ status: 403, json: { error: 'plan_required', plan: 'business' } }));
+        await f.page.goto(`${base}/team`);
+        await f.page.locator('.upgrade-note').waitFor();
+        check((await f.page.locator('.upgrade-note').innerText()).includes('A team comes with the Business plan.'), `${who} @ ${vp}: /team is a calm note`);
+        await f.page.getByRole('button', { name: 'Account menu' }).click();
+        check(await f.page.getByRole('menuitem', { name: 'Team' }).count() === 0, `${who} @ ${vp}: no Team item in the menu`);
+        await f.page.keyboard.press('Escape');
+        await f.page.screenshot({ path: join(shotsDir, `team-${who}-${vp}.png`), fullPage: true });
+        await f.context.close();
+      }
+    }
+    // The invite link: the token stays out of the address bar and the server; joining works once.
+    {
+      const free = () => accountWith(0, { plan: 'free', plan_name: 'Free', interval: null });
+      const j = await fresh({ width: 1366, height: 768, signedInAs: user, api: { account: free } });
+      let tries = 0, sent = null;
+      await j.page.route(`${API}/team/invites/accept`, (r) => {
+        sent = r.request().postDataJSON();
+        return ++tries === 1 ? r.fulfill({ json: { status: 'joined' } })
+          : r.fulfill({ status: 410, json: { error: 'This invite link has already been used or was cancelled.', code: 'invite_used' } });
+      });
+      await j.page.goto(`${base}/team/join#token=tok_made_up_for_tests_0123456789abcdef`);
+      await j.page.getByRole('button', { name: 'Join the team' }).waitFor();
+      check(!j.page.url().includes('tok_'), 'the token leaves the address bar');
+      await j.page.screenshot({ path: join(shotsDir, 'team-join-1366.png'), fullPage: true });
+      let a = (await j.page.evaluate(audit)).issues;
+      check(a.length === 0, `/team/join audit: ${a.length ? JSON.stringify(a) : 'no issues'}`);
+      await j.page.getByRole('button', { name: 'Join the team' }).click();
+      await j.page.getByText('You joined the team.').waitFor();
+      check(sent?.token === 'tok_made_up_for_tests_0123456789abcdef', 'Join sends the token in the request body');
+      await j.page.goto(`${base}/pricing`);  // a fresh load (a fragment-only change would not reload)
+      await j.page.goto(`${base}/team/join#token=tok_made_up_for_tests_0123456789abcdef`);
+      await j.page.getByRole('button', { name: 'Join the team' }).click();
+      await j.page.locator('.billing__error').waitFor();
+      check((await j.page.locator('.billing__error').innerText()).includes('already been used'), 'a reused link: a plain message');
+      await j.context.close();
+      // Signed out: log in first; the token is kept in this tab and the page comes back.
+      const out = await fresh();
+      await out.page.goto(`${base}/team/join#token=tok_made_up_for_tests_0123456789abcdef`);
+      await out.page.waitForURL(/\/login\?next=%2Fteam%2Fjoin$/);
+      const kept = await out.page.evaluate(() => sessionStorage.getItem('stitchbook.invite'));
+      check(kept === 'tok_made_up_for_tests_0123456789abcdef', 'signed out: to Log in and back, the token kept in this tab only');
+      await out.context.close();
+    }
   }
 
   console.log('-- payments: checkout, return from the payment page, past due, Manage billing, Cancel plan');

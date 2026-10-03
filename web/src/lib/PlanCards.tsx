@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 
 import { api, ApiError, type PlanInfo, type Plans } from "./api";
 import { signInEnabled, useSession } from "./auth";
-import { count, money, useCredits } from "./credits";
+import { count, extraSeatLine, money, useCredits } from "./credits";
 import { NotChosen } from "./SiteChrome";
 import "../css/pricing.css";
 
@@ -68,8 +68,23 @@ function credits(plan: PlanInfo): string | null {
     : `${count(plan.credits)} credits per month`;
 }
 
+/** "Credits are provided by your team": what a team member sees instead of plan cards. */
+export function TeamMemberNote() {
+  return (
+    <div className="billing__notice member-note" role="status">
+      <p>Credits are provided by your team. Your designs stay private to you.</p>
+      <Link className="btn btn--ink" to="/home">My designs</Link>
+    </div>
+  );
+}
+
 export function PlanCards({ plans, headingLevel = 3 }: { plans: Plans; headingLevel?: 2 | 3 }) {
   const [interval, setInterval] = useState<Interval>("month");
+  const account = useCredits();
+  if (account && account.enabled && account.team?.role === "member") return <TeamMemberNote />;
+  // The extra-seat line, only once a plan offers teams (not while "coming soon").
+  const teams = plans.plans.some((p) => p.features?.some((f) => f.key === "teams" && f.status === "available"));
+  const seatLine = teams ? extraSeatLine(plans.team) : null;
   const discount = plans.yearly_discount_percent;
   const H = headingLevel === 2 ? "h2" : "h3";
   const exportCost = plans.credit_costs.export;
@@ -105,6 +120,7 @@ export function PlanCards({ plans, headingLevel = 3 }: { plans: Plans; headingLe
       </ul>
       {exportCost ? <p className="plans__note">1 export = {count(exportCost)} credits. Preview is free.</p>
         : <p className="plans__note">Preview is free.</p>}
+      {seatLine && <p className="plans__note plans__seat">{seatLine}</p>}
     </div>
   );
 }

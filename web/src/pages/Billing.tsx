@@ -4,6 +4,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { api, ApiError, planRequired, type Account, type Plans, type Usage } from "../lib/api";
 import { loginPath, signInEnabled, useSession } from "../lib/auth";
 import { count, refreshCredits, useCredits, usePlans } from "../lib/credits";
+import { TeamMemberNote } from "../lib/PlanCards";
 import { NotChosen, SiteFooter, SiteHeader } from "../lib/SiteChrome";
 import { DAY, Pager, TIME as WHEN, UpgradeNote } from "../lib/UsageParts";
 import { usePage } from "../lib/usePage";
@@ -175,6 +176,33 @@ function PlanActions({ account }: { account: Enabled }) {
   );
 }
 
+/** The user's own operations, newest first (everyone has this, members and Free included). */
+function OwnHistory({ account }: { account: Enabled }) {
+  return (
+    <section aria-labelledby="history-title">
+      <h2 id="history-title" className="billing__history-title">History</h2>
+      {account.history.length === 0 ? <p>Nothing yet. Exports will be listed here.</p> : (
+        <div className="billing__table-wrap" tabIndex={0} role="region" aria-labelledby="history-title">
+          <table className="billing__table billing__table--stack">
+            <thead><tr><th scope="col">Time</th><th scope="col">Design</th><th scope="col">Operation</th><th scope="col">Status</th><th scope="col">Credits</th></tr></thead>
+            <tbody>
+              {account.history.map((row) => (
+                <tr key={row.job_id}>
+                  <td data-label="Time">{TIME.format(new Date(row.created_at))}</td>
+                  <td data-label="Design">{row.design_id ? <Link to={`/preview/${row.design_id.replace(/-/g, "")}`}>Open</Link> : "Deleted"}</td>
+                  <td data-label="Operation">{OPERATION[row.operation] ?? row.operation}{row.format ? ` (${row.format.toUpperCase()})` : ""}</td>
+                  <td data-label="Status">{STATUS[row.status] ?? row.status}</td>
+                  <td data-label="Credits">{row.status === "succeeded" ? count(row.credits) : row.status === "started" ? `${count(row.credits)} set aside` : "0"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
+
 export default function Billing() {
   usePage("Credits and plan · Stitchbook", "billing-page");
   const { ready, session } = useSession();
@@ -195,6 +223,25 @@ export default function Billing() {
     body = <p role="status">Loading your credits…</p>;
   } else if (!account.enabled) {
     body = <p>Credits are not used on this server.</p>;
+  } else if (account.team?.role === "member") {
+    body = (
+      <>
+        <div className="billing__cards">
+          <div className="billing__card">
+            <span className="billing__label">Plan</span>
+            <span className="billing__value">Team member</span>
+            <span className="billing__sub">{account.plan_name ?? account.plan} plan of your team</span>
+          </div>
+          <div className="billing__card">
+            <span className="billing__label">Team credits available</span>
+            <span className="billing__value">{count(account.available)}</span>
+            <span className="billing__sub">Shared by everyone in the team</span>
+          </div>
+        </div>
+        <TeamMemberNote />
+        <OwnHistory account={account} />
+      </>
+    );
   } else {
     const plan = account.balances.plan, bought = account.balances.purchased;
     body = (
@@ -231,27 +278,7 @@ export default function Billing() {
         )}
         {plans?.payments_available ? <PlanActions account={account} /> : <p><Link className="btn btn--ink" to="/pricing">See plans</Link></p>}
         <CreditUsage plans={plans} account={account} />
-        <section aria-labelledby="history-title">
-          <h2 id="history-title" className="billing__history-title">History</h2>
-          {account.history.length === 0 ? <p>Nothing yet. Exports will be listed here.</p> : (
-            <div className="billing__table-wrap" tabIndex={0} role="region" aria-labelledby="history-title">
-              <table className="billing__table billing__table--stack">
-                <thead><tr><th scope="col">Time</th><th scope="col">Design</th><th scope="col">Operation</th><th scope="col">Status</th><th scope="col">Credits</th></tr></thead>
-                <tbody>
-                  {account.history.map((row) => (
-                    <tr key={row.job_id}>
-                      <td data-label="Time">{TIME.format(new Date(row.created_at))}</td>
-                      <td data-label="Design">{row.design_id ? <Link to={`/preview/${row.design_id.replace(/-/g, "")}`}>Open</Link> : "Deleted"}</td>
-                      <td data-label="Operation">{OPERATION[row.operation] ?? row.operation}{row.format ? ` (${row.format.toUpperCase()})` : ""}</td>
-                      <td data-label="Status">{STATUS[row.status] ?? row.status}</td>
-                      <td data-label="Credits">{row.status === "succeeded" ? count(row.credits) : row.status === "started" ? `${count(row.credits)} set aside` : "0"}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </section>
+        <OwnHistory account={account} />
       </>
     );
   }

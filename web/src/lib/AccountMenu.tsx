@@ -44,7 +44,7 @@ function Avatar({ person }: { person: Who }) {
   return <span className={`acct__letter acct__letter--${thumbFor(person.id)}`} aria-hidden="true">{initial(person)}</span>;
 }
 
-function Menu({ person, planName }: { person: Who; planName: string | null }) {
+function Menu({ person, planName, teamLink }: { person: Who; planName: string | null; teamLink: boolean }) {
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   const button = useRef<HTMLButtonElement>(null);
@@ -98,6 +98,7 @@ function Menu({ person, planName }: { person: Who; planName: string | null }) {
           <Link className="acct__item" role="menuitem" to="/home" onClick={() => setOpen(false)}>My designs</Link>
           <Link className="acct__item" role="menuitem" to="/billing" onClick={() => setOpen(false)}>Credits and plan</Link>
           <Link className="acct__item" role="menuitem" to="/exports" onClick={() => setOpen(false)}>Export history</Link>
+          {teamLink && <Link className="acct__item" role="menuitem" to="/team" onClick={() => setOpen(false)}>Team</Link>}
           <button className="acct__item" role="menuitem" type="button" onClick={() => { setOpen(false); navigate("/logout"); }}>Log out</button>
         </div>
       )}
@@ -121,7 +122,7 @@ export function AccountControl({ page }: { page?: "login" | "signup" }) {
             {count(billing.available)} {billing.available === 1 ? "credit" : "credits"}
           </Link>
         )}
-        <Menu person={who(session)} planName={billing?.plan_name ?? null} />
+        <Menu person={who(session)} planName={billing?.plan_name ?? null} teamLink={billing?.plan === "business"} />
       </div>
     );
   }
